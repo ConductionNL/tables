@@ -14,12 +14,15 @@ use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextMapper;
 use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
+use OCA\Tables\Db\MenuItem;
+use OCA\Tables\Db\MenuItemMapper;
 use OCA\Tables\Db\Page;
 use OCA\Tables\Db\PageContent;
 use OCA\Tables\Db\PageContentMapper;
 use OCA\Tables\Db\PageMapper;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
+use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
@@ -61,6 +64,7 @@ class ContextService {
 		protected IURLGenerator $urlGenerator,
 		private TableMapper $tableMapper,
 		private ViewMapper $viewMapper,
+		private MenuItemMapper $menuItemMapper,
 	) {
 	}
 
@@ -132,15 +136,16 @@ class ContextService {
 	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
 	 * @throws Exception|PermissionError|InvalidArgumentException
 	 */
-	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType): Context {
+	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $slug = null, ?array $menuItems = null): Context {
 		$context = new Context();
 		$context->setName(trim($name));
 		$context->setIcon(trim($iconName));
 		$context->setDescription(trim($description));
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType($ownerType);
+		$context->setSlug($this->normalizeSlug($slug));
 
-		$this->atomic(function () use ($context, $nodes): void {
+		$this->atomic(function () use ($context, $nodes, $menuItems): void {
 			$this->contextMapper->insert($context);
 
 			if (!empty($nodes)) {
@@ -148,9 +153,58 @@ class ContextService {
 				$this->insertNodesFromArray($context, $nodes);
 			}
 			$this->insertPage($context);
+			$context->setMenuItems($this->replaceMenuItems($context->getId(), $menuItems ?? []));
 		}, $this->dbc);
 
 		return $context;
+	}
+
+	/**
+	 * Replace the menu of an application with the given items, in the given order.
+	 *
+	 * @psalm-param list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, slug?: string|null}> $menuItems
+	 * @return list<array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, slug: string|null, order: int}>
+	 * @throws Exception
+	 */
+	protected function replaceMenuItems(int $contextId, array $menuItems): array {
+		$this->menuItemMapper->deleteAllByContextId($contextId);
+		$stored = [];
+		foreach (array_values($menuItems) as $position => $item) {
+			$menuItem = new MenuItem();
+			$menuItem->setContextId($contextId);
+			$menuItem->setLabel(trim($item['label']));
+			$menuItem->setIcon(isset($item['icon']) && $item['icon'] !== '' ? trim((string)$item['icon']) : null);
+			$menuItem->setTargetType($item['targetType']);
+			$menuItem->setTargetId($item['targetType'] === MenuItem::TARGET_URL ? null : ($item['targetId'] ?? null));
+			$menuItem->setUrl($item['targetType'] === MenuItem::TARGET_URL ? ($item['url'] ?? null) : null);
+			$menuItem->setSlug($this->normalizeSlug($item['slug'] ?? null) ?? $this->slugify($item['label']));
+			$menuItem->setOrder(($position + 1) * 10);
+			$stored[] = $this->menuItemMapper->insert($menuItem)->jsonSerialize();
+		}
+		return $stored;
+	}
+
+	/**
+	 * @throws InvalidArgumentException
+	 */
+	protected function normalizeSlug(?string $slug): ?string {
+		if ($slug === null) {
+			return null;
+		}
+		$slug = trim($slug);
+		if ($slug === '') {
+			return null;
+		}
+		if (strlen($slug) > 64 || !preg_match('/^[a-z0-9][a-z0-9-]*$/', $slug)) {
+			throw new InvalidArgumentException('A slug may only contain lowercase letters, numbers and hyphens, and must start with a letter or number.');
+		}
+		return $slug;
+	}
+
+	protected function slugify(string $label): string {
+		$slug = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $label) ?? '', '-'));
+		$slug = preg_replace('/^[^a-z0-9]+/', '', $slug) ?? '';
+		return substr($slug === '' ? 'item' : $slug, 0, 64);
 	}
 
 	/**
@@ -159,11 +213,17 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws PermissionError|MultipleObjectsReturnedException
 	 */
-	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes): Context {
+	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $slug = null, ?array $menuItems = null): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
 
 		if ($name !== null) {
 			$context->setName(trim($name));
+		}
+		if ($slug !== null) {
+			$context->setSlug($this->normalizeSlug($slug));
+		}
+		if ($menuItems !== null) {
+			$context->setMenuItems($this->replaceMenuItems($contextId, $menuItems));
 		}
 		if ($iconName !== null) {
 			$context->setIcon(trim($iconName));
@@ -316,6 +376,7 @@ class ContextService {
 
 		$this->atomic(function () use ($context): void {
 			$this->shareService->deleteAllForContext($context);
+			$this->menuItemMapper->deleteAllByContextId($context->getId());
 			$this->contextNodeRelMapper->deleteAllByContextId($context->getId());
 			$pageIds = $this->pageMapper->getPageIdsForContext($context->getId());
 			foreach ($pageIds as $pageId) {
@@ -689,7 +750,7 @@ class ContextService {
 					$view = $viewService->find($node['node_id']);
 					$node['node_uuid'] = $view->getUuid();
 					$node['node_title'] = $view->getTitle();
-					if (isset($tables[$view->getTableId()])) {
+					if ($view->getTableId() === null || isset($tables[$view->getTableId()])) {
 						continue;
 					}
 					$tables[$view->getTableId()] = $tableService->getScheme($view->getTableId(), $userId)->jsonSerialize();
@@ -699,6 +760,8 @@ class ContextService {
 			}
 		}
 
+		[$menuItems, $gridViews] = $this->exportMenuItems($context);
+
 		return new ContextScheme(
 			$context->getName(),
 			$context->getIcon(),
@@ -706,7 +769,173 @@ class ContextService {
 			array_values($nodes),
 			$context->getPages(),
 			array_values($tables),
+			$context->getSlug(),
+			$menuItems,
+			$gridViews,
 		);
+	}
+
+	/**
+	 * Menu items with their targets as uuids, plus the table-less views they point at.
+	 *
+	 * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>}
+	 */
+	private function exportMenuItems(Context $context): array {
+		$menuItems = [];
+		$gridViews = [];
+		foreach ($context->getMenuItems() as $item) {
+			$exported = [
+				'label' => $item['label'],
+				'icon' => $item['icon'],
+				'targetType' => $item['targetType'],
+				'targetUuid' => null,
+				'url' => $item['url'],
+				'slug' => $item['slug'],
+			];
+			try {
+				if ($item['targetType'] === MenuItem::TARGET_TABLE && $item['targetId'] !== null) {
+					$exported['targetUuid'] = $this->tableMapper->find($item['targetId'])->getUuid();
+				} elseif ($item['targetType'] === MenuItem::TARGET_VIEW && $item['targetId'] !== null) {
+					$view = $this->viewMapper->find($item['targetId']);
+					$exported['targetUuid'] = $view->getUuid();
+					if ($view->getTableId() === null && !isset($gridViews[$view->getUuid()])) {
+						$gridViews[$view->getUuid()] = $this->exportGridView($view);
+					}
+				}
+			} catch (DoesNotExistException|MultipleObjectsReturnedException|Exception $e) {
+				$this->logger->warning('Menu item target could not be exported, the item is skipped', ['exception' => $e]);
+				continue;
+			}
+			$menuItems[] = $exported;
+		}
+		return [$menuItems, array_values($gridViews)];
+	}
+
+	/**
+	 * A table-less view with the targets of its data widgets expressed as uuids.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function exportGridView(View $view): array {
+		$grid = $view->getGridArray();
+		foreach ($grid['widgets'] as &$widget) {
+			$content = $widget['content'] ?? [];
+			if (!is_array($content) || !isset($content['targetType'], $content['targetId'])) {
+				continue;
+			}
+			try {
+				$widget['content']['targetUuid'] = $content['targetType'] === MenuItem::TARGET_VIEW
+					? $this->viewMapper->find((int)$content['targetId'])->getUuid()
+					: $this->tableMapper->find((int)$content['targetId'])->getUuid();
+			} catch (DoesNotExistException|MultipleObjectsReturnedException|Exception) {
+				$widget['content']['targetUuid'] = null;
+			}
+		}
+		unset($widget);
+		return [
+			'uuid' => $view->getUuid(),
+			'title' => $view->getTitle(),
+			'emoji' => $view->getEmoji(),
+			'description' => $view->getDescription(),
+			'type' => $view->getTypeOrDefault(),
+			'slug' => $view->getSlug(),
+			'createdAt' => $view->getCreatedAt(),
+			'lastEditAt' => $view->getLastEditAt(),
+			'grid' => $grid,
+		];
+	}
+
+	/**
+	 * Creates the table-less views of a scheme that do not exist here yet and points
+	 * their data widgets at the local tables and views.
+	 *
+	 * @param list<array<string, mixed>> $gridViews
+	 */
+	private function importGridViews(array $gridViews, string $userId): void {
+		$viewService = \OCP\Server::get(ViewService::class);
+		foreach ($gridViews as $viewData) {
+			if (!isset($viewData['uuid'], $viewData['title']) || $this->viewMapper->findByUuid($viewData['uuid']) !== null) {
+				continue;
+			}
+			$grid = is_array($viewData['grid'] ?? null) ? $viewData['grid'] : ['widgets' => [], 'layout' => []];
+			foreach ($grid['widgets'] ?? [] as &$widget) {
+				$content = $widget['content'] ?? [];
+				if (!is_array($content) || !isset($content['targetType'])) {
+					continue;
+				}
+				$targetId = $this->resolveTargetId($content['targetType'], $content['targetUuid'] ?? null);
+				$widget['content']['targetId'] = $targetId;
+				unset($widget['content']['targetUuid']);
+			}
+			unset($widget);
+			$viewService->importView(null, [
+				'uuid' => $viewData['uuid'],
+				'title' => $viewData['title'],
+				'emoji' => $viewData['emoji'] ?? null,
+				'description' => $viewData['description'] ?? '',
+				'type' => View::TYPE_GRID,
+				'slug' => $viewData['slug'] ?? null,
+				'createdAt' => $viewData['createdAt'] ?? (new \DateTime())->format('Y-m-d H:i:s'),
+				'lastEditAt' => $viewData['lastEditAt'] ?? (new \DateTime())->format('Y-m-d H:i:s'),
+				'columnSettings' => [],
+				'sort' => [],
+				'filter' => [],
+				'grid' => $grid,
+			], $userId);
+		}
+	}
+
+	/**
+	 * The local id of a table or view a scheme refers to by uuid, or null when it does not exist here.
+	 */
+	private function resolveTargetId(string $targetType, ?string $uuid): ?int {
+		if ($uuid === null || $uuid === '') {
+			return null;
+		}
+		try {
+			if ($targetType === MenuItem::TARGET_TABLE) {
+				return $this->tableMapper->findByUuid($uuid)->getId();
+			}
+			if ($targetType === MenuItem::TARGET_VIEW) {
+				return $this->viewMapper->findByUuid($uuid)?->getId();
+			}
+		} catch (DoesNotExistException|MultipleObjectsReturnedException|Exception) {
+			return null;
+		}
+		return null;
+	}
+
+	/**
+	 * Menu items of a scheme with their uuid targets turned into local ids; items whose target is missing are dropped.
+	 *
+	 * @param list<array<string, mixed>> $menuItems
+	 * @return list<array{label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, slug: string|null}>
+	 */
+	private function resolveMenuItems(array $menuItems): array {
+		$resolved = [];
+		foreach ($menuItems as $item) {
+			if (!is_array($item) || !isset($item['label']) || trim((string)$item['label']) === '') {
+				continue;
+			}
+			$targetType = (string)($item['targetType'] ?? MenuItem::TARGET_URL);
+			if (!in_array($targetType, MenuItem::TARGET_TYPES, true)) {
+				continue;
+			}
+			$targetId = $targetType === MenuItem::TARGET_URL ? null : $this->resolveTargetId($targetType, $item['targetUuid'] ?? null);
+			if ($targetType !== MenuItem::TARGET_URL && $targetId === null) {
+				$this->logger->info('Menu item "{label}" skipped on import, its target does not exist here', ['label' => $item['label']]);
+				continue;
+			}
+			$resolved[] = [
+				'label' => (string)$item['label'],
+				'icon' => isset($item['icon']) ? (string)$item['icon'] : null,
+				'targetType' => $targetType,
+				'targetId' => $targetId,
+				'url' => $targetType === MenuItem::TARGET_URL ? (string)($item['url'] ?? '') : null,
+				'slug' => isset($item['slug']) ? (string)$item['slug'] : null,
+			];
+		}
+		return $resolved;
 	}
 
 	/**
@@ -799,7 +1028,7 @@ class ContextService {
 	 * @throws NotFoundExceptionInterface
 	 * @throws PermissionError
 	 */
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId): Context {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId, ?string $slug = null, array $menuItems = [], array $gridViews = []): Context {
 		// Validate the structure of the columns and views arrays
 		if (!isset($tables['addTables']) || !is_array($tables['addTables'])
 			|| !isset($tables['modifyTables']) || !is_array($tables['modifyTables'])) {
@@ -850,6 +1079,9 @@ class ContextService {
 				];
 			} elseif ($node['node_type'] === Application::NODE_TYPE_VIEW) {
 				$view = $this->viewMapper->findByUuid($node['node_uuid']);
+				if ($view === null) {
+					throw new DoesNotExistException('View ' . $node['node_uuid'] . ' does not exist');
+				}
 				$resolvedNodes[] = [
 					'id' => $view->getId(),
 					'type' => $node['node_type'],
@@ -858,8 +1090,8 @@ class ContextService {
 			}
 		}
 
-		$context = $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes);
+		$this->importGridViews($gridViews, $userId);
 
-		return $context;
+		return $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes, $slug, $this->resolveMenuItems($menuItems));
 	}
 }
