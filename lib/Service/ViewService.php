@@ -190,7 +190,6 @@ class ViewService extends SuperService {
 		?string $technicalName = null,
 		?string $uuid = null,
 		string $type = View::TYPE_TABLE,
-		?string $slug = null,
 		string $description = '',
 	): View {
 		/** @var string $userId */
@@ -219,10 +218,6 @@ class ViewService extends SuperService {
 		$item->setDescription($description);
 		$item->setTableId($table?->getId());
 		$item->setType($type);
-		if ($slug !== null && $slug !== '') {
-			$this->assertSlugValid($slug);
-			$item->setSlug($slug);
-		}
 		$item->setCreatedBy($userId);
 		$item->setLastEditBy($userId);
 		$item->setCreatedAt($time->format('Y-m-d H:i:s'));
@@ -293,10 +288,6 @@ class ViewService extends SuperService {
 					if ($value === View::TYPE_TABLE && $view->getTableId() === null) {
 						throw new BadRequestError('A view without a table cannot become a table view.');
 					}
-				}
-
-				if ($parameter === ViewUpdatableParameters::SLUG && $value !== '') {
-					$this->assertSlugValid($value);
 				}
 
 				if ($parameter === ViewUpdatableParameters::GRID) {
@@ -731,10 +722,6 @@ class ViewService extends SuperService {
 		if (isset($view['grid']) && is_array($view['grid'])) {
 			$item->setGridArray($view['grid']);
 		}
-		if (isset($view['slug']) && $view['slug'] !== '') {
-			$this->assertSlugValid($view['slug']);
-			$item->setSlug($view['slug']);
-		}
 		try {
 			$importedView = $this->mapper->insert($item);
 			if ($item->getTechnicalName() === null || $item->getTechnicalName() === '') {
@@ -776,15 +763,14 @@ class ViewService extends SuperService {
 	private function sanitizeGrid(array $grid): array {
 		$widgets = [];
 		foreach ($grid['widgets'] ?? [] as $widget) {
-			$widget['content'] = GridWidgetTypes::sanitizeContent($widget['type'], $widget['content'] ?? []);
-			$widgets[] = $widget;
+			$widgets[] = GridWidgetTypes::sanitizeWidget($widget);
 		}
 		return ['widgets' => $widgets, 'layout' => array_values($grid['layout'] ?? [])];
 	}
 
 	/**
-	 * A grid holds widgets and where they sit. Every widget's content must match the schema
-	 * of its type, see GridWidgetTypes.
+	 * A grid holds widgets and where they sit. Every widget's configuration and content must
+	 * match the schemas of its type, see GridWidgetTypes.
 	 *
 	 * @throws BadRequestError
 	 */
@@ -795,14 +781,10 @@ class ViewService extends SuperService {
 			}
 		}
 		foreach ($grid['widgets'] ?? [] as $widget) {
-			if (!is_array($widget) || !is_string($widget['id'] ?? null) || !is_string($widget['type'] ?? null)) {
+			if (!is_array($widget)) {
 				throw new BadRequestError('Every widget needs a string id and type.');
 			}
-			$content = $widget['content'] ?? [];
-			if (!is_array($content)) {
-				throw new BadRequestError('The content of widget ' . $widget['id'] . ' must be an object.');
-			}
-			GridWidgetTypes::sanitizeContent($widget['type'], $content);
+			GridWidgetTypes::sanitizeWidget($widget);
 		}
 		foreach ($grid['layout'] ?? [] as $item) {
 			if (!is_array($item) || !is_string($item['widgetId'] ?? null)) {
@@ -819,14 +801,6 @@ class ViewService extends SuperService {
 	/**
 	 * @throws BadRequestError
 	 */
-	private function assertSlugValid(string $slug): void {
-		if (strlen($slug) > 64) {
-			throw new BadRequestError('A slug must not exceed 64 characters.');
-		}
-		if (!preg_match('/^[a-z0-9][a-z0-9-]*$/', $slug)) {
-			throw new BadRequestError('A slug may only contain lowercase letters, numbers and hyphens, and must start with a letter or number.');
-		}
-	}
 
 	private function assertTechnicalNameValid(string $technicalName): void {
 		if (strlen($technicalName) > 200) {

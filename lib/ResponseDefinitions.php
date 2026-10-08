@@ -47,7 +47,23 @@ namespace OCA\Tables;
  *  sidebarOrder: int|null,
  *  type: string,
  *  grid: array{widgets: list<array<string, mixed>>, layout: list<array<string, mixed>>},
- *  slug: string|null,
+ * }
+ *
+ * @psalm-type TablesGridWidgetProperty = array{
+ *  type: string,
+ *  title: string,
+ *  default: mixed,
+ *  options?: list<array{value: string, label: string}>,
+ *  required?: bool,
+ * }
+ *
+ * @psalm-type TablesGridWidgetType = array{
+ *  type: string,
+ *  title: string,
+ *  defaultWidth: int,
+ *  defaultHeight: int,
+ *  configuration: array<string, TablesGridWidgetProperty>,
+ *  properties: array<string, TablesGridWidgetProperty>,
  * }
  *
  * @psalm-type TablesTable = array{
@@ -237,7 +253,7 @@ namespace OCA\Tables;
  *   targetType: string,
  *   targetId: int|null,
  *   url: string|null,
- *   slug: string|null,
+ *   technicalName: string|null,
  *   order: int,
  * }
  *
@@ -248,7 +264,7 @@ namespace OCA\Tables;
  *   description: string,
  *   owner: string,
  *   ownerType: int,
- *   slug: string|null,
+ *   technicalName: string|null,
  *   menuItems: list<TablesMenuItem>,
  * }
  *
