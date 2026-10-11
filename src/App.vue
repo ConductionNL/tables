@@ -30,10 +30,7 @@ import { generateUrl } from '@nextcloud/router'
 
 // A page that focuses its content before the person has touched it shows the browser's focus
 // ring around the whole content area. Focus moves only after a first pointer or keyboard event.
-let userHasInteracted = false
-for (const type of ['pointerdown', 'keydown']) {
-	document.addEventListener(type, () => { userHasInteracted = true }, { once: true, capture: true })
-}
+const FIRST_INTERACTION_EVENTS = ['pointerdown', 'keydown']
 
 export default {
 	name: 'App',
@@ -57,6 +54,7 @@ export default {
 			defaultPageTitle: false,
 			shareToken: loadState('tables', 'shareToken', false),
 			standaloneContextId: loadState('tables', 'contextId', null),
+			userHasInteracted: false,
 		}
 	},
 	computed: {
@@ -74,6 +72,9 @@ export default {
 		},
 	},
 	async created() {
+		for (const type of FIRST_INTERACTION_EVENTS) {
+			document.addEventListener(type, this.onFirstInteraction, { capture: true })
+		}
 		const store = useTablesStore()
 		if (!this.isPublicShare) {
 			await Promise.all([
@@ -93,7 +94,19 @@ export default {
 	mounted() {
 		this.$nextTick(() => this.observeAppContent())
 	},
+	beforeUnmount() {
+		this.removeFirstInteractionListeners()
+	},
 	methods: {
+		onFirstInteraction() {
+			this.userHasInteracted = true
+			this.removeFirstInteractionListeners()
+		},
+		removeFirstInteractionListeners() {
+			for (const type of FIRST_INTERACTION_EVENTS) {
+				document.removeEventListener(type, this.onFirstInteraction, { capture: true })
+			}
+		},
 		...mapActions(useTablesStore, ['loadTablesFromBE', 'getAllContexts', 'loadViewsSharedWithMeFromBE', 'loadTemplatesFromBE', 'setActiveRowId', 'setActiveTableId', 'setActiveViewId', 'setActiveContextId']),
 		/**
 		 * @param {object} currentRoute the route to apply
@@ -152,7 +165,7 @@ export default {
 				}
 
 				// move the focus away from nav bar (import for app-internal switch)
-				if (!initial && userHasInteracted) {
+				if (!initial && this.userHasInteracted) {
 					const appContent = document.getElementById('app-content-vue')
 					const oldTabIndex = appContent.tabIndex
 					if (oldTabIndex === -1) {

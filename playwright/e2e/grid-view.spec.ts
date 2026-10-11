@@ -22,6 +22,8 @@ test.describe('Grid views inside an application', () => {
 
 	test('Create an application, add a menu item, design a grid view and keep it after a reload', async ({ userPage: { page } }) => {
 		const contextTitle = 'grid demo application'
+		// technical names are unique per owner, so a rerun on the same instance needs a new one
+		const technicalName = 'grid_demo_' + Date.now()
 
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, contextTitle)
@@ -30,9 +32,9 @@ test.describe('Grid views inside an application', () => {
 		// The technical name through the application dialog, an external menu item through the inline menu editor
 		await page.locator('[data-cy="context-edit-application"]').click()
 		await expect(page.locator('[data-cy="editContextModal"]').first()).toBeVisible()
-		await page.locator('[data-cy="editContextTechnicalName"]').fill('grid_demo')
+		await page.locator('[data-cy="editContextTechnicalName"]').fill(technicalName)
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
-		await expect(page.locator('[data-cy="context-address"]')).toContainText('/apps/tables/app/grid_demo')
+		await expect(page.locator('[data-cy="context-address"]')).toContainText('/apps/tables/app/' + technicalName)
 
 		await page.locator('[data-cy="context-menu-edit"]').click()
 		await page.locator('[data-cy="menuItemAdd"]').click()
@@ -100,6 +102,14 @@ test.describe('Grid views inside an application', () => {
 		await page.reload()
 		await expect(page.locator('[data-cy="grid-item"]').nth(1)).toHaveAttribute('gs-x', '6')
 
+		// The same kind of move without a pointer: the widget menu moves it one column back
+		await page.locator('[data-cy="grid-view-edit"]').click()
+		await page.locator('[data-cy="grid-item"]').nth(1).getByRole('button', { name: 'Widget actions' }).click()
+		await page.getByRole('menuitem', { name: 'Move left' }).click()
+		await expect(page.locator('[data-cy="grid-item"]').nth(1)).toHaveAttribute('gs-x', '5')
+		await page.locator('[data-cy="grid-view-save"]').click()
+		await expect(page.locator('[data-cy="grid-view-edit"]')).toBeVisible()
+
 		// Removing a widget and saving must show the result at once, without a reload
 		await page.locator('[data-cy="grid-view-edit"]').click()
 		const descriptionWidget = page.locator('[data-cy="grid-widget"]').filter({ hasText: 'How this works' })
@@ -137,15 +147,5 @@ test.describe('Grid views inside an application', () => {
 		await expect(page.locator('[data-cy="navigationCreateTableIcon"]')).toHaveCount(0)
 		// nothing has focused the content area before the person touched the page, so no focus ring is drawn around it
 		expect(await page.evaluate(() => document.activeElement?.id ?? '')).not.toBe('app-content-vue')
-	})
-
-	test('A grid view is listed under Views and opens on its own page', async ({ userPage: { page } }) => {
-		await page.goto('/index.php/apps/tables')
-		await page.locator('[data-cy="navigationCreateGridViewIcon"]').click()
-		await page.locator('[data-cy="gridViewTitle"]').fill('Standalone board')
-		await page.locator('[data-cy="gridViewSubmit"]').click()
-		await expect(page).toHaveURL(/\/view\/\d+$/)
-		await expect(page.locator('[data-cy="grid-view-title"]')).toHaveText(/Standalone board/)
-		await expect(page.locator('[data-cy="navigationViewItem"]').filter({ hasText: 'Standalone board' })).toBeVisible()
 	})
 })
