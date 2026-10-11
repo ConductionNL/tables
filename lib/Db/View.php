@@ -223,7 +223,7 @@ class View extends EntitySuper implements JsonSerializable {
 	}
 
 	/**
-	 * The grid layout of a grid view: its widgets and where they sit.
+	 * The widgets of a grid view and where they sit.
 	 *
 	 * @return array{widgets: list<array<string, mixed>>, layout: list<array<string, mixed>>}
 	 */
@@ -235,15 +235,20 @@ class View extends EntitySuper implements JsonSerializable {
 				$widgets[] = self::upgradeWidgetShape($widget);
 			}
 		}
-		return [
-			'widgets' => $widgets,
-			'layout' => array_values(is_array($grid['layout'] ?? null) ? $grid['layout'] : []),
-		];
+		$layout = [];
+		foreach (is_array($grid['layout'] ?? null) ? $grid['layout'] : [] as $item) {
+			if (is_array($item) && is_string($item['widgetId'] ?? null)) {
+				// a layout item is identified by its widget
+				$item['id'] = $item['widgetId'];
+				$layout[] = $item;
+			}
+		}
+		return ['widgets' => $widgets, 'layout' => $layout];
 	}
 
 	/**
-	 * Grids saved before widgets had a configuration carried title and showTitle on
-	 * the widget itself. They read as the current shape until the view is saved again.
+	 * Grids saved before widgets had a configuration carried title and showTitle on the
+	 * widget itself; they read as the current shape until saved again.
 	 *
 	 * @param array<string, mixed> $widget
 	 * @return array<string, mixed>

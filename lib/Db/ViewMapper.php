@@ -255,11 +255,6 @@ class ViewMapper extends QBMapper {
 	}
 
 	/**
-	 * @throws DoesNotExistException
-	 * @throws Exception
-	 * @throws MultipleObjectsReturnedException
-	 */
-	/**
 	 * @throws MultipleObjectsReturnedException
 	 * @throws Exception
 	 */
