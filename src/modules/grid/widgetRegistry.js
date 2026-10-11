@@ -9,6 +9,9 @@ import DataWidget from './widgets/DataWidget.vue'
 /** Number of columns of a grid view. */
 export const GRID_COLUMNS = 12
 
+/** Smallest number of columns a widget spans. */
+export const GRID_MIN_WIDTH = 2
+
 /** Height of one grid row in pixels. */
 export const GRID_CELL_HEIGHT = 80
 

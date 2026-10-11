@@ -12,7 +12,7 @@
 			:gs-y="item.gridY"
 			:gs-w="item.gridWidth"
 			:gs-h="item.gridHeight"
-			:gs-min-w="2"
+			:gs-min-w="minWidth"
 			data-cy="grid-item">
 			<div class="grid-stack-item-content">
 				<slot name="widget" :item="item" />
@@ -25,7 +25,7 @@
 import { markRaw } from 'vue'
 import { GridStack } from 'gridstack'
 import 'gridstack/dist/gridstack.min.css'
-import { GRID_CELL_HEIGHT, GRID_COLUMNS } from './widgetRegistry.js'
+import { GRID_CELL_HEIGHT, GRID_COLUMNS, GRID_MIN_WIDTH } from './widgetRegistry.js'
 
 /**
  * Places widgets on a 12 column grid. In edit mode the widgets can be dragged and resized;
@@ -48,6 +48,7 @@ export default {
 		return {
 			grid: null,
 			resizeObserver: null,
+			minWidth: GRID_MIN_WIDTH,
 		}
 	},
 	watch: {
@@ -91,7 +92,7 @@ export default {
 	},
 	methods: {
 		/**
-		 * Tells GridStack about widgets Vue added or removed. Runs before Vue touches the DOM,
+		 * Tells GridStack about widgets Vue added, removed or moved. Runs before Vue touches the DOM,
 		 * so a removed widget's element still exists when GridStack forgets it.
 		 *
 		 * @param {Array} layout new layout
@@ -104,9 +105,16 @@ export default {
 			const currentIds = new Set(layout.map(item => item.widgetId))
 			const previousIds = new Set(previousLayout.map(item => item.widgetId))
 
+			const positions = Object.fromEntries(layout.map(item => [item.widgetId, item]))
+			// on a narrower canvas the grid shows a reflow of the stored layout, so positions only sync at full width
+			const isFullWidth = this.grid.getColumn() === GRID_COLUMNS
 			for (const node of [...this.grid.engine.nodes]) {
-				if (!currentIds.has(node.id)) {
+				const item = positions[node.id]
+				if (!item) {
 					this.grid.removeWidget(node.el, false, false)
+				} else if (isFullWidth && (node.x !== item.gridX || node.y !== item.gridY || node.w !== item.gridWidth || node.h !== item.gridHeight)) {
+					// a move from the widget menu rather than a drag
+					this.grid.update(node.el, { x: item.gridX, y: item.gridY, w: item.gridWidth, h: item.gridHeight })
 				}
 			}
 
