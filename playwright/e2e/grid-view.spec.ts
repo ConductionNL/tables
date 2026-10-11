@@ -159,4 +159,35 @@ test.describe('Grid views inside an application', () => {
 		// nothing has focused the content area before the person touched the page, so no focus ring is drawn around it
 		expect(await page.evaluate(() => document.activeElement?.id ?? '')).not.toBe('app-content-vue')
 	})
+
+	test('A menu entry is reordered with its buttons, sits under another one and keeps its place after a reload', async ({ userPage: { page } }) => {
+		const contextTitle = 'nested menu application'
+		await page.goto('/index.php/apps/tables')
+		await createContext(page, contextTitle)
+		await loadContext(page, contextTitle)
+
+		await page.locator('[data-cy="context-menu-edit"]').click()
+		for (const [label, url] of [['Handbook', 'https://docs.nextcloud.com'], ['Forum', 'https://help.nextcloud.com']]) {
+			await page.locator('[data-cy="menuItemAdd"]').click()
+			await page.locator('[data-cy="menuItemLabel"]').last().fill(label)
+			await page.locator('[data-cy="menuItemRow"]').last().locator('input[placeholder="https://"]').fill(url)
+		}
+
+		// without a pointer: move Forum to the top, then put Handbook under it
+		await page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemMoveUp"]').click()
+		await expect(page.locator('[data-cy="menuItemLabel"]').first()).toHaveValue('Forum')
+		await page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemIndent"]').click()
+		await expect(page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemOutdent"]')).toBeVisible()
+
+		const saveResponse = page.waitForResponse(response => response.url().includes('/apps/tables/api/2/contexts/') && response.request().method() === 'PUT')
+		await page.locator('[data-cy="context-menu-save"]').click()
+		expect((await saveResponse).status()).toBe(200)
+
+		await page.reload()
+		const pages = page.locator('[data-cy="page-card"]')
+		await expect(pages).toHaveCount(2)
+		await expect(pages.nth(0)).toContainText('Forum')
+		await expect(pages.nth(1)).toContainText('1.1')
+		await expect(pages.nth(1)).toContainText('Handbook')
+	})
 })
