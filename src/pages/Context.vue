@@ -71,7 +71,7 @@
 								{{ t('tables', 'Transfer ownership') }}
 							</NcActionButton>
 							<NcActionSeparator />
-							<NcActionButton class="context__delete-action" data-cy="context-delete" @click="deleteApplication">
+							<NcActionButton class="action--error" data-cy="context-delete" @click="deleteApplication">
 								<template #icon>
 									<DeleteOutline :size="20" />
 								</template>
@@ -88,7 +88,7 @@
 			</div>
 
 			<div v-if="selectedMenuItem" class="context__menu-target" data-cy="context-menu-target">
-				<div v-if="menuTargetLoading" class="icon-loading" />
+				<NcLoadingIcon v-if="menuTargetLoading" :size="32" class="context__loading" />
 				<NcEmptyContent v-else-if="!menuResource"
 					:name="t('tables', 'This menu item points at nothing')"
 					:description="t('tables', 'The view or table it opened no longer exists, or you have no access to it.')" />
@@ -406,7 +406,7 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
-import { NcActionButton, NcActionRadio, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import { NcActionButton, NcActionRadio, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcLoadingIcon, NcTextField } from '@nextcloud/vue'
 import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 import AccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
@@ -456,6 +456,7 @@ export default {
 		NcButton,
 		NcEmptyContent,
 		NcIconSvgWrapper,
+		NcLoadingIcon,
 		AlertCircleOutline,
 		NcTextField,
 		AccountMultipleOutline,
@@ -884,7 +885,12 @@ export default {
 			// The layout is the user's own arrangement and saves once, when editing ends
 			this.layout = this.draftLayout
 			this.draftLayout = null
-			saveContextLayout(this.activeContextId, this.layout)
+			try {
+				saveContextLayout(this.activeContextId, this.layout)
+			} catch (error) {
+				console.error('The application layout could not be stored', error)
+				showError(t('tables', 'Your layout applies to this visit only, as this browser does not allow storing it.'))
+			}
 		},
 		contextSignature() {
 			const ctx = this.activeContext
@@ -1124,10 +1130,6 @@ export default {
 		flex-shrink: 0;
 	}
 
-	&__delete-action :deep(.action-button__text) {
-		color: var(--color-error);
-	}
-
 	&__breadcrumb {
 		display: flex;
 		flex-wrap: wrap;
@@ -1312,6 +1314,10 @@ export default {
 		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 	}
 
+	&__loading {
+		margin: calc(4 * var(--default-grid-baseline, 4px)) auto;
+	}
+
 	&__menu-target {
 		width: 100%;
 		padding: calc(2 * var(--default-grid-baseline, 4px)) 0;
@@ -1468,6 +1474,13 @@ export default {
 	// leave room for the navigation toggle that floats over the top left corner of the content
 	.context__menu-target {
 		padding-inline-start: var(--default-clickable-area, 44px);
+	}
+}
+
+// the same rule upstream Tables uses for its destructive navigation actions
+.action--error {
+	:deep(.action-button) {
+		color: var(--color-text-error, var(--color-error));
 	}
 }
 </style>
