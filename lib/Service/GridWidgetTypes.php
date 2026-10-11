@@ -255,53 +255,69 @@ class GridWidgetTypes {
 	 */
 	private function sanitizeProperty(string $label, array $property, mixed $value): mixed {
 		$isRequired = $property['required'] ?? false;
-		switch ($property['type']) {
-			case 'string':
-			case 'text':
-				$value ??= '';
-				if (!is_string($value)) {
-					throw new BadRequestError('Widget property ' . $label . ' must be a string.');
-				}
-				if ($isRequired && trim($value) === '') {
-					throw new BadRequestError('Widget property ' . $label . ' is required.');
-				}
-				return $value;
-			case 'color':
-				if ($value === null || $value === '') {
-					return '';
-				}
-				if (!is_string($value) || !preg_match(self::HEX_COLOR, $value)) {
-					throw new BadRequestError('Widget property ' . $label . ' must be a hex color.');
-				}
-				return $value;
-			case 'boolean':
-				if (!is_bool($value)) {
-					throw new BadRequestError('Widget property ' . $label . ' must be true or false.');
-				}
-				return $value;
-			case 'integer':
-				if (!is_int($value)) {
-					throw new BadRequestError('Widget property ' . $label . ' must be an integer.');
-				}
-				return $value;
-			case 'enum':
-				$allowed = array_column($property['options'] ?? [], 'value');
-				if (!in_array($value, $allowed, true)) {
-					throw new BadRequestError('Widget property ' . $label . ' must be one of: ' . implode(', ', $allowed) . '.');
-				}
-				return $value;
-			case 'target':
-				if ($value === null) {
-					if ($isRequired) {
-						throw new BadRequestError('Widget property ' . $label . ' is required.');
-					}
-					return null;
-				}
-				if (!is_array($value) || !in_array($value['type'] ?? null, ['table', 'view'], true) || !is_int($value['id'] ?? null) || $value['id'] <= 0) {
-					throw new BadRequestError('Widget property ' . $label . ' must name a table or view by id.');
-				}
-				return ['type' => $value['type'], 'id' => $value['id']];
+		return match ($property['type']) {
+			'string', 'text' => $this->sanitizeText($label, $value, $isRequired),
+			'color' => $this->sanitizeColor($label, $value),
+			'boolean' => is_bool($value) ? $value : throw new BadRequestError('Widget property ' . $label . ' must be true or false.'),
+			'integer' => is_int($value) ? $value : throw new BadRequestError('Widget property ' . $label . ' must be an integer.'),
+			'enum' => $this->sanitizeEnum($label, $value, array_column($property['options'] ?? [], 'value')),
+			'target' => $this->sanitizeTarget($label, $value, $isRequired),
+			default => throw new BadRequestError('Widget property ' . $label . ' has an unknown schema type.'),
+		};
+	}
+
+	/**
+	 * @throws BadRequestError
+	 */
+	private function sanitizeText(string $label, mixed $value, bool $isRequired): string {
+		$value ??= '';
+		if (!is_string($value)) {
+			throw new BadRequestError('Widget property ' . $label . ' must be a string.');
 		}
-		throw new BadRequestError('Widget property ' . $label . ' has an unknown schema type.');
+		if ($isRequired && trim($value) === '') {
+			throw new BadRequestError('Widget property ' . $label . ' is required.');
+		}
+		return $value;
+	}
+
+	/**
+	 * @throws BadRequestError
+	 */
+	private function sanitizeColor(string $label, mixed $value): string {
+		if ($value === null || $value === '') {
+			return '';
+		}
+		if (!is_string($value) || !preg_match(self::HEX_COLOR, $value)) {
+			throw new BadRequestError('Widget property ' . $label . ' must be a hex color.');
+		}
+		return $value;
+	}
+
+	/**
+	 * @param list<mixed> $allowed
+	 * @throws BadRequestError
+	 */
+	private function sanitizeEnum(string $label, mixed $value, array $allowed): mixed {
+		if (!in_array($value, $allowed, true)) {
+			throw new BadRequestError('Widget property ' . $label . ' must be one of: ' . implode(', ', $allowed) . '.');
+		}
+		return $value;
+	}
+
+	/**
+	 * @return array{type: string, id: int}|null
+	 * @throws BadRequestError
+	 */
+	private function sanitizeTarget(string $label, mixed $value, bool $isRequired): ?array {
+		if ($value === null) {
+			if ($isRequired) {
+				throw new BadRequestError('Widget property ' . $label . ' is required.');
+			}
+			return null;
+		}
+		if (!is_array($value) || !in_array($value['type'] ?? null, ['table', 'view'], true) || !is_int($value['id'] ?? null) || $value['id'] <= 0) {
+			throw new BadRequestError('Widget property ' . $label . ' must name a table or view by id.');
+		}
+		return ['type' => $value['type'], 'id' => $value['id']];
 	}
 }
