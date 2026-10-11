@@ -99,6 +99,17 @@ test.describe('Grid views inside an application', () => {
 		expect((await moveResponse).status()).toBe(200)
 		await page.reload()
 		await expect(page.locator('[data-cy="grid-item"]').nth(1)).toHaveAttribute('gs-x', '6')
+
+		// Removing a widget and saving must show the result at once, without a reload
+		await page.locator('[data-cy="grid-view-edit"]').click()
+		const descriptionWidget = page.locator('[data-cy="grid-widget"]').filter({ hasText: 'How this works' })
+		await descriptionWidget.locator('.action-item__menutoggle, button[aria-label]').first().click()
+		await page.locator('.action-button, [role=menuitem]').filter({ hasText: /remove/i }).first().click()
+		await expect(page.locator('[data-cy="grid-item"]')).toHaveCount(1)
+		await page.locator('[data-cy="grid-view-save"]').click()
+		await expect(page.locator('[data-cy="grid-view-edit"]')).toBeVisible()
+		await expect(page.locator('[data-cy="grid-item"]')).toHaveCount(1)
+		await expect(page.locator('[data-cy="grid-widget"]').filter({ hasText: 'How this works' })).toHaveCount(0)
 	})
 
 	test('An application opened on its own shows its menu and its first page', async ({ userPage: { page } }) => {
@@ -124,6 +135,8 @@ test.describe('Grid views inside an application', () => {
 		await expect(page).toHaveURL(/\/menu\/front_page$/)
 		await expect(page.locator('[data-cy="grid-view-title"]')).toHaveText(/Front page/)
 		await expect(page.locator('[data-cy="navigationCreateTableIcon"]')).toHaveCount(0)
+		// nothing has focused the content area before the person touched the page, so no focus ring is drawn around it
+		expect(await page.evaluate(() => document.activeElement?.id ?? '')).not.toBe('app-content-vue')
 	})
 
 	test('A grid view is listed under Views and opens on its own page', async ({ userPage: { page } }) => {

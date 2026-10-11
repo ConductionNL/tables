@@ -74,7 +74,7 @@
 					:name="t('tables', 'This menu item points at nothing')"
 					:description="t('tables', 'The view or table it opened no longer exists, or you have no access to it.')" />
 				<GridView v-else-if="menuResource.isView && menuResource.type === 'grid'"
-					:view="menuResource"
+					:view="currentMenuView"
 					:can-edit="canManageElement(menuResource)"
 					:show-title="true" />
 				<div v-else-if="menuResource.isView" class="resource">
@@ -334,6 +334,17 @@ export default {
 		},
 		applicationUrl() {
 			return window.location.origin + generateUrl('/apps/tables/app/' + (this.activeContext?.technicalName || this.activeContext?.id))
+		},
+		/**
+		 * The menu target is loaded once; a view the store has since updated, after a save of its
+		 * grid for instance, must show its current state without a reload.
+		 */
+		currentMenuView() {
+			if (!this.menuResource?.isView) {
+				return this.menuResource
+			}
+			const stored = this.views.find(view => view.id === this.menuResource.id)
+			return stored ? { ...this.menuResource, ...stored, isView: true } : this.menuResource
 		},
 		pageCards() {
 			return this.menuItems.map(item => {

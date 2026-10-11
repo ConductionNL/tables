@@ -28,6 +28,13 @@ import { loadState } from '@nextcloud/initial-state'
 import { useTablesStore } from './store/store.js'
 import { generateUrl } from '@nextcloud/router'
 
+// A page that focuses its content before the person has touched it shows the browser's focus
+// ring around the whole content area. Focus moves only after a first pointer or keyboard event.
+let userHasInteracted = false
+for (const type of ['pointerdown', 'keydown']) {
+	document.addEventListener(type, () => { userHasInteracted = true }, { once: true, capture: true })
+}
+
 export default {
 	name: 'App',
 	components: {
@@ -81,14 +88,20 @@ export default {
 			store.setLoading({ key: 'viewsShared', value: false })
 			store.setLoading({ key: 'contexts', value: false })
 		}
-		this.routing(this.$route)
+		this.routing(this.$route, true)
 	},
 	mounted() {
 		this.$nextTick(() => this.observeAppContent())
 	},
 	methods: {
 		...mapActions(useTablesStore, ['loadTablesFromBE', 'getAllContexts', 'loadViewsSharedWithMeFromBE', 'loadTemplatesFromBE', 'setActiveRowId', 'setActiveTableId', 'setActiveViewId', 'setActiveContextId']),
-		routing(currentRoute) {
+		/**
+		 * @param {object} currentRoute the route to apply
+		 * @param {boolean} initial true for the first route on page load. Routes that follow without the
+		 *   user having touched the page (the redirects of the standalone shell) do not take focus either:
+		 *   a programmatic focus before any interaction draws the focus ring around the content area
+		 */
+		routing(currentRoute, initial = false) {
 			const url = generateUrl('/apps/tables/')
 
 			// an application opened on its own starts at its root; later route changes inside it must stay
@@ -139,13 +152,15 @@ export default {
 				}
 
 				// move the focus away from nav bar (import for app-internal switch)
-				const appContent = document.getElementById('app-content-vue')
-				const oldTabIndex = appContent.tabIndex
-				if (oldTabIndex === -1) {
-					appContent.tabIndex = 0
+				if (!initial && userHasInteracted) {
+					const appContent = document.getElementById('app-content-vue')
+					const oldTabIndex = appContent.tabIndex
+					if (oldTabIndex === -1) {
+						appContent.tabIndex = 0
+					}
+					appContent.focus()
+					appContent.tabIndex = oldTabIndex
 				}
-				appContent.focus()
-				appContent.tabIndex = oldTabIndex
 			}
 		},
 		switchActiveMenuEntry(targetElement) {
