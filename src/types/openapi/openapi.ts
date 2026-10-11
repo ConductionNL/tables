@@ -1204,6 +1204,28 @@ export type components = {
             readonly displayMode: number;
             readonly userId: string;
         };
+        readonly GridLayoutItem: {
+            readonly id: string;
+            readonly widgetId: string;
+            /** Format: int64 */
+            readonly gridX: number;
+            /** Format: int64 */
+            readonly gridY: number;
+            /** Format: int64 */
+            readonly gridWidth: number;
+            /** Format: int64 */
+            readonly gridHeight: number;
+        };
+        readonly GridWidget: {
+            readonly id: string;
+            readonly type: string;
+            readonly configuration: {
+                readonly [key: string]: Record<string, never>;
+            };
+            readonly content: {
+                readonly [key: string]: Record<string, never>;
+            };
+        };
         readonly GridWidgetProperty: {
             readonly type: string;
             readonly title: string;
@@ -1266,6 +1288,7 @@ export type components = {
             readonly technicalName: string | null;
             /** Format: int64 */
             readonly order: number;
+            readonly broken: boolean;
         };
         readonly NotifyConfig: {
             readonly "notify-assigned": boolean;
@@ -1441,7 +1464,7 @@ export type components = {
             readonly technicalName: string | null;
             readonly emoji: string | null;
             /** Format: int64 */
-            readonly tableId: number;
+            readonly tableId: number | null;
             readonly ownership: string;
             readonly ownerDisplayName: string | null;
             readonly createdBy: string;
@@ -1499,12 +1522,8 @@ export type components = {
             readonly sidebarOrder: number | null;
             readonly type: string;
             readonly grid: {
-                readonly widgets: readonly {
-                    readonly [key: string]: Record<string, never>;
-                }[];
-                readonly layout: readonly {
-                    readonly [key: string]: Record<string, never>;
-                }[];
+                readonly widgets: readonly components["schemas"]["GridWidget"][];
+                readonly layout: readonly components["schemas"]["GridLayoutItem"][];
             };
         };
     };
@@ -7133,17 +7152,18 @@ export interface operations {
                      */
                     readonly technicalName?: string | null;
                     /**
-                     * @description optional menu of the context, in order
+                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context
                      * @default null
                      */
                     readonly menuItems?: readonly {
                         readonly label: string;
-                        readonly icon?: string | null;
-                        readonly targetType: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
                         /** Format: int64 */
-                        readonly targetId?: number | null;
-                        readonly url?: string | null;
-                        readonly technicalName?: string | null;
+                        readonly targetId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
                     }[] | null;
                 };
             };
@@ -7341,17 +7361,18 @@ export interface operations {
                      */
                     readonly technicalName?: string | null;
                     /**
-                     * @description provide this parameter to replace the menu
+                     * @description provide this parameter to replace the menu; the views and tables it opens become nodes of the context
                      * @default null
                      */
                     readonly menuItems?: readonly {
                         readonly label: string;
-                        readonly icon?: string | null;
-                        readonly targetType: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
                         /** Format: int64 */
-                        readonly targetId?: number | null;
-                        readonly url?: string | null;
-                        readonly technicalName?: string | null;
+                        readonly targetId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
                     }[] | null;
                 };
             };
@@ -7799,11 +7820,12 @@ export interface operations {
                      */
                     readonly menuItems?: readonly {
                         readonly label: string;
-                        readonly icon?: string | null;
-                        readonly targetType: string;
-                        readonly targetUuid?: string | null;
-                        readonly url?: string | null;
-                        readonly technicalName?: string | null;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
+                        readonly targetUuid?: string;
+                        readonly url?: string;
+                        readonly technicalName?: string;
                     }[];
                     /**
                      * @description Views without a table that the menu points at

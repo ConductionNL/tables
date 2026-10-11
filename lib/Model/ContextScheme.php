@@ -44,14 +44,19 @@ class ContextScheme implements JsonSerializable {
 		if (!is_string($data['name'] ?? null) || trim($data['name']) === '') {
 			throw new InvalidArgumentException('A scheme needs a name.');
 		}
+		foreach (['icon', 'description', 'technicalName'] as $optional) {
+			if (isset($data[$optional]) && !is_string($data[$optional])) {
+				throw new InvalidArgumentException('The scheme property "' . $optional . '" must be a string.');
+			}
+		}
 		return new self(
 			name: $data['name'],
-			icon: isset($data['icon']) ? (string)$data['icon'] : null,
-			description: isset($data['description']) ? (string)$data['description'] : null,
+			icon: $data['icon'] ?? null,
+			description: $data['description'] ?? null,
 			nodes: array_values($data['nodes'] ?? []),
 			pages: [],
 			tables: $tables,
-			technicalName: isset($data['technicalName']) && $data['technicalName'] !== '' ? (string)$data['technicalName'] : null,
+			technicalName: isset($data['technicalName']) && $data['technicalName'] !== '' ? $data['technicalName'] : null,
 			menuItems: array_values($data['menuItems'] ?? []),
 			gridViews: array_values($data['gridViews'] ?? []),
 		);

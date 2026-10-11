@@ -41,7 +41,7 @@
 					{{ t('tables', 'Technical name') }}
 				</div>
 				<input v-model="technicalName" type="text" data-cy="createContextTechnicalName"
-					:placeholder="t('tables', 'Optional, e.g. intake. Lowercase letters, numbers and hyphens.')">
+					:placeholder="t('tables', 'Optional, e.g. intake. Lowercase letters, numbers and underscores.')">
 			</div>
 			<div class="col-4 row space-T">
 				<div class="col-4">

@@ -42,7 +42,7 @@
 				</div>
 				<input v-model="technicalName" type="text" data-cy="gridViewTechnicalName"
 					:class="{ missing: errorTechnicalName }"
-					:placeholder="t('tables', 'Optional, e.g. home. Lowercase letters, numbers and hyphens.')">
+					:placeholder="t('tables', 'Optional, e.g. home. Lowercase letters, numbers and underscores.')">
 			</div>
 			<div class="row space-T">
 				<div class="fix-col-4 end">

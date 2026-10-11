@@ -109,7 +109,8 @@
 					<ul v-else class="context__cards">
 						<li v-for="card in pageCards" :key="card.item.id" class="page-card" data-cy="page-card">
 							<div class="page-card__icon">
-								<ViewDashboardOutline v-if="card.kind === 'grid'" :size="28" />
+								<AlertCircleOutline v-if="card.kind === 'broken'" :size="28" />
+								<ViewDashboardOutline v-else-if="card.kind === 'grid'" :size="28" />
 								<TableIcon v-else-if="card.kind === 'table' || card.kind === 'view'" :size="28" />
 								<OpenInNew v-else :size="28" />
 							</div>
@@ -239,6 +240,7 @@
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
 import { NcActionRadio, NcActions, NcButton, NcEmptyContent, NcIconSvgWrapper } from '@nextcloud/vue'
+import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import PlaylistEdit from 'vue-material-design-icons/PlaylistEdit.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
@@ -276,6 +278,7 @@ export default {
 		NcButton,
 		NcEmptyContent,
 		NcIconSvgWrapper,
+		AlertCircleOutline,
 		OpenInNew,
 		PlaylistEdit,
 		Plus,
@@ -333,7 +336,9 @@ export default {
 			return this.standaloneContextId !== null
 		},
 		applicationUrl() {
-			return window.location.origin + generateUrl('/apps/tables/app/' + (this.activeContext?.technicalName || this.activeContext?.id))
+			// technical names are unique per owner only, so an application of someone else is addressed by id
+			const technicalName = this.activeContext && this.ownsContext(this.activeContext) ? this.activeContext.technicalName : null
+			return window.location.origin + generateUrl('/apps/tables/app/' + (technicalName || this.activeContext?.id))
 		},
 		/**
 		 * The menu target is loaded once; a view the store has since updated, after a save of its
@@ -350,6 +355,9 @@ export default {
 			return this.menuItems.map(item => {
 				if (item.targetType === 'url') {
 					return { item, kind: 'url', route: null, description: item.url }
+				}
+				if (item.broken) {
+					return { item, kind: 'broken', route: menuItemRoute(item, this.activeContext.id), description: t('tables', 'The view or table this entry opened no longer exists') }
 				}
 				if (item.targetType === 'table') {
 					const table = this.tables.find(table => table.id === item.targetId)
@@ -652,7 +660,8 @@ export default {
 								} else if (nodeType === NODE_TYPE_VIEW) {
 									await this.loadContextView({ id: node.node_id })
 									const view = this.views.find(view => view.id === node.node_id)
-									if (view) {
+									// a grid view has no rows; it is a page, reached through the menu
+									if (view && view.type !== 'grid') {
 										await this.loadColumnsFromBE({
 											view,
 										})
@@ -805,7 +814,6 @@ export default {
 		margin-top: calc(1 * var(--default-grid-baseline, 4px));
 		color: var(--color-text-maxcontrast);
 		font-family: monospace;
-		font-size: 0.9em;
 	}
 
 	&__section {
@@ -820,8 +828,6 @@ export default {
 
 		h2 {
 			margin: 0;
-			font-size: 18px;
-			font-weight: bold;
 		}
 	}
 
@@ -843,7 +849,8 @@ export default {
 	}
 
 	&__menu-preview {
-		margin: calc(2 * var(--default-grid-baseline, 4px)) 0 0 calc(5 * var(--default-grid-baseline, 4px));
+		margin-block-start: calc(2 * var(--default-grid-baseline, 4px));
+		margin-inline-start: calc(5 * var(--default-grid-baseline, 4px));
 	}
 
 	&__layout-toolbar {
@@ -943,20 +950,9 @@ export default {
 		padding-inline-start: calc(4 * var(--default-grid-baseline, 4px));
 	}
 
-	// Table look shared with OpenRegister: muted header band and horizontal row lines only
+	// the sticky table header sticks to the top of its card, not below the page header
 	&:deep(table thead) {
 		top: 0;
-	}
-
-	&:deep(table thead tr th) {
-		background-color: var(--color-background-dark);
-		font-weight: 500;
-	}
-
-	&:deep(table tbody td) {
-		border: none;
-		border-bottom: 1px solid var(--color-border);
-		padding-block: calc(3 * var(--default-grid-baseline, 4px));
 	}
 }
 

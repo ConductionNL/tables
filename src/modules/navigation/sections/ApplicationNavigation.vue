@@ -23,7 +23,8 @@
 					:class="{ active: isActive(item) }"
 					data-cy="application-nav-item">
 					<template #icon>
-						<OpenInNew v-if="item.targetType === 'url'" :size="20" />
+						<AlertCircleOutline v-if="item.broken" :size="20" :title="t('tables', 'The view or table this entry opened no longer exists')" />
+						<OpenInNew v-else-if="item.targetType === 'url'" :size="20" />
 						<TableIcon v-else-if="item.targetType === 'table'" :size="20" />
 						<ViewDashboardOutline v-else :size="20" />
 					</template>
@@ -54,6 +55,7 @@
 
 <script>
 import { NcAppNavigation, NcAppNavigationItem, NcButton } from '@nextcloud/vue'
+import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 import CogOutline from 'vue-material-design-icons/CogOutline.vue'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import TableIcon from 'vue-material-design-icons/Table.vue'
@@ -75,6 +77,7 @@ export default {
 		NcAppNavigation,
 		NcAppNavigationItem,
 		NcButton,
+		AlertCircleOutline,
 		CogOutline,
 		OpenInNew,
 		TableIcon,
