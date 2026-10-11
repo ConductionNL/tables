@@ -26,13 +26,10 @@ export function toEditableMenuItems(menuItems) {
  * The payload the API expects for one menu item.
  *
  * @param {object} item an item from the editor
+ * @param {Array} items the whole editable list, to turn the parent key into the parent's position
  * @return {object}
  */
-/**
- * @param {object} item an editable item
- * @param {Array} items the whole editable list, to turn the parent key into the parent's position
- */
-export function toMenuItemPayload(item, items = []) {
+export function toMenuItemPayload(item, items) {
 	const parentIndex = item.parentKey ? items.findIndex(candidate => candidate.key === item.parentKey) : -1
 	return {
 		label: item.label,

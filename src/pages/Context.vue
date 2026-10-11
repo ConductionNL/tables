@@ -549,7 +549,7 @@ export default {
 					return { item, position, level, kind: 'url', icon: 'LinkVariant', route: null, typeLabel: t('tables', 'Link'), description: item.url, view: null }
 				}
 				if (item.broken) {
-					return { item, position, kind: 'broken', icon: 'AlertCircleOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Missing'), description: t('tables', 'The view or table this entry opened no longer exists'), view: null }
+					return { item, position, level, kind: 'broken', icon: 'AlertCircleOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Missing'), description: t('tables', 'The view or table this entry opened no longer exists'), view: null }
 				}
 				if (item.targetType === 'table') {
 					const table = this.tables.find(table => table.id === item.targetId)
@@ -1266,7 +1266,6 @@ export default {
 
 		&--child {
 			margin-inline-start: calc(6 * var(--default-grid-baseline, 4px));
-			list-style: circle;
 		}
 	}
 

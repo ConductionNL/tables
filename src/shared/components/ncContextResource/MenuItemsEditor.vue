@@ -5,7 +5,7 @@
 <template>
 	<div class="menu-items-editor" data-cy="menuItemsEditor">
 		<p class="menu-items-editor__help">
-			{{ t('tables', 'Drag an entry to move it. An entry can sit under the entry above it, one level deep.') }}
+			{{ t('tables', 'Drag an entry or use its move buttons to change the order. An entry can sit under the entry above it, one level deep.') }}
 		</p>
 		<ul v-if="items.length > 0" class="menu-items-editor__list">
 			<li v-for="(item, index) in items"
@@ -17,7 +17,7 @@
 				@dragstart="dragStart(index, $event)"
 				@dragover.prevent="dragOver(index)"
 				@dragend="dragEnd">
-				<span class="menu-items-editor__handle" :aria-label="t('tables', 'Drag to move')" :title="t('tables', 'Drag to move')">
+				<span class="menu-items-editor__handle" aria-hidden="true" :title="t('tables', 'Drag to move')">
 					<DragHorizontalVariant :size="20" />
 				</span>
 				<NcIconPicker :close-on-select="true" @select="iconName => update(index, { icon: iconName })">
@@ -47,6 +47,26 @@
 					placeholder="https://"
 					@update:model-value="value => update(index, { url: value })" />
 				<div class="menu-items-editor__row-actions">
+					<NcButton :disabled="!canMove(index, -1)"
+						:aria-label="t('tables', 'Move up')"
+						:title="t('tables', 'Move up')"
+						variant="tertiary"
+						data-cy="menuItemMoveUp"
+						@click="move(index, -1)">
+						<template #icon>
+							<ArrowUp :size="20" />
+						</template>
+					</NcButton>
+					<NcButton :disabled="!canMove(index, 1)"
+						:aria-label="t('tables', 'Move down')"
+						:title="t('tables', 'Move down')"
+						variant="tertiary"
+						data-cy="menuItemMoveDown"
+						@click="move(index, 1)">
+						<template #icon>
+							<ArrowDown :size="20" />
+						</template>
+					</NcButton>
 					<NcButton v-if="item.parentKey === null"
 						:disabled="!canIndent(index)"
 						:aria-label="t('tables', 'Move under the entry above')"
@@ -90,6 +110,8 @@
 
 <script>
 import { NcButton, NcSelect, NcTextField } from '@nextcloud/vue'
+import ArrowDown from 'vue-material-design-icons/ArrowDown.vue'
+import ArrowUp from 'vue-material-design-icons/ArrowUp.vue'
 import DotsHorizontalCircleOutline from 'vue-material-design-icons/DotsHorizontalCircleOutline.vue'
 import DragHorizontalVariant from 'vue-material-design-icons/DragHorizontalVariant.vue'
 import FormatIndentDecrease from 'vue-material-design-icons/FormatIndentDecrease.vue'
@@ -114,6 +136,8 @@ export default {
 	name: 'MenuItemsEditor',
 	components: {
 		ApplicationIcon,
+		ArrowDown,
+		ArrowUp,
 		NcButton,
 		NcIconPicker,
 		NcSelect,
@@ -180,7 +204,8 @@ export default {
 		},
 		add() {
 			this.emitItems([...this.items, {
-				key: 'new-' + Date.now(),
+				// two entries added within one millisecond still get their own key
+				key: 'new-' + Date.now() + '-' + this.items.length,
 				label: '',
 				icon: null,
 				targetType: 'url',
@@ -199,7 +224,9 @@ export default {
 		},
 		/**
 		 * The nearest top-level item above, which is the only possible parent.
-		 * @param index
+		 *
+		 * @param {number} index position of the entry
+		 * @return {object|null}
 		 */
 		parentAbove(index) {
 			for (let i = index - 1; i >= 0; i--) {
@@ -235,7 +262,9 @@ export default {
 		},
 		/**
 		 * An item with its children, as one block that moves together.
-		 * @param index
+		 *
+		 * @param {number} index position of the entry
+		 * @return {Array<object>}
 		 */
 		block(index) {
 			const item = this.items[index]
@@ -243,6 +272,44 @@ export default {
 				return [item]
 			}
 			return [item, ...this.items.filter(candidate => candidate.parentKey === item.key)]
+		},
+		/**
+		 * The entries an item shares its level with: the top-level entries, or the children of its parent.
+		 *
+		 * @param {object} item an entry of the menu
+		 * @return {Array<object>}
+		 */
+		siblings(item) {
+			return this.items.filter(candidate => candidate.parentKey === item.parentKey)
+		},
+		/**
+		 * @param {number} index position of the entry
+		 * @param {number} step -1 to move up, 1 to move down
+		 * @return {boolean}
+		 */
+		canMove(index, step) {
+			const siblings = this.siblings(this.items[index])
+			return siblings[siblings.indexOf(this.items[index]) + step] !== undefined
+		},
+		/**
+		 * Swaps an entry with its neighbour on the same level; a top-level entry moves with its children.
+		 *
+		 * @param {number} index position of the entry
+		 * @param {number} step -1 to move up, 1 to move down
+		 */
+		move(index, step) {
+			const item = this.items[index]
+			const siblings = this.siblings(item)
+			const neighbour = siblings[siblings.indexOf(item) + step]
+			if (!neighbour) {
+				return
+			}
+			const [first, second] = step < 0 ? [neighbour, item] : [item, neighbour]
+			const firstBlock = this.block(this.items.indexOf(first))
+			const secondBlock = this.block(this.items.indexOf(second))
+			const rest = this.items.filter(candidate => !firstBlock.includes(candidate) && !secondBlock.includes(candidate))
+			rest.splice(this.items.indexOf(first), 0, ...secondBlock, ...firstBlock)
+			this.emitItems(rest)
 		},
 		dragStart(index, event) {
 			this.draggedIndex = index
@@ -282,8 +349,10 @@ export default {
 		},
 		/**
 		 * The parent an item inserted at this position would belong to, or null at the top level.
-		 * @param items
-		 * @param position
+		 *
+		 * @param {Array<object>} items the entries without the one being moved
+		 * @param {number} position where the entry would be inserted
+		 * @return {object|null}
 		 */
 		parentOfPosition(items, position) {
 			const previous = items[position - 1]
