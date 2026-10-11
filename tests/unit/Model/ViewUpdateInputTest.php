@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Tests\Unit\Model;
 
+use InvalidArgumentException;
 use OCA\Tables\Constants\ViewUpdatableParameters;
 use OCA\Tables\Model\ViewUpdateInput;
 use PHPUnit\Framework\TestCase;
@@ -38,9 +39,9 @@ class ViewUpdateInputTest extends TestCase {
 		$this->assertSame('', $updates[ViewUpdatableParameters::DESCRIPTION->value]);
 	}
 
-	public function testUpdateDetailIncludesTypeGridAndSlug(): void {
+	public function testUpdateDetailIncludesTypeGridAndTechnicalName(): void {
 		$grid = ['widgets' => [['id' => 'w-1', 'type' => 'header']], 'layout' => [['id' => 1, 'widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2]]];
-		$input = ViewUpdateInput::fromInputArray(['type' => 'grid', 'grid' => json_encode($grid), 'slug' => 'home']);
+		$input = ViewUpdateInput::fromInputArray(['type' => 'grid', 'grid' => json_encode($grid), 'technicalName' => 'home']);
 		$updates = [];
 
 		foreach ($input->updateDetail() as $parameter => $value) {
@@ -49,7 +50,7 @@ class ViewUpdateInputTest extends TestCase {
 
 		$this->assertSame('grid', $updates[ViewUpdatableParameters::TYPE->value]);
 		$this->assertSame($grid, $updates[ViewUpdatableParameters::GRID->value]);
-		$this->assertSame('home', $updates[ViewUpdatableParameters::SLUG->value]);
+		$this->assertSame('home', $updates[ViewUpdatableParameters::TECHNICAL_NAME->value]);
 	}
 
 	public function testUpdateDetailSkipsGridWhenAbsent(): void {
@@ -62,6 +63,18 @@ class ViewUpdateInputTest extends TestCase {
 
 		$this->assertArrayNotHasKey(ViewUpdatableParameters::GRID->value, $updates);
 		$this->assertArrayNotHasKey(ViewUpdatableParameters::TYPE->value, $updates);
-		$this->assertArrayNotHasKey(ViewUpdatableParameters::SLUG->value, $updates);
+		$this->assertArrayNotHasKey(ViewUpdatableParameters::TECHNICAL_NAME->value, $updates);
+	}
+
+	public function testATypeThatIsNotAStringIsRejected(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('"type" must be a string');
+		ViewUpdateInput::fromInputArray(['type' => ['grid']]);
+	}
+
+	public function testAGridThatIsNotAnObjectIsRejected(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('"grid" must be an object');
+		ViewUpdateInput::fromInputArray(['grid' => 'not json']);
 	}
 }

@@ -31,6 +31,7 @@ use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\ColumnSettings;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\FilterSet;
+use OCA\Tables\Model\MenuItemInput;
 use OCA\Tables\Model\SortRuleSet;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
@@ -101,8 +102,9 @@ class ContextService {
 				$iconUrl = $this->urlGenerator->imagePath('core', 'places/default-app-icon.svg');
 			}
 
-			// the slug makes the address readable; the id keeps working for applications without one
-			$contextUrl = $this->urlGenerator->linkToRoute('tables.page.context', ['contextId' => $context->getSlug() ?: $context->getId()]);
+			// technical names are unique per owner only, so applications of others are linked by id
+			$isOwner = $context->getOwnerType() === Application::OWNER_TYPE_USER && $context->getOwnerId() === $userId;
+			$contextUrl = $this->urlGenerator->linkToRoute('tables.page.context', ['contextId' => ($isOwner ? $context->getTechnicalName() : null) ?: $context->getId()]);
 
 			$this->navigationManager->add([
 				'id' => Application::APP_ID . '_application_' . $context->getId(),
@@ -135,18 +137,19 @@ class ContextService {
 
 	/**
 	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
+	 * @param list<MenuItemInput>|null $menuItems
 	 * @throws Exception|PermissionError|InvalidArgumentException
 	 */
-	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $slug = null, ?array $menuItems = null): Context {
+	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $technicalName = null, ?array $menuItems = null): Context {
 		$context = new Context();
 		$context->setName(trim($name));
 		$context->setIcon(trim($iconName));
 		$context->setDescription(trim($description));
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType($ownerType);
-		$context->setSlug($this->normalizeSlug($slug));
+		$context->setTechnicalName($this->normalizeTechnicalName($technicalName, $ownerId, null));
 
-		$this->atomic(function () use ($context, $nodes, $menuItems): void {
+		$this->atomic(function () use ($context, $nodes, $menuItems, $ownerId): void {
 			$this->contextMapper->insert($context);
 
 			if (!empty($nodes)) {
@@ -154,77 +157,205 @@ class ContextService {
 				$this->insertNodesFromArray($context, $nodes);
 			}
 			$this->insertPage($context);
-			$context->setMenuItems($this->replaceMenuItems($context->getId(), $menuItems ?? []));
+			$this->replaceMenu($context, $menuItems ?? [], $ownerId);
 		}, $this->dbc);
 
 		return $context;
 	}
 
 	/**
-	 * Replace the menu of an application with the given items, in the given order.
+	 * Replaces the menu of an application and adds the views and tables it points at
+	 * as nodes, so everyone the application is shared with can open them.
 	 *
-	 * @psalm-param list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, slug?: string|null}> $menuItems
-	 * @return list<array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, slug: string|null, order: int}>
-	 * @throws Exception
+	 * @param list<MenuItemInput> $menuItems
+	 * @throws Exception|PermissionError|InvalidArgumentException
 	 */
-	protected function replaceMenuItems(int $contextId, array $menuItems): array {
-		$this->menuItemMapper->deleteAllByContextId($contextId);
-		$stored = [];
-		foreach (array_values($menuItems) as $position => $item) {
+	protected function replaceMenu(Context $context, array $menuItems, ?string $userId): void {
+		$this->addMenuTargetsAsNodes($context, $menuItems, $userId);
+
+		$this->menuItemMapper->deleteAllByContextId($context->getId());
+		$technicalNames = $this->menuTechnicalNames($menuItems);
+		foreach ($menuItems as $position => $item) {
 			$menuItem = new MenuItem();
-			$menuItem->setContextId($contextId);
-			$menuItem->setLabel(trim($item['label']));
-			$menuItem->setIcon(isset($item['icon']) && $item['icon'] !== '' ? trim((string)$item['icon']) : null);
-			$menuItem->setTargetType($item['targetType']);
-			$menuItem->setTargetId($item['targetType'] === MenuItem::TARGET_URL ? null : ($item['targetId'] ?? null));
-			$menuItem->setUrl($item['targetType'] === MenuItem::TARGET_URL ? ($item['url'] ?? null) : null);
-			$menuItem->setSlug($this->normalizeSlug($item['slug'] ?? null) ?? $this->slugify($item['label']));
+			$menuItem->setContextId($context->getId());
+			$menuItem->setLabel($item->getLabel());
+			$menuItem->setIcon($item->getIcon());
+			$menuItem->setTargetType($item->getTargetType());
+			$menuItem->setTargetId($item->getTargetId());
+			$menuItem->setUrl($item->getUrl());
+			$menuItem->setTechnicalName($technicalNames[$position]);
 			$menuItem->setOrder(($position + 1) * 10);
-			$stored[] = $this->menuItemMapper->insert($menuItem)->jsonSerialize();
+			$this->menuItemMapper->insert($menuItem);
 		}
-		return $stored;
+
+		$context->setMenuItems(array_map(
+			static fn (MenuItem $menuItem): array => $menuItem->jsonSerialize(),
+			$this->menuItemMapper->findByContextId($context->getId()),
+		));
 	}
 
 	/**
+	 * The technical name of every menu item, by position: the one given, or one derived from
+	 * the label with a numeric suffix when this menu already uses it.
+	 *
+	 * @param list<MenuItemInput> $menuItems
+	 * @return array<int, string>
 	 * @throws InvalidArgumentException
 	 */
-	protected function normalizeSlug(?string $slug): ?string {
-		if ($slug === null) {
-			return null;
+	private function menuTechnicalNames(array $menuItems): array {
+		$names = [];
+		$taken = [];
+		foreach ($menuItems as $position => $item) {
+			$technicalName = $item->getTechnicalName();
+			if ($technicalName === null) {
+				continue;
+			}
+			if (isset($taken[$technicalName])) {
+				throw new InvalidArgumentException('Two menu items share the technical name "' . $technicalName . '".');
+			}
+			$names[$position] = $technicalName;
+			$taken[$technicalName] = true;
 		}
-		$slug = trim($slug);
-		if ($slug === '') {
-			return null;
+		foreach ($menuItems as $position => $item) {
+			if (isset($names[$position])) {
+				continue;
+			}
+			$base = $this->technicalNameFromLabel($item->getLabel());
+			$technicalName = $base;
+			for ($suffix = 2; isset($taken[$technicalName]); $suffix++) {
+				$technicalName = substr($base, 0, MenuItemInput::MAX_TECHNICAL_NAME_LENGTH - 10) . '_' . $suffix;
+			}
+			$names[$position] = $technicalName;
+			$taken[$technicalName] = true;
 		}
-		if (strlen($slug) > 64 || !preg_match('/^[a-z0-9][a-z0-9-]*$/', $slug)) {
-			throw new InvalidArgumentException('A slug may only contain lowercase letters, numbers and hyphens, and must start with a letter or number.');
-		}
-		return $slug;
+		return $names;
 	}
 
-	protected function slugify(string $label): string {
-		$slug = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '-', $label) ?? '', '-'));
-		$slug = preg_replace('/^[^a-z0-9]+/', '', $slug) ?? '';
-		return substr($slug === '' ? 'item' : $slug, 0, 64);
+	/**
+	 * Targets that no longer exist are left out; the menu marks them broken.
+	 *
+	 * @param list<MenuItemInput> $menuItems
+	 * @throws Exception|PermissionError
+	 */
+	private function addMenuTargetsAsNodes(Context $context, array $menuItems, ?string $userId): void {
+		$missing = [];
+		foreach ($menuItems as $item) {
+			$nodeType = match ($item->getTargetType()) {
+				MenuItem::TARGET_VIEW => Application::NODE_TYPE_VIEW,
+				MenuItem::TARGET_TABLE => Application::NODE_TYPE_TABLE,
+				default => null,
+			};
+			$nodeId = $item->getTargetId();
+			if ($nodeType !== null && $nodeId !== null) {
+				$missing[sprintf('t%di%d', $nodeType, $nodeId)] = [$nodeType, $nodeId];
+			}
+		}
+		$nodes = $context->getNodes() ?? [];
+		foreach ($nodes as $node) {
+			unset($missing[sprintf('t%di%d', $node['node_type'] ?? $node['nodeType'], $node['node_id'] ?? $node['nodeId'])]);
+		}
+		if ($missing === []) {
+			return;
+		}
+
+		$targetIds = [Application::NODE_TYPE_VIEW => [], Application::NODE_TYPE_TABLE => []];
+		foreach ($missing as [$nodeType, $nodeId]) {
+			$targetIds[$nodeType][] = $nodeId;
+		}
+		$existing = [
+			Application::NODE_TYPE_VIEW => $this->viewMapper->findMany($targetIds[Application::NODE_TYPE_VIEW]),
+			Application::NODE_TYPE_TABLE => $this->tableMapper->findMany($targetIds[Application::NODE_TYPE_TABLE]),
+		];
+
+		$pages = $context->getPages() ?? [];
+		$startPageId = null;
+		foreach ($pages as $pageId => $page) {
+			if (($page['page_type'] ?? $page['pageType'] ?? null) === Page::TYPE_STARTPAGE) {
+				$startPageId = (int)$pageId;
+				break;
+			}
+		}
+
+		foreach ($missing as [$nodeType, $nodeId]) {
+			if (!isset($existing[$nodeType][$nodeId])) {
+				continue;
+			}
+			if (!$this->permissionsService->canManageNodeById($nodeType, $nodeId, $userId)) {
+				throw new PermissionError(sprintf('Owner cannot manage node %d (type %d)', $nodeId, $nodeType));
+			}
+			$relation = $this->addNodeToContext($context, $nodeId, $nodeType, Application::PERMISSION_READ);
+			$nodes[$relation->getId()] = [
+				'id' => $relation->getId(),
+				'node_id' => $nodeId,
+				'node_type' => $nodeType,
+				'permissions' => Application::PERMISSION_READ,
+			];
+			if ($startPageId !== null) {
+				$content = $this->addNodeRelToPage($relation, null, $startPageId);
+				$pages[$startPageId]['content'][$content->getId()] = [
+					'order' => $content->getOrder(),
+					'node_rel_id' => $relation->getId(),
+				];
+			}
+		}
+		$context->setNodes($nodes);
+		$context->setPages($pages);
+	}
+
+	/**
+	 * @throws InvalidArgumentException when the name is malformed or the owner already uses it
+	 * @throws Exception
+	 */
+	protected function normalizeTechnicalName(?string $technicalName, string $ownerId, ?int $contextId): ?string {
+		if ($technicalName === null) {
+			return null;
+		}
+		$technicalName = trim($technicalName);
+		if ($technicalName === '') {
+			return null;
+		}
+		MenuItemInput::assertTechnicalNameValid($technicalName);
+		if ($this->contextMapper->isTechnicalNameTaken($technicalName, $ownerId, $contextId)) {
+			throw new InvalidArgumentException('An application with the technical name "' . $technicalName . '" already exists.');
+		}
+		return $technicalName;
+	}
+
+	protected function technicalNameFromLabel(string $label): string {
+		$name = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '_', $label) ?? '', '_'));
+		$name = preg_replace('/^[^a-z]+/', '', $name) ?? '';
+		return substr($name === '' ? 'item' : $name, 0, MenuItemInput::MAX_TECHNICAL_NAME_LENGTH);
 	}
 
 	/**
 	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
+	 * @param list<MenuItemInput>|null $menuItems
 	 * @throws Exception
 	 * @throws DoesNotExistException
-	 * @throws PermissionError|MultipleObjectsReturnedException
+	 * @throws PermissionError|MultipleObjectsReturnedException|InvalidArgumentException
 	 */
-	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $slug = null, ?array $menuItems = null): Context {
+	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $technicalName = null, ?array $menuItems = null): Context {
+		return $this->atomic(
+			fn (): Context => $this->applyUpdate($contextId, $userId, $name, $iconName, $description, $nodes, $technicalName, $menuItems),
+			$this->dbc,
+		);
+	}
+
+	/**
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
+	 * @param list<MenuItemInput>|null $menuItems
+	 * @throws Exception
+	 * @throws DoesNotExistException
+	 * @throws PermissionError|MultipleObjectsReturnedException|InvalidArgumentException
+	 */
+	private function applyUpdate(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $technicalName, ?array $menuItems): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
 
 		if ($name !== null) {
 			$context->setName(trim($name));
 		}
-		if ($slug !== null) {
-			$context->setSlug($this->normalizeSlug($slug));
-		}
-		if ($menuItems !== null) {
-			$context->setMenuItems($this->replaceMenuItems($contextId, $menuItems));
+		if ($technicalName !== null) {
+			$context->setTechnicalName($this->normalizeTechnicalName($technicalName, $context->getOwnerId(), $contextId));
 		}
 		if ($iconName !== null) {
 			$context->setIcon(trim($iconName));
@@ -363,6 +494,9 @@ class ContextService {
 		if (isset($currentNodes, $currentPages) && $hasUpdatedNodeInformation) {
 			$context->setNodes($currentNodes);
 			$context->setPages($currentPages);
+		}
+		if ($menuItems !== null) {
+			$this->replaceMenu($context, $menuItems, $userId);
 		}
 
 		return $context;
@@ -770,7 +904,7 @@ class ContextService {
 			array_values($nodes),
 			$context->getPages(),
 			array_values($tables),
-			$context->getSlug(),
+			$context->getTechnicalName(),
 			$menuItems,
 			$gridViews,
 		);
@@ -791,7 +925,7 @@ class ContextService {
 				'targetType' => $item['targetType'],
 				'targetUuid' => null,
 				'url' => $item['url'],
-				'slug' => $item['slug'],
+				'technicalName' => $item['technicalName'],
 			];
 			try {
 				if ($item['targetType'] === MenuItem::TARGET_TABLE && $item['targetId'] !== null) {
@@ -813,24 +947,26 @@ class ContextService {
 	}
 
 	/**
-	 * A table-less view with the targets of its data widgets expressed as uuids.
+	 * A table-less view whose data widgets name their target by uuid as well as by id.
 	 *
 	 * @return array<string, mixed>
 	 */
 	private function exportGridView(View $view): array {
 		$grid = $view->getGridArray();
 		foreach ($grid['widgets'] as &$widget) {
-			$content = $widget['content'] ?? [];
-			if (!is_array($content) || !isset($content['targetType'], $content['targetId'])) {
+			$target = $this->widgetTarget($widget['content'] ?? null);
+			if ($target === null) {
 				continue;
 			}
 			try {
-				$widget['content']['targetUuid'] = $content['targetType'] === MenuItem::TARGET_VIEW
-					? $this->viewMapper->find((int)$content['targetId'])->getUuid()
-					: $this->tableMapper->find((int)$content['targetId'])->getUuid();
+				$target['uuid'] = $target['type'] === MenuItem::TARGET_VIEW
+					? $this->viewMapper->find($target['id'])->getUuid()
+					: $this->tableMapper->find($target['id'])->getUuid();
 			} catch (DoesNotExistException|MultipleObjectsReturnedException|Exception) {
-				$widget['content']['targetUuid'] = null;
+				$target['uuid'] = null;
 			}
+			$widget['content']['target'] = $target;
+			unset($widget['content']['targetType'], $widget['content']['targetId']);
 		}
 		unset($widget);
 		return [
@@ -839,7 +975,7 @@ class ContextService {
 			'emoji' => $view->getEmoji(),
 			'description' => $view->getDescription(),
 			'type' => $view->getTypeOrDefault(),
-			'slug' => $view->getSlug(),
+			'technicalName' => $view->getTechnicalName(),
 			'createdAt' => $view->getCreatedAt(),
 			'lastEditAt' => $view->getLastEditAt(),
 			'grid' => $grid,
@@ -847,10 +983,69 @@ class ContextService {
 	}
 
 	/**
-	 * Creates the table-less views of a scheme that do not exist here yet and points
-	 * their data widgets at the local tables and views.
+	 * The table or view a data widget shows, read from the current or the older content shape.
+	 *
+	 * @return array{type: string, id: int}|null
+	 */
+	private function widgetTarget(mixed $content): ?array {
+		if (!is_array($content)) {
+			return null;
+		}
+		$target = $content['target'] ?? null;
+		if (is_array($target) && is_string($target['type'] ?? null) && is_int($target['id'] ?? null)) {
+			return ['type' => $target['type'], 'id' => $target['id']];
+		}
+		if (is_string($content['targetType'] ?? null) && is_numeric($content['targetId'] ?? null)) {
+			return ['type' => $content['targetType'], 'id' => (int)$content['targetId']];
+		}
+		return null;
+	}
+
+	/**
+	 * Points the data widgets of an imported grid at the local tables and views by uuid. A widget
+	 * whose target does not exist here is dropped together with its place in the layout.
+	 *
+	 * @return array{widgets: list<array<string, mixed>>, layout: list<array<string, mixed>>}
+	 */
+	private function resolveGridTargets(mixed $grid): array {
+		$widgets = is_array($grid) && is_array($grid['widgets'] ?? null) ? $grid['widgets'] : [];
+		$layout = is_array($grid) && is_array($grid['layout'] ?? null) ? $grid['layout'] : [];
+		$resolvedWidgets = [];
+		$droppedIds = [];
+		foreach ($widgets as $widget) {
+			if (!is_array($widget)) {
+				continue;
+			}
+			$content = is_array($widget['content'] ?? null) ? $widget['content'] : [];
+			if (isset($content['target']) || isset($content['targetType'])) {
+				$target = is_array($content['target'] ?? null)
+					? $content['target']
+					: ['type' => $content['targetType'], 'uuid' => $content['targetUuid'] ?? null];
+				$targetId = is_string($target['type'] ?? null) && is_string($target['uuid'] ?? null)
+					? $this->resolveTargetId($target['type'], $target['uuid'])
+					: null;
+				if ($targetId === null) {
+					$droppedIds[] = $widget['id'] ?? null;
+					$this->logger->info('Grid widget skipped on import, its table or view does not exist here', ['widget' => $widget['id'] ?? null]);
+					continue;
+				}
+				$widget['content']['target'] = ['type' => $target['type'], 'id' => $targetId];
+				unset($widget['content']['targetType'], $widget['content']['targetId'], $widget['content']['targetUuid']);
+			}
+			$resolvedWidgets[] = $widget;
+		}
+		$resolvedLayout = array_values(array_filter(
+			$layout,
+			static fn (mixed $item): bool => is_array($item) && !in_array($item['widgetId'] ?? null, $droppedIds, true),
+		));
+		return ['widgets' => $resolvedWidgets, 'layout' => $resolvedLayout];
+	}
+
+	/**
+	 * Creates the table-less views of a scheme that do not exist here yet.
 	 *
 	 * @param list<array<string, mixed>> $gridViews
+	 * @throws InternalError|BadRequestError
 	 */
 	private function importGridViews(array $gridViews, string $userId): void {
 		$viewService = \OCP\Server::get(ViewService::class);
@@ -858,24 +1053,14 @@ class ContextService {
 			if (!isset($viewData['uuid'], $viewData['title']) || $this->viewMapper->findByUuid($viewData['uuid']) !== null) {
 				continue;
 			}
-			$grid = is_array($viewData['grid'] ?? null) ? $viewData['grid'] : ['widgets' => [], 'layout' => []];
-			foreach ($grid['widgets'] ?? [] as &$widget) {
-				$content = $widget['content'] ?? [];
-				if (!is_array($content) || !isset($content['targetType'])) {
-					continue;
-				}
-				$targetId = $this->resolveTargetId($content['targetType'], $content['targetUuid'] ?? null);
-				$widget['content']['targetId'] = $targetId;
-				unset($widget['content']['targetUuid']);
-			}
-			unset($widget);
+			$grid = $this->resolveGridTargets($viewData['grid'] ?? null);
 			$viewService->importView(null, [
 				'uuid' => $viewData['uuid'],
 				'title' => $viewData['title'],
 				'emoji' => $viewData['emoji'] ?? null,
 				'description' => $viewData['description'] ?? '',
 				'type' => View::TYPE_GRID,
-				'slug' => $viewData['slug'] ?? null,
+				'technicalName' => $viewData['technicalName'] ?? null,
 				'createdAt' => $viewData['createdAt'] ?? (new \DateTime())->format('Y-m-d H:i:s'),
 				'lastEditAt' => $viewData['lastEditAt'] ?? (new \DateTime())->format('Y-m-d H:i:s'),
 				'columnSettings' => [],
@@ -907,34 +1092,30 @@ class ContextService {
 	}
 
 	/**
-	 * Menu items of a scheme with their uuid targets turned into local ids; items whose target is missing are dropped.
+	 * Menu items of a scheme with their uuid targets turned into local ids. Items that are
+	 * invalid, or whose target does not exist here, are skipped.
 	 *
 	 * @param list<array<string, mixed>> $menuItems
-	 * @return list<array{label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, slug: string|null}>
+	 * @return list<MenuItemInput>
 	 */
 	private function resolveMenuItems(array $menuItems): array {
 		$resolved = [];
 		foreach ($menuItems as $item) {
-			if (!is_array($item) || !isset($item['label']) || trim((string)$item['label']) === '') {
+			if (!is_array($item)) {
 				continue;
 			}
-			$targetType = (string)($item['targetType'] ?? MenuItem::TARGET_URL);
-			if (!in_array($targetType, MenuItem::TARGET_TYPES, true)) {
-				continue;
+			$targetType = $item['targetType'] ?? MenuItem::TARGET_URL;
+			if ($targetType !== MenuItem::TARGET_URL) {
+				$item['targetId'] = is_string($targetType) && is_string($item['targetUuid'] ?? null)
+					? $this->resolveTargetId($targetType, $item['targetUuid'])
+					: null;
 			}
-			$targetId = $targetType === MenuItem::TARGET_URL ? null : $this->resolveTargetId($targetType, $item['targetUuid'] ?? null);
-			if ($targetType !== MenuItem::TARGET_URL && $targetId === null) {
-				$this->logger->info('Menu item "{label}" skipped on import, its target does not exist here', ['label' => $item['label']]);
-				continue;
+			unset($item['targetUuid']);
+			try {
+				$resolved[] = MenuItemInput::createFromInputArray($item);
+			} catch (InvalidArgumentException $e) {
+				$this->logger->info('Menu item skipped on import: {reason}', ['reason' => $e->getMessage()]);
 			}
-			$resolved[] = [
-				'label' => (string)$item['label'],
-				'icon' => isset($item['icon']) ? (string)$item['icon'] : null,
-				'targetType' => $targetType,
-				'targetId' => $targetId,
-				'url' => $targetType === MenuItem::TARGET_URL ? (string)($item['url'] ?? '') : null,
-				'slug' => isset($item['slug']) ? (string)$item['slug'] : null,
-			];
 		}
 		return $resolved;
 	}
@@ -1009,32 +1190,19 @@ class ContextService {
 	}
 
 	/**
-	 * @param int $contextId
-	 * @param string $name
-	 * @param string $iconName
-	 * @param string $description
-	 * @param array $nodes
-	 * @param array $tables
-	 * @param string $userId
-	 *
-	 * @return Context
+	 * Imports a scheme into an existing context: creates or modifies its tables, resolves the
+	 * nodes and menu targets by uuid, imports the grid views and updates the context itself.
 	 *
 	 * @throws BadRequestError
-	 * @throws ContainerExceptionInterface
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 * @throws InternalError
 	 * @throws MultipleObjectsReturnedException
-	 * @throws NotFoundError
-	 * @throws NotFoundExceptionInterface
 	 * @throws PermissionError
 	 */
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId, ?string $slug = null, array $menuItems = [], array $gridViews = []): Context {
-		// Validate the structure of the columns and views arrays
-		if (!isset($tables['addTables']) || !is_array($tables['addTables'])
-			|| !isset($tables['modifyTables']) || !is_array($tables['modifyTables'])) {
-			throw new BadRequestError('Invalid tables structure provided.');
-		}
+	public function importScheme(int $contextId, ContextScheme $scheme, string $userId): Context {
+		$tables = $scheme->getTables() ?? ['addTables' => [], 'modifyTables' => []];
+		$nodes = $scheme->getNodes() ?? [];
 
 		$tableService = \OCP\Server::get(TableService::class);
 		$viewService = \OCP\Server::get(ViewService::class);
@@ -1068,6 +1236,9 @@ class ContextService {
 			$tableService->updateTableStructure($table->getId(), $tableScheme['columns'], $tableScheme['views'], $tableScheme['columnOrder'], $tableScheme['sort'], $userId);
 		}
 
+		// grid views first, as nodes may point at them
+		$this->importGridViews($scheme->getGridViews(), $userId);
+
 		// Resolve node ids for the new tables and views
 		$resolvedNodes = [];
 		foreach ($nodes as $node) {
@@ -1091,8 +1262,6 @@ class ContextService {
 			}
 		}
 
-		$this->importGridViews($gridViews, $userId);
-
-		return $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes, $slug, $this->resolveMenuItems($menuItems));
+		return $this->update($contextId, $userId, $scheme->getName(), $scheme->getIcon() ?? '', $scheme->getDescription() ?? '', $resolvedNodes, $scheme->getTechnicalName(), $this->resolveMenuItems($scheme->getMenuItems()));
 	}
 }

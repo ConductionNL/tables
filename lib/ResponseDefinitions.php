@@ -13,13 +13,29 @@
 namespace OCA\Tables;
 
 /**
+ * @psalm-type TablesGridWidget = array{
+ *  id: string,
+ *  type: string,
+ *  configuration: array<string, mixed>,
+ *  content: array<string, mixed>,
+ * }
+ *
+ * @psalm-type TablesGridLayoutItem = array{
+ *  id: string,
+ *  widgetId: string,
+ *  gridX: int,
+ *  gridY: int,
+ *  gridWidth: int,
+ *  gridHeight: int,
+ * }
+ *
  * @psalm-type TablesView = array{
  * 	id: int,
  *  uuid: string,
  * 	title: string,
  * 	technicalName: string|null,
  * 	emoji: string|null,
- *  tableId: int,
+ *  tableId: int|null,
  * 	ownership: string,
  * 	ownerDisplayName: string|null,
  * 	createdBy: string,
@@ -46,8 +62,24 @@ namespace OCA\Tables;
  *  isFederated: bool,
  *  sidebarOrder: int|null,
  *  type: string,
- *  grid: array{widgets: list<array<string, mixed>>, layout: list<array<string, mixed>>},
- *  slug: string|null,
+ *  grid: array{widgets: list<TablesGridWidget>, layout: list<TablesGridLayoutItem>},
+ * }
+ *
+ * @psalm-type TablesGridWidgetProperty = array{
+ *  type: string,
+ *  title: string,
+ *  default: mixed,
+ *  options?: list<array{value: string, label: string}>,
+ *  required?: bool,
+ * }
+ *
+ * @psalm-type TablesGridWidgetType = array{
+ *  type: string,
+ *  title: string,
+ *  defaultWidth: int,
+ *  defaultHeight: int,
+ *  configuration: array<string, TablesGridWidgetProperty>,
+ *  properties: array<string, TablesGridWidgetProperty>,
  * }
  *
  * @psalm-type TablesTable = array{
@@ -237,8 +269,9 @@ namespace OCA\Tables;
  *   targetType: string,
  *   targetId: int|null,
  *   url: string|null,
- *   slug: string|null,
+ *   technicalName: string|null,
  *   order: int,
+ *   broken: bool,
  * }
  *
  * @psalm-type TablesContext = array{
@@ -248,7 +281,7 @@ namespace OCA\Tables;
  *   description: string,
  *   owner: string,
  *   ownerType: int,
- *   slug: string|null,
+ *   technicalName: string|null,
  *   menuItems: list<TablesMenuItem>,
  * }
  *

@@ -59,7 +59,8 @@
 					:widget="widgetsById[item.widgetId]"
 					:editable="isEditing"
 					@configure="configureWidget"
-					@remove="removeWidget" />
+					@remove="removeWidget"
+					@move="moveWidget" />
 			</template>
 		</GridCanvas>
 
@@ -82,7 +83,7 @@ import GridCanvas from './GridCanvas.vue'
 import GridWidget from './GridWidget.vue'
 import AddWidget from '../modals/AddWidget.vue'
 import { useTablesStore } from '../../store/store.js'
-import { cloneGrid, emptyGrid, findWidgetType, nextFreeRow } from './widgetRegistry.js'
+import { GRID_COLUMNS, GRID_MIN_WIDTH, cloneGrid, emptyGrid, findWidgetType, nextFreeRow } from './widgetRegistry.js'
 
 /**
  * A grid view: its widgets on a grid, with an edit mode that saves the whole grid at once.
@@ -173,7 +174,7 @@ export default {
 				this.draftGrid = {
 					...this.draftGrid,
 					widgets: this.draftGrid.widgets.map(widget => widget.id === this.widgetBeingConfigured.id
-						? { ...widget, title: payload.title, showTitle: payload.showTitle, content: payload.content }
+						? { ...widget, configuration: payload.configuration, content: payload.content }
 						: widget),
 				}
 				this.closeAddWidget()
@@ -183,9 +184,9 @@ export default {
 			const widgetType = findWidgetType(this.widgetTypes, payload.type)
 			const size = { gridWidth: widgetType?.defaultWidth ?? 6, gridHeight: widgetType?.defaultHeight ?? 3 }
 			this.draftGrid = {
-				widgets: [...this.draftGrid.widgets, { id, type: payload.type, title: payload.title, showTitle: payload.showTitle, content: payload.content }],
+				widgets: [...this.draftGrid.widgets, { id, type: payload.type, configuration: payload.configuration, content: payload.content }],
 				layout: [...this.draftGrid.layout, {
-					id: this.draftGrid.layout.length + 1,
+					id,
 					widgetId: id,
 					gridX: 0,
 					gridY: nextFreeRow(this.draftGrid.layout),
@@ -194,6 +195,30 @@ export default {
 				}],
 			}
 			this.closeAddWidget()
+		},
+		/**
+		 * Moves or resizes a widget by one step, kept inside the grid.
+		 *
+		 * @param {object} widget the widget to change
+		 * @param {{gridX?: number, gridY?: number, gridWidth?: number, gridHeight?: number}} change the steps to apply
+		 */
+		moveWidget(widget, change) {
+			this.draftGrid = {
+				...this.draftGrid,
+				layout: this.draftGrid.layout.map(item => {
+					if (item.widgetId !== widget.id) {
+						return item
+					}
+					const gridWidth = Math.min(GRID_COLUMNS, Math.max(GRID_MIN_WIDTH, item.gridWidth + (change.gridWidth ?? 0)))
+					return {
+						...item,
+						gridWidth,
+						gridHeight: Math.max(1, item.gridHeight + (change.gridHeight ?? 0)),
+						gridX: Math.min(GRID_COLUMNS - gridWidth, Math.max(0, item.gridX + (change.gridX ?? 0))),
+						gridY: Math.max(0, item.gridY + (change.gridY ?? 0)),
+					}
+				}),
+			}
 		},
 		removeWidget(widget) {
 			this.draftGrid = {
@@ -238,8 +263,6 @@ export default {
 
 	&__title {
 		margin: 0;
-		font-size: 24px;
-		font-weight: bold;
 	}
 
 	&__description {

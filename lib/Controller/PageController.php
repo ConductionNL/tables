@@ -61,18 +61,13 @@ class PageController extends Controller {
 	}
 
 	/**
-	 * Render default template
-	 *
-	 * @psalm-param int<0, max> $appId
+	 * Render the template for one application, addressed by id or by technical name
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
-	/**
-	 * Opens one application on its own, by id or by slug, with its menu as the navigation.
-	 */
 	public function context(string $contextId): TemplateResponse {
-		$id = is_numeric($contextId) ? (int)$contextId : ($this->userId === null ? null : $this->contextMapper->findIdBySlug($contextId, $this->userId));
+		$id = ctype_digit($contextId) ? (int)$contextId : ($this->userId === null ? null : $this->contextMapper->findIdByTechnicalName($contextId, $this->userId));
 		if ($id === null) {
 			return $this->index();
 		}

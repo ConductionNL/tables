@@ -59,21 +59,6 @@
 				</NcAppNavigationItem>
 			</ul>
 			<ul v-if="!isLoadingSomething">
-				<NcAppNavigationCaption :name="t('tables', 'Views')">
-					<template #actions>
-						<NcActionButton :aria-label="t('tables', 'Create grid view')" icon="icon-add" data-cy="navigationCreateGridViewIcon"
-							@click.prevent="createGridView" />
-					</template>
-				</NcAppNavigationCaption>
-
-				<template v-for="view in getAllViews" :key="'views-' + view.id">
-					<NavigationViewItem :view="view" :show-share-sender="true" />
-				</template>
-				<li v-if="getAllViews.length === 0" class="navigation-hint">
-					{{ t('tables', 'No views yet') }}
-				</li>
-			</ul>
-			<ul v-if="!isLoadingSomething">
 				<NcAppNavigationCaption :name="t('tables', 'Applications')">
 					<template #actions>
 						<NcActionButton :aria-label="t('tables', 'Create application')" icon="icon-add" data-cy="createContextIcon"
@@ -167,11 +152,6 @@ export default {
 		getAllNodes() {
 			return [...this.getFilteredTables, ...this.getOwnViews, ...this.getSharedViews]
 		},
-		getAllViews() {
-			return this.views
-				.filter(view => view.title.toLowerCase().includes(this.filterString.toLowerCase()))
-				.sort((a, b) => a.title.localeCompare(b.title))
-		},
 		getOwnViews() {
 			const sharedTableIds = this.getFilteredTables.map(table => table.id)
 
@@ -234,9 +214,6 @@ export default {
 		createContext() {
 			emit('tables:context:create')
 		},
-		createGridView() {
-			emit('tables:view:create-grid', {})
-		},
 		closeNav() {
 			if (window.innerWidth < 960) {
 				emit('toggle-navigation', {
@@ -263,13 +240,6 @@ export default {
 	input.input-field__input {
 		background-color: var(--color-primary-element-light);
 	}
-}
-
-.navigation-hint {
-	padding: 0 calc(5 * var(--default-grid-baseline, 4px));
-	color: var(--color-text-maxcontrast);
-	line-height: 44px;
-	list-style: none;
 }
 
 .search-info {

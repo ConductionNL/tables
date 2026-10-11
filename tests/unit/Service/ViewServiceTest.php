@@ -20,6 +20,7 @@ use OCA\Tables\Model\ViewUpdateInput;
 use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\FavoritesService;
 use OCA\Tables\Service\FederationService;
+use OCA\Tables\Service\GridWidgetTypes;
 use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\ShareService;
@@ -43,6 +44,8 @@ class ViewServiceTest extends TestCase {
 		$this->permissionsService->method('preCheckUserId')->willReturnCallback(static fn (?string $userId) => $userId ?? 'alice');
 		$this->mapper = $this->createMock(ViewMapper::class);
 		$this->activityManager = $this->createMock(ActivityManager::class);
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnCallback(static fn (string $text): string => $text);
 
 		$this->service = new ViewService(
 			$this->permissionsService,
@@ -55,9 +58,10 @@ class ViewServiceTest extends TestCase {
 			$this->createMock(FavoritesService::class),
 			$this->createMock(IEventDispatcher::class),
 			$this->createMock(ContextService::class),
-			$this->createMock(IL10N::class),
+			$l10n,
 			$this->createMock(FederationService::class),
 			$this->activityManager,
+			new GridWidgetTypes($l10n, $this->mapper),
 		);
 	}
 
@@ -89,11 +93,24 @@ class ViewServiceTest extends TestCase {
 		$updated = $this->service->update(6, ViewUpdateInput::fromInputArray(['grid' => json_encode($grid)]), 'alice', true);
 
 		$stored = $updated->getGridArray();
-		$this->assertSame($grid['layout'], $stored['layout']);
+		$this->assertSame([['id' => 'w-1', 'widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2]], $stored['layout'], 'a layout item is identified by its widget');
 		$this->assertSame('Hi', $stored['widgets'][0]['content']['title']);
 		$this->assertSame('#abc', $stored['widgets'][0]['content']['backgroundColor']);
 		$this->assertSame('left', $stored['widgets'][0]['content']['textAlign'], 'defaults are filled in');
 		$this->assertArrayNotHasKey('stray', $stored['widgets'][0]['content'], 'unknown properties are dropped');
+		$this->assertSame(['title' => '', 'showTitle' => false], $stored['widgets'][0]['configuration'], 'the configuration is filled from the type');
+	}
+
+	public function testUpdateWritesEveryParameterToItsOwnColumn(): void {
+		$this->expectUpdateOf($this->storedView(4));
+
+		$updated = $this->service->update(6, ViewUpdateInput::fromInputArray([
+			'sort' => [['columnId' => 3, 'mode' => 'ASC']],
+			'type' => 'grid',
+		]), 'alice', true);
+
+		$this->assertSame('grid', $updated->getType());
+		$this->assertSame([['columnId' => 3, 'mode' => 'ASC']], $updated->getSortArray());
 	}
 
 	public function testUpdateRejectsNonHexWidgetColors(): void {
@@ -139,21 +156,21 @@ class ViewServiceTest extends TestCase {
 		$this->service->update(6, ViewUpdateInput::fromInputArray(['type' => 'table']), 'alice', true);
 	}
 
-	public function testUpdateRejectsAMalformedSlug(): void {
+	public function testUpdateRejectsAMalformedTechnicalName(): void {
 		$this->expectUpdateOf($this->storedView());
 
 		$this->expectException(BadRequestError::class);
-		$this->expectExceptionMessage('slug');
-		$this->service->update(6, ViewUpdateInput::fromInputArray(['slug' => 'Not A Slug']), 'alice', true);
+		$this->expectExceptionMessage('Technical name');
+		$this->service->update(6, ViewUpdateInput::fromInputArray(['technicalName' => 'Not A Name']), 'alice', true);
 	}
 
-	public function testUpdateStoresAValidSlugAndType(): void {
+	public function testUpdateStoresAValidTechnicalNameAndType(): void {
 		$view = $this->storedView();
 		$this->expectUpdateOf($view);
 
-		$updated = $this->service->update(6, ViewUpdateInput::fromInputArray(['slug' => 'intake-2', 'type' => 'grid']), 'alice', true);
+		$updated = $this->service->update(6, ViewUpdateInput::fromInputArray(['technicalName' => 'intake_2', 'type' => 'grid']), 'alice', true);
 
-		$this->assertSame('intake-2', $updated->getSlug());
+		$this->assertSame('intake_2', $updated->getTechnicalName());
 		$this->assertSame('grid', $updated->getType());
 	}
 
@@ -175,14 +192,13 @@ class ViewServiceTest extends TestCase {
 		});
 		$this->mapper->method('update')->willReturnArgument(0);
 
-		$created = $this->service->create('Home', '🧩', null, 'alice', null, null, View::TYPE_GRID, 'home', 'Start here');
+		$created = $this->service->create('Home', '🧩', null, 'alice', 'home', null, View::TYPE_GRID, 'Start here');
 
 		$this->assertNull($created->getTableId());
 		$this->assertSame('alice', $created->getOwnership());
 		$this->assertSame('grid', $created->getType());
-		$this->assertSame('home', $created->getSlug());
 		$this->assertSame('Start here', $created->getDescription());
-		$this->assertSame('view_6', $created->getTechnicalName());
+		$this->assertSame('home', $created->getTechnicalName());
 	}
 
 	public function testCreateWithATableStillChecksTheTablePermission(): void {

@@ -80,8 +80,6 @@ return [
 		['name' => 'view#indexSharedWithMe', 'url' => '/view', 'verb' => 'GET'],
 		['name' => 'view#show', 'url' => '/view/{id}', 'verb' => 'GET'],
 		['name' => 'view#create', 'url' => '/view', 'verb' => 'POST'],
-		['name' => 'view#createStandalone', 'url' => '/view/standalone', 'verb' => 'POST'],
-		['name' => 'view#widgetTypes', 'url' => '/grid/widget-types', 'verb' => 'GET'],
 		['name' => 'view#update', 'url' => '/view/{id}', 'verb' => 'PUT'],
 		['name' => 'view#destroy', 'url' => '/view/{id}', 'verb' => 'DELETE'],
 
@@ -130,6 +128,10 @@ return [
 		// API v2
 		['name' => 'ApiGeneral#index', 'url' => '/api/2/init', 'verb' => 'GET'],
 		// -> tables
+		// views without a table and the widget types their grids hold
+		['name' => 'ApiViews#widgetTypes', 'url' => '/api/2/views/widget-types', 'verb' => 'GET'],
+		['name' => 'ApiViews#create', 'url' => '/api/2/views', 'verb' => 'POST'],
+
 		['name' => 'ApiTables#index', 'url' => '/api/2/tables', 'verb' => 'GET'],
 		['name' => 'ApiTables#show', 'url' => '/api/2/tables/{id}', 'verb' => 'GET'],
 		['name' => 'ApiTables#showScheme', 'url' => '/api/2/tables/scheme/{id}', 'verb' => 'GET'],

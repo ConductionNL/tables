@@ -11,12 +11,13 @@ namespace OCA\Tables\Controller;
 use InvalidArgumentException;
 use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Db\Context;
-use OCA\Tables\Db\MenuItem;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
+use OCA\Tables\Model\ContextScheme;
+use OCA\Tables\Model\MenuItemInput;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\ColumnService;
 use OCA\Tables\Service\ContextService;
@@ -101,8 +102,8 @@ class ContextController extends AOCSController {
 	 * @param string $iconName Material design icon name of the context
 	 * @param string $description Descriptive text of the context
 	 * @psalm-param list<array{id: int, type: int, permissions?: int}> $nodes optional nodes to be connected to this context
-	 * @param ?string $slug URL-friendly name of the context
-	 * @psalm-param ?list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, slug?: string|null}> $menuItems optional menu of the context, in order
+	 * @param ?string $technicalName technical name of the context
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string}> $menuItems optional menu of the context, in order; the views and tables it opens become nodes of the context
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN, array{message: string}, array{}>
 	 *
@@ -111,7 +112,7 @@ class ContextController extends AOCSController {
 	 * 403: lacking permissions on a resource
 	 */
 	#[NoAdminRequired]
-	public function create(string $name, string $iconName, string $description = '', array $nodes = [], ?string $slug = null, ?array $menuItems = null): DataResponse {
+	public function create(string $name, string $iconName, string $description = '', array $nodes = [], ?string $technicalName = null, ?array $menuItems = null): DataResponse {
 		try {
 			if (!$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -123,15 +124,15 @@ class ContextController extends AOCSController {
 				$this->sanitizeInputNodes($nodes),
 				$this->userId,
 				0,
-				$slug,
-				$menuItems !== null ? $this->sanitizeInputMenuItems($menuItems) : null,
+				$technicalName,
+				$menuItems !== null ? MenuItemInput::createListFromInputArray($menuItems) : null,
 			)->jsonSerialize());
 		} catch (Exception $e) {
 			return $this->handleError($e);
 		} catch (PermissionError $e) {
 			return $this->handlePermissionError($e);
 		} catch (InvalidArgumentException $e) {
-			return $this->handleError(new InternalError($e->getMessage(), $e->getCode(), $e));
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
 		}
 	}
 
@@ -143,8 +144,8 @@ class ContextController extends AOCSController {
 	 * @param ?string $iconName provide this parameter to set a new icon
 	 * @param ?string $description provide this parameter to set a new description
 	 * @param ?array{id: int, type: int, permissions: int, order: int} $nodes provide this parameter to set a new list of nodes.
-	 * @param ?string $slug provide this parameter to set a new URL-friendly name
-	 * @psalm-param ?list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, slug?: string|null}> $menuItems provide this parameter to replace the menu
+	 * @param ?string $technicalName provide this parameter to set a new technical name
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string}> $menuItems provide this parameter to replace the menu; the views and tables it opens become nodes of the context
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -156,7 +157,7 @@ class ContextController extends AOCSController {
 	 * @CanManageContext
 	 */
 	#[NoAdminRequired]
-	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $slug = null, ?array $menuItems = null): DataResponse {
+	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $technicalName = null, ?array $menuItems = null): DataResponse {
 		try {
 			if ($iconName !== null && !$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -169,8 +170,8 @@ class ContextController extends AOCSController {
 				$iconName,
 				$description,
 				$nodes,
-				$slug,
-				$menuItems !== null ? $this->sanitizeInputMenuItems($menuItems) : null,
+				$technicalName,
+				$menuItems !== null ? MenuItemInput::createListFromInputArray($menuItems) : null,
 			)->jsonSerialize());
 		} catch (Exception|MultipleObjectsReturnedException $e) {
 			return $this->handleError($e);
@@ -178,36 +179,9 @@ class ContextController extends AOCSController {
 			return $this->handlePermissionError($e);
 		} catch (DoesNotExistException $e) {
 			return $this->handleNotFoundError(new NotFoundError($e->getMessage(), $e->getCode(), $e));
+		} catch (InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
 		}
-	}
-
-	/**
-	 * @psalm-return list<array{label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, slug: string|null}>
-	 * @throws InvalidArgumentException
-	 */
-	protected function sanitizeInputMenuItems(array $menuItems): array {
-		$sanitized = [];
-		foreach ($menuItems as $item) {
-			if (!is_array($item) || !isset($item['label']) || trim((string)$item['label']) === '') {
-				throw new InvalidArgumentException('A menu item needs a label');
-			}
-			$targetType = (string)($item['targetType'] ?? MenuItem::TARGET_URL);
-			if (!in_array($targetType, MenuItem::TARGET_TYPES, true)) {
-				throw new InvalidArgumentException('Unexpected menu item target type');
-			}
-			if ($targetType !== MenuItem::TARGET_URL && !is_numeric($item['targetId'] ?? null)) {
-				throw new InvalidArgumentException('A menu item pointing at a ' . $targetType . ' needs its id');
-			}
-			$sanitized[] = [
-				'label' => (string)$item['label'],
-				'icon' => isset($item['icon']) ? (string)$item['icon'] : null,
-				'targetType' => $targetType,
-				'targetId' => $targetType === MenuItem::TARGET_URL ? null : (int)$item['targetId'],
-				'url' => $targetType === MenuItem::TARGET_URL ? (string)($item['url'] ?? '') : null,
-				'slug' => isset($item['slug']) ? (string)$item['slug'] : null,
-			];
-		}
-		return $sanitized;
 	}
 
 	/**
@@ -391,8 +365,8 @@ class ContextController extends AOCSController {
 	 * @param string $iconName Identifier of the context icon
 	 * @param string $description Description of the context
 	 * @param list<array{node_type: int, node_uuid: string, permissions: int}> $nodes Ordered meta data of the related nodes
-	 * @param ?string $slug URL-friendly name of the context
-	 * @psalm-param list<array{label: string, icon?: string|null, targetType: string, targetUuid?: string|null, url?: string|null, slug?: string|null}> $menuItems Menu of the context, targets by uuid
+	 * @param ?string $technicalName technical name of the context
+	 * @psalm-param list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetUuid?: string, url?: string, technicalName?: string}> $menuItems Menu of the context, targets by uuid
 	 * @psalm-param list<array<string, mixed>> $gridViews Views without a table that the menu points at
 	 * @psalm-param array{addTables: list<TablesTable>, modifyTables: list<TablesTable>} $tables Tables to be added or modified
 	 *
@@ -405,10 +379,15 @@ class ContextController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?string $slug = null, array $menuItems = [], array $gridViews = []): DataResponse {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?string $technicalName = null, array $menuItems = [], array $gridViews = []): DataResponse {
+		try {
+			$scheme = ContextScheme::createFromInputArray(['name' => $name, 'icon' => $iconName, 'description' => $description, 'nodes' => $nodes, 'tables' => $tables, 'technicalName' => $technicalName, 'menuItems' => $menuItems, 'gridViews' => $gridViews]);
+		} catch (\InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
+		}
 		try {
 			$this->db->beginTransaction();
-			$context = $this->contextService->importScheme($contextId, $name, $iconName, $description, $nodes, $tables, $this->userId, $slug, $menuItems, $gridViews);
+			$context = $this->contextService->importScheme($contextId, $scheme, $this->userId);
 			$this->db->commit();
 			return new DataResponse($context->jsonSerialize());
 		} catch (\InvalidArgumentException $e) {

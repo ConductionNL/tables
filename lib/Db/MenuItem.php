@@ -10,11 +10,8 @@ declare(strict_types=1);
 namespace OCA\Tables\Db;
 
 use JsonSerializable;
-use OCP\AppFramework\Db\Entity;
 
 /**
- * One entry of an application's menu. It points at a view, a table or a URL.
- *
  * @method getContextId(): int
  * @method setContextId(int $contextId): void
  * @method getLabel(): string
@@ -27,12 +24,14 @@ use OCP\AppFramework\Db\Entity;
  * @method setTargetId(?int $targetId): void
  * @method getUrl(): ?string
  * @method setUrl(?string $url): void
- * @method getSlug(): ?string
- * @method setSlug(?string $slug): void
+ * @method getTechnicalName(): ?string
+ * @method setTechnicalName(?string $technicalName): void
  * @method getOrder(): int
  * @method setOrder(int $order): void
+ * @method isBroken(): bool
+ * @method setBroken(bool $broken): void
  */
-class MenuItem extends Entity implements JsonSerializable {
+class MenuItem extends EntitySuper implements JsonSerializable {
 	public const TARGET_VIEW = 'view';
 	public const TARGET_TABLE = 'table';
 	public const TARGET_URL = 'url';
@@ -44,18 +43,24 @@ class MenuItem extends Entity implements JsonSerializable {
 	protected ?string $targetType = null;
 	protected ?int $targetId = null;
 	protected ?string $url = null;
-	protected ?string $slug = null;
+	protected ?string $technicalName = null;
 	protected ?int $order = null;
+
+	// virtual: true when the view or table the item points at no longer exists
+	protected bool $broken = false;
+
+	protected const VIRTUAL_PROPERTIES = ['broken'];
 
 	public function __construct() {
 		$this->addType('id', 'integer');
 		$this->addType('contextId', 'integer');
 		$this->addType('targetId', 'integer');
 		$this->addType('order', 'integer');
+		$this->addType('broken', 'boolean');
 	}
 
 	/**
-	 * @return array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, slug: string|null, order: int}
+	 * @return array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, order: int, broken: bool}
 	 */
 	public function jsonSerialize(): array {
 		return [
@@ -66,8 +71,9 @@ class MenuItem extends Entity implements JsonSerializable {
 			'targetType' => $this->getTargetType() ?? self::TARGET_URL,
 			'targetId' => $this->getTargetId(),
 			'url' => $this->getUrl(),
-			'slug' => $this->getSlug(),
+			'technicalName' => $this->getTechnicalName(),
 			'order' => $this->getOrder() ?? 0,
+			'broken' => $this->broken,
 		];
 	}
 }

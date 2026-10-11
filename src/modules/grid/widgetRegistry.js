@@ -9,6 +9,9 @@ import DataWidget from './widgets/DataWidget.vue'
 /** Number of columns of a grid view. */
 export const GRID_COLUMNS = 12
 
+/** Smallest number of columns a widget spans. */
+export const GRID_MIN_WIDTH = 2
+
 /** Height of one grid row in pixels. */
 export const GRID_CELL_HEIGHT = 80
 
@@ -42,6 +45,16 @@ export function getWidgetComponent(type) {
  */
 export function findWidgetType(widgetTypes, type) {
 	return widgetTypes.find(widgetType => widgetType.type === type) ?? null
+}
+
+/**
+ * The configuration a new widget of this type starts with: every property at its default.
+ *
+ * @param {object} widgetType a schema from the server
+ * @return {object}
+ */
+export function defaultConfiguration(widgetType) {
+	return Object.fromEntries(Object.entries(widgetType?.configuration ?? {}).map(([name, property]) => [name, structuredClone(property.default ?? null)]))
 }
 
 /**
