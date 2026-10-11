@@ -5,7 +5,7 @@
 <template>
 	<NcAppNavigation :aria-label="context ? context.name : t('tables', 'Application')">
 		<template #list>
-			<div v-if="!context" class="icon-loading" />
+			<NcLoadingIcon v-if="!context" :size="32" />
 			<template v-else>
 				<div class="application-navigation__header" data-cy="application-nav-header">
 					<ApplicationIcon :icon-name="context.iconName" :size="32" />
@@ -25,11 +25,7 @@
 					:open="branch.children.some(child => isActive(child))"
 					data-cy="application-nav-item">
 					<template #icon>
-						<AlertCircleOutline v-if="branch.item.broken" :size="20" :title="t('tables', 'The view or table this entry opened no longer exists')" />
-						<ApplicationIcon v-else-if="branch.item.icon" :icon-name="branch.item.icon" :size="20" />
-						<OpenInNew v-else-if="branch.item.targetType === 'url'" :size="20" />
-						<TableIcon v-else-if="branch.item.targetType === 'table'" :size="20" />
-						<ViewDashboardOutline v-else :size="20" />
+						<MenuItemIcon :item="branch.item" />
 					</template>
 					<template v-if="branch.children.length > 0">
 						<NcAppNavigationItem v-for="child in branch.children"
@@ -41,11 +37,7 @@
 							:class="{ active: isActive(child) }"
 							data-cy="application-nav-item">
 							<template #icon>
-								<AlertCircleOutline v-if="child.broken" :size="20" :title="t('tables', 'The view or table this entry opened no longer exists')" />
-								<ApplicationIcon v-else-if="child.icon" :icon-name="child.icon" :size="20" />
-								<OpenInNew v-else-if="child.targetType === 'url'" :size="20" />
-								<TableIcon v-else-if="child.targetType === 'table'" :size="20" />
-								<ViewDashboardOutline v-else :size="20" />
+								<MenuItemIcon :item="child" />
 							</template>
 						</NcAppNavigationItem>
 					</template>
@@ -75,16 +67,13 @@
 </template>
 
 <script>
-import { NcAppNavigation, NcAppNavigationItem, NcButton } from '@nextcloud/vue'
-import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
+import { NcAppNavigation, NcAppNavigationItem, NcButton, NcLoadingIcon } from '@nextcloud/vue'
 import CogOutline from 'vue-material-design-icons/CogOutline.vue'
-import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
-import TableIcon from 'vue-material-design-icons/Table.vue'
-import ViewDashboardOutline from 'vue-material-design-icons/ViewDashboardOutline.vue'
 import ViewGridOutline from 'vue-material-design-icons/ViewGridOutline.vue'
 import { generateUrl } from '@nextcloud/router'
 import { mapState } from 'pinia'
 import ApplicationIcon from '../../../shared/components/ApplicationIcon.vue'
+import MenuItemIcon from '../../../shared/components/MenuItemIcon.vue'
 import permissionsMixin from '../../../shared/components/ncTable/mixins/permissionsMixin.js'
 import { menuItemRoute, menuTree } from '../../../shared/utils/menuItems.js'
 import { useTablesStore } from '../../../store/store.js'
@@ -98,13 +87,11 @@ export default {
 		NcAppNavigation,
 		NcAppNavigationItem,
 		NcButton,
-		AlertCircleOutline,
+		NcLoadingIcon,
 		CogOutline,
-		OpenInNew,
-		TableIcon,
-		ViewDashboardOutline,
 		ViewGridOutline,
 		ApplicationIcon,
+		MenuItemIcon,
 	},
 	mixins: [permissionsMixin],
 	computed: {
