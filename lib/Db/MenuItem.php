@@ -31,6 +31,8 @@ use OCP\AppFramework\Db\Entity;
  * @method setTechnicalName(?string $technicalName): void
  * @method getOrder(): int
  * @method setOrder(int $order): void
+ * @method getParentId(): ?int
+ * @method setParentId(?int $parentId): void
  */
 class MenuItem extends Entity implements JsonSerializable {
 	public const TARGET_VIEW = 'view';
@@ -46,16 +48,18 @@ class MenuItem extends Entity implements JsonSerializable {
 	protected ?string $url = null;
 	protected ?string $technicalName = null;
 	protected ?int $order = null;
+	protected ?int $parentId = null;
 
 	public function __construct() {
 		$this->addType('id', 'integer');
 		$this->addType('contextId', 'integer');
 		$this->addType('targetId', 'integer');
 		$this->addType('order', 'integer');
+		$this->addType('parentId', 'integer');
 	}
 
 	/**
-	 * @return array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, order: int}
+	 * @return array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, order: int, parentId: int|null}
 	 */
 	public function jsonSerialize(): array {
 		return [
@@ -68,6 +72,7 @@ class MenuItem extends Entity implements JsonSerializable {
 			'url' => $this->getUrl(),
 			'technicalName' => $this->getTechnicalName(),
 			'order' => $this->getOrder() ?? 0,
+			'parentId' => $this->getParentId(),
 		];
 	}
 }

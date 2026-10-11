@@ -14,18 +14,38 @@
 						<span v-if="context.description" class="application-navigation__description">{{ context.description }}</span>
 					</div>
 				</div>
-				<NcAppNavigationItem v-for="item in menuItems"
-					:key="item.id"
-					:name="item.label"
-					:to="item.targetType === 'url' ? undefined : menuItemRoute(item, context.id)"
-					:href="item.targetType === 'url' ? item.url : undefined"
-					:target="item.targetType === 'url' ? '_blank' : undefined"
-					:class="{ active: isActive(item) }"
+				<NcAppNavigationItem v-for="branch in menuTree"
+					:key="branch.item.id"
+					:name="branch.item.label"
+					:to="branch.item.targetType === 'url' ? undefined : menuItemRoute(branch.item, context.id)"
+					:href="branch.item.targetType === 'url' ? branch.item.url : undefined"
+					:target="branch.item.targetType === 'url' ? '_blank' : undefined"
+					:class="{ active: isActive(branch.item) }"
+					:allow-collapse="branch.children.length > 0"
+					:open="branch.children.some(child => isActive(child))"
 					data-cy="application-nav-item">
 					<template #icon>
-						<OpenInNew v-if="item.targetType === 'url'" :size="20" />
-						<TableIcon v-else-if="item.targetType === 'table'" :size="20" />
+						<ApplicationIcon v-if="branch.item.icon" :icon-name="branch.item.icon" :size="20" />
+						<OpenInNew v-else-if="branch.item.targetType === 'url'" :size="20" />
+						<TableIcon v-else-if="branch.item.targetType === 'table'" :size="20" />
 						<ViewDashboardOutline v-else :size="20" />
+					</template>
+					<template v-if="branch.children.length > 0">
+						<NcAppNavigationItem v-for="child in branch.children"
+							:key="child.id"
+							:name="child.label"
+							:to="child.targetType === 'url' ? undefined : menuItemRoute(child, context.id)"
+							:href="child.targetType === 'url' ? child.url : undefined"
+							:target="child.targetType === 'url' ? '_blank' : undefined"
+							:class="{ active: isActive(child) }"
+							data-cy="application-nav-item">
+							<template #icon>
+								<ApplicationIcon v-if="child.icon" :icon-name="child.icon" :size="20" />
+								<OpenInNew v-else-if="child.targetType === 'url'" :size="20" />
+								<TableIcon v-else-if="child.targetType === 'table'" :size="20" />
+								<ViewDashboardOutline v-else :size="20" />
+							</template>
+						</NcAppNavigationItem>
 					</template>
 				</NcAppNavigationItem>
 				<NcAppNavigationItem v-if="hasResources"
@@ -63,7 +83,7 @@ import { generateUrl } from '@nextcloud/router'
 import { mapState } from 'pinia'
 import ApplicationIcon from '../../../shared/components/ApplicationIcon.vue'
 import permissionsMixin from '../../../shared/components/ncTable/mixins/permissionsMixin.js'
-import { menuItemRoute } from '../../../shared/utils/menuItems.js'
+import { menuItemRoute, menuTree } from '../../../shared/utils/menuItems.js'
 import { useTablesStore } from '../../../store/store.js'
 
 /**
@@ -90,6 +110,9 @@ export default {
 		},
 		menuItems() {
 			return [...(this.context?.menuItems ?? [])].sort((a, b) => a.order - b.order)
+		},
+		menuTree() {
+			return menuTree(this.menuItems)
 		},
 		hasResources() {
 			return Object.keys(this.context?.nodes ?? {}).length > 0

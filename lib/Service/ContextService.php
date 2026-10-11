@@ -163,26 +163,43 @@ class ContextService {
 	/**
 	 * Replace the menu of an application with the given items, in the given order.
 	 *
-	 * @psalm-param list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, technicalName?: string|null}> $menuItems
-	 * @return list<array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, order: int}>
+	 * @psalm-param list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, technicalName?: string|null, parentIndex?: int|null}> $menuItems
+	 * @return list<array{id: int, contextId: int, label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, order: int, parentId: int|null}>
 	 * @throws Exception
 	 */
 	protected function replaceMenuItems(int $contextId, array $menuItems): array {
 		$this->menuItemMapper->deleteAllByContextId($contextId);
-		$stored = [];
-		foreach (array_values($menuItems) as $position => $item) {
-			$menuItem = new MenuItem();
-			$menuItem->setContextId($contextId);
-			$menuItem->setLabel(trim($item['label']));
-			$menuItem->setIcon(isset($item['icon']) && $item['icon'] !== '' ? trim((string)$item['icon']) : null);
-			$menuItem->setTargetType($item['targetType']);
-			$menuItem->setTargetId($item['targetType'] === MenuItem::TARGET_URL ? null : ($item['targetId'] ?? null));
-			$menuItem->setUrl($item['targetType'] === MenuItem::TARGET_URL ? ($item['url'] ?? null) : null);
-			$menuItem->setTechnicalName($this->normalizeTechnicalName($item['technicalName'] ?? null) ?? $this->technicalNameFromLabel($item['label']));
-			$menuItem->setOrder(($position + 1) * 10);
-			$stored[] = $this->menuItemMapper->insert($menuItem)->jsonSerialize();
+		$items = array_values($menuItems);
+		/** @var array<int, MenuItem> $storedByIndex */
+		$storedByIndex = [];
+		// parents first, so a child can point at a stored id; the order keeps the submitted sequence
+		foreach ([false, true] as $childPass) {
+			foreach ($items as $position => $item) {
+				$parentIndex = isset($item['parentIndex']) && $item['parentIndex'] !== null ? (int)$item['parentIndex'] : null;
+				if (($parentIndex !== null) !== $childPass) {
+					continue;
+				}
+				$menuItem = new MenuItem();
+				$menuItem->setContextId($contextId);
+				$menuItem->setLabel(trim($item['label']));
+				$menuItem->setIcon(isset($item['icon']) && $item['icon'] !== '' ? trim((string)$item['icon']) : null);
+				$menuItem->setTargetType($item['targetType']);
+				$menuItem->setTargetId($item['targetType'] === MenuItem::TARGET_URL ? null : ($item['targetId'] ?? null));
+				$menuItem->setUrl($item['targetType'] === MenuItem::TARGET_URL ? ($item['url'] ?? null) : null);
+				$menuItem->setTechnicalName($this->normalizeTechnicalName($item['technicalName'] ?? null) ?? $this->technicalNameFromLabel($item['label']));
+				$menuItem->setOrder(($position + 1) * 10);
+				if ($parentIndex !== null) {
+					$parent = $storedByIndex[$parentIndex] ?? null;
+					if ($parent === null || $parent->getParentId() !== null) {
+						throw new InvalidArgumentException('A menu item can only sit under a top-level item that exists in the same menu.');
+					}
+					$menuItem->setParentId($parent->getId());
+				}
+				$storedByIndex[$position] = $this->menuItemMapper->insert($menuItem);
+			}
 		}
-		return $stored;
+		ksort($storedByIndex);
+		return array_values(array_map(static fn (MenuItem $item): array => $item->jsonSerialize(), $storedByIndex));
 	}
 
 	/**
@@ -781,6 +798,22 @@ class ContextService {
 	 *
 	 * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>}
 	 */
+	/**
+	 * @param array{parentId?: int|null} $item
+	 */
+	private function parentTechnicalName(Context $context, array $item): ?string {
+		$parentId = $item['parentId'] ?? null;
+		if ($parentId === null) {
+			return null;
+		}
+		foreach ($context->getMenuItems() as $candidate) {
+			if (($candidate['id'] ?? null) === $parentId) {
+				return $candidate['technicalName'] ?? null;
+			}
+		}
+		return null;
+	}
+
 	private function exportMenuItems(Context $context): array {
 		$menuItems = [];
 		$gridViews = [];
@@ -792,6 +825,7 @@ class ContextService {
 				'targetUuid' => null,
 				'url' => $item['url'],
 				'technicalName' => $item['technicalName'],
+				'parentTechnicalName' => $this->parentTechnicalName($context, $item),
 			];
 			try {
 				if ($item['targetType'] === MenuItem::TARGET_TABLE && $item['targetId'] !== null) {
@@ -907,13 +941,10 @@ class ContextService {
 	}
 
 	/**
-	 * Menu items of a scheme with their uuid targets turned into local ids; items whose target is missing are dropped.
-	 *
-	 * @param list<array<string, mixed>> $menuItems
-	 * @return list<array{label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null}>
+	 * @return list<array{label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, parentIndex: int|null}>
 	 */
 	private function resolveMenuItems(array $menuItems): array {
-		$resolved = [];
+		$prepared = [];
 		foreach ($menuItems as $item) {
 			if (!is_array($item) || !isset($item['label']) || trim((string)$item['label']) === '') {
 				continue;
@@ -927,13 +958,36 @@ class ContextService {
 				$this->logger->info('Menu item "{label}" skipped on import, its target does not exist here', ['label' => $item['label']]);
 				continue;
 			}
-			$resolved[] = [
+			$prepared[] = [
 				'label' => (string)$item['label'],
 				'icon' => isset($item['icon']) ? (string)$item['icon'] : null,
 				'targetType' => $targetType,
 				'targetId' => $targetId,
 				'url' => $targetType === MenuItem::TARGET_URL ? (string)($item['url'] ?? '') : null,
 				'technicalName' => isset($item['technicalName']) ? (string)$item['technicalName'] : null,
+				'parent' => isset($item['parentTechnicalName']) ? (string)$item['parentTechnicalName'] : null,
+			];
+		}
+		// a child names its parent by technical name; the parent must have survived the import and be top-level
+		$resolved = [];
+		foreach ($prepared as $item) {
+			$parentIndex = null;
+			if ($item['parent'] !== null) {
+				foreach ($prepared as $candidateIndex => $candidate) {
+					if ($candidate['technicalName'] === $item['parent'] && $candidate['parent'] === null) {
+						$parentIndex = $candidateIndex;
+						break;
+					}
+				}
+			}
+			$resolved[] = [
+				'label' => $item['label'],
+				'icon' => $item['icon'],
+				'targetType' => $item['targetType'],
+				'targetId' => $item['targetId'],
+				'url' => $item['url'],
+				'technicalName' => $item['technicalName'],
+				'parentIndex' => $parentIndex,
 			];
 		}
 		return $resolved;

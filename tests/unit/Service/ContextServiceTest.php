@@ -121,6 +121,43 @@ final class ContextServiceTest extends TestCase {
 		$this->assertSame('Welcome table!', $updated->getMenuItems()[1]['label']);
 	}
 
+	public function testUpdateStoresAChildUnderItsParentAndKeepsTheOrder(): void {
+		$context = $this->contextWithMenu(7, []);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, null, [
+			['label' => 'Cases', 'targetType' => 'table', 'targetId' => 4],
+			['label' => 'Open cases', 'targetType' => 'view', 'targetId' => 6, 'parentIndex' => 0],
+			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
+		]);
+
+		$byLabel = [];
+		foreach ($inserted as $item) {
+			$byLabel[$item->getLabel()] = $item;
+		}
+		$this->assertNull($byLabel['Cases']->getParentId());
+		$this->assertSame($byLabel['Cases']->getId(), $byLabel['Open cases']->getParentId());
+		$this->assertSame([10, 20, 30], array_map(static fn (array $item) => $item['order'], $updated->getMenuItems()));
+		$this->assertSame(['Cases', 'Open cases', 'Docs'], array_map(static fn (array $item) => $item['label'], $updated->getMenuItems()));
+	}
+
+	public function testUpdateRejectsAChildUnderAChild(): void {
+		$context = $this->contextWithMenu(7, []);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$this->expectException(\InvalidArgumentException::class);
+		$this->service->update(7, 'user-1', null, null, null, null, null, [
+			['label' => 'A', 'targetType' => 'url', 'url' => 'https://a.example'],
+			['label' => 'B', 'targetType' => 'url', 'url' => 'https://b.example', 'parentIndex' => 0],
+			['label' => 'C', 'targetType' => 'url', 'url' => 'https://c.example', 'parentIndex' => 1],
+		]);
+	}
+
 	public function testUpdateLeavesTheMenuAloneWhenNoneIsGiven(): void {
 		$context = $this->contextWithMenu(7, [['id' => 1, 'label' => 'Keep me']]);
 		$this->contextMapper->method('findById')->willReturn($context);

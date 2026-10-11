@@ -169,12 +169,13 @@
 								</tr>
 							</thead>
 							<tbody>
-								<tr v-for="page in filteredPages" :key="page.item.id" class="page-row" data-cy="page-card">
+								<tr v-for="page in filteredPages" :key="page.item.id" class="page-row" :class="{ 'page-row--child': page.level === 1 }" data-cy="page-card">
 									<td class="context__col-position">
 										{{ page.position }}
 									</td>
 									<td class="page-row__name">
-										<component :is="page.icon" :size="20" class="page-row__icon" />
+										<ApplicationIcon v-if="page.item.icon" :icon-name="page.item.icon" :size="20" class="page-row__icon" />
+										<component :is="page.icon" v-else :size="20" class="page-row__icon" />
 										<router-link v-if="page.route" :to="page.route" class="page-row__link" data-cy="page-card-open">
 											{{ page.item.label }}
 										</router-link>
@@ -230,8 +231,9 @@
 					</p>
 					<MenuItemsEditor v-if="menuDraft !== null" v-model:items="menuDraft" />
 					<ol v-else-if="menuItems.length > 0" class="context__menu-preview" data-cy="context-menu-preview">
-						<li v-for="page in pages" :key="page.item.id" class="context__menu-preview-item">
-							<component :is="page.icon" :size="18" />
+						<li v-for="page in pages" :key="page.item.id" class="context__menu-preview-item" :class="{ 'context__menu-preview-item--child': page.level === 1 }">
+							<ApplicationIcon v-if="page.item.icon" :icon-name="page.item.icon" :size="18" />
+							<component :is="page.icon" v-else :size="18" />
 							<span>{{ page.item.label }}</span>
 							<span class="context__menu-preview-target">{{ page.description }}</span>
 						</li>
@@ -405,6 +407,7 @@ import { getCurrentUser } from '@nextcloud/auth'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import TableIcon from 'vue-material-design-icons/Table.vue'
+import ApplicationIcon from '../shared/components/ApplicationIcon.vue'
 import MenuItemsEditor from '../shared/components/ncContextResource/MenuItemsEditor.vue'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
@@ -412,7 +415,7 @@ import ViewDashboardOutline from 'vue-material-design-icons/ViewDashboardOutline
 import GridView from '../modules/grid/GridView.vue'
 import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMixin.js'
 import { useEventBusSubscriptions } from '../shared/composables/useEventBusSubscriptions.js'
-import { menuItemRoute, toEditableMenuItems, toMenuItemPayload } from '../shared/utils/menuItems.js'
+import { menuItemRoute, menuTree, toEditableMenuItems, toMenuItemPayload } from '../shared/utils/menuItems.js'
 import ContentSaveOutline from 'vue-material-design-icons/ContentSaveOutline.vue'
 import PencilOutline from 'vue-material-design-icons/PencilOutline.vue'
 import Restore from 'vue-material-design-icons/Restore.vue'
@@ -452,6 +455,7 @@ export default {
 		OpenInNew,
 		Plus,
 		TableIcon,
+		ApplicationIcon,
 		MenuItemsEditor,
 		ViewDashboardOutline,
 		GridView,
@@ -520,21 +524,25 @@ export default {
 			return stored ? { ...this.menuResource, ...stored, isView: true } : this.menuResource
 		},
 		pages() {
-			return this.menuItems.map((item, index) => {
-				const position = index + 1
+			const ordered = []
+			menuTree(this.menuItems).forEach((branch, rootIndex) => {
+				ordered.push({ item: branch.item, position: String(rootIndex + 1), level: 0 })
+				branch.children.forEach((child, childIndex) => ordered.push({ item: child, position: (rootIndex + 1) + '.' + (childIndex + 1), level: 1 }))
+			})
+			return ordered.map(({ item, position, level }) => {
 				if (item.targetType === 'url') {
-					return { item, position, kind: 'url', icon: 'LinkVariant', route: null, typeLabel: t('tables', 'Link'), description: item.url, view: null }
+					return { item, position, level, kind: 'url', icon: 'LinkVariant', route: null, typeLabel: t('tables', 'Link'), description: item.url, view: null }
 				}
 				if (item.targetType === 'table') {
 					const table = this.tables.find(table => table.id === item.targetId)
-					return { item, position, kind: 'table', icon: 'TableIcon', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Table'), description: table ? n('tables', '%n row', '%n rows', table.rowsCount ?? 0) : t('tables', 'Not accessible to you'), view: null }
+					return { item, position, level, kind: 'table', icon: 'TableIcon', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Table'), description: table ? n('tables', '%n row', '%n rows', table.rowsCount ?? 0) : t('tables', 'Not accessible to you'), view: null }
 				}
 				const view = this.views.find(view => view.id === item.targetId)
 				if (view?.type === 'grid') {
-					return { item, position, kind: 'grid', icon: 'ViewDashboardOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Page with widgets'), description: n('tables', '%n widget', '%n widgets', view.grid?.widgets?.length ?? 0), view }
+					return { item, position, level, kind: 'grid', icon: 'ViewDashboardOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Page with widgets'), description: n('tables', '%n widget', '%n widgets', view.grid?.widgets?.length ?? 0), view }
 				}
 				const table = view ? this.tables.find(table => table.id === view.tableId) : null
-				return { item, position, kind: 'view', icon: 'TableIcon', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'View'), description: view ? (table ? t('tables', 'View of {table}', { table: table.title }) : view.title) : t('tables', 'Not accessible to you'), view }
+				return { item, position, level, kind: 'view', icon: 'TableIcon', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'View'), description: view ? (table ? t('tables', 'View of {table}', { table: table.title }) : view.title) : t('tables', 'Not accessible to you'), view }
 			})
 		},
 		filteredPages() {
@@ -761,7 +769,7 @@ export default {
 				return
 			}
 			this.menuSaving = true
-			const context = await this.updateContextMenuItems({ id: this.activeContext.id, menuItems: this.menuDraft.map(toMenuItemPayload) })
+			const context = await this.updateContextMenuItems({ id: this.activeContext.id, menuItems: this.menuDraft.map(item => toMenuItemPayload(item, this.menuDraft)) })
 			this.menuSaving = false
 			if (context) {
 				this.menuDraft = null
@@ -781,8 +789,8 @@ export default {
 				return
 			}
 			const menuItems = [
-				...this.menuItems.map(item => ({ label: item.label, icon: item.icon, targetType: item.targetType, targetId: item.targetId, url: item.url, technicalName: item.technicalName })),
-				{ label: view.title, icon: null, targetType: 'view', targetId: view.id, url: null, technicalName },
+				...this.menuItems.map(item => ({ label: item.label, icon: item.icon, targetType: item.targetType, targetId: item.targetId, url: item.url, technicalName: item.technicalName, parentIndex: item.parentId != null ? this.menuItems.findIndex(candidate => candidate.id === item.parentId) : null })),
+				{ label: view.title, icon: null, targetType: 'view', targetId: view.id, url: null, technicalName, parentIndex: null },
 			]
 			const context = await this.updateContextMenuItems({ id: this.activeContext.id, menuItems })
 			const added = context?.menuItems?.find(item => item.targetType === 'view' && item.targetId === view.id)
@@ -1233,6 +1241,11 @@ export default {
 		align-items: center;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
 		padding: calc(1 * var(--default-grid-baseline, 4px)) 0;
+
+		&--child {
+			margin-inline-start: calc(6 * var(--default-grid-baseline, 4px));
+			list-style: circle;
+		}
 	}
 
 	&__menu-preview-target {
@@ -1293,6 +1306,10 @@ export default {
 }
 
 .page-row {
+	&--child &__name {
+		padding-inline-start: calc(6 * var(--default-grid-baseline, 4px));
+	}
+
 	&__name {
 		display: flex;
 		align-items: center;

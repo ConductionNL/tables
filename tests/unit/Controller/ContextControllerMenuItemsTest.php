@@ -41,9 +41,9 @@ class ContextControllerMenuItemsTest extends TestCase {
 		]);
 
 		$this->assertSame([
-			['label' => 'Intake home', 'icon' => null, 'targetType' => 'view', 'targetId' => 6, 'url' => null, 'technicalName' => 'home'],
-			['label' => 'Docs', 'icon' => 'book', 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => null],
-			['label' => 'Welcome', 'icon' => null, 'targetType' => 'table', 'targetId' => 4, 'url' => null, 'technicalName' => null],
+			['label' => 'Intake home', 'icon' => null, 'targetType' => 'view', 'targetId' => 6, 'url' => null, 'technicalName' => 'home', 'parentIndex' => null],
+			['label' => 'Docs', 'icon' => 'book', 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => null, 'parentIndex' => null],
+			['label' => 'Welcome', 'icon' => null, 'targetType' => 'table', 'targetId' => 4, 'url' => null, 'technicalName' => null, 'parentIndex' => null],
 		], $sanitized);
 	}
 
@@ -68,5 +68,21 @@ class ContextControllerMenuItemsTest extends TestCase {
 	public function testSanitizeRejectsANonArrayItem(): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->controller->sanitize(['not an item']);
+	}
+
+	public function testSanitizeKeepsAParentPositionAndRejectsNesting(): void {
+		$sanitized = $this->controller->sanitize([
+			['label' => 'Cases', 'targetType' => 'table', 'targetId' => 4],
+			['label' => 'Open', 'targetType' => 'view', 'targetId' => 6, 'parentIndex' => '0'],
+		]);
+		$this->assertSame([null, 0], array_column($sanitized, 'parentIndex'));
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('top-level');
+		$this->controller->sanitize([
+			['label' => 'A', 'targetType' => 'url', 'url' => 'https://a.example'],
+			['label' => 'B', 'targetType' => 'url', 'url' => 'https://b.example', 'parentIndex' => 0],
+			['label' => 'C', 'targetType' => 'url', 'url' => 'https://c.example', 'parentIndex' => 1],
+		]);
 	}
 }
