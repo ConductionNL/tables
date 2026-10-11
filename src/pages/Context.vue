@@ -81,8 +81,8 @@
 					</div>
 				</header>
 				<p v-if="!selectedMenuItem" class="context__stats" data-cy="context-stats">
-					<span v-for="stat in stats" :key="stat.label" class="context__stat">
-						<b>{{ stat.value }}</b> {{ stat.label }}
+					<span v-for="stat in stats" :key="stat.key" class="context__stat">
+						{{ stat.label }}
 					</span>
 				</p>
 			</div>
@@ -157,13 +157,20 @@
 						<table class="context__table" data-cy="context-pages-table">
 							<thead>
 								<tr>
-									<th class="context__col-position">
-										{{ t('tables', '#') }}
+									<th scope="col" class="context__col-position">
+										<span aria-hidden="true">#</span>
+										<span class="hidden-visually">{{ t('tables', 'Position') }}</span>
 									</th>
-									<th>{{ t('tables', 'Page') }}</th>
-									<th>{{ t('tables', 'Type') }}</th>
-									<th>{{ t('tables', 'Shows') }}</th>
-									<th class="context__col-actions">
+									<th scope="col">
+										{{ t('tables', 'Page') }}
+									</th>
+									<th scope="col">
+										{{ t('tables', 'Type') }}
+									</th>
+									<th scope="col">
+										{{ t('tables', 'Shows') }}
+									</th>
+									<th scope="col" class="context__col-actions">
 										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
 									</th>
 								</tr>
@@ -255,15 +262,19 @@
 						<table class="context__table" data-cy="context-tables-table">
 							<thead>
 								<tr>
-									<th>{{ t('tables', 'Table') }}</th>
-									<th class="context__col-number">
+									<th scope="col">
+										{{ t('tables', 'Table') }}
+									</th>
+									<th scope="col" class="context__col-number">
 										{{ t('tables', 'Rows') }}
 									</th>
-									<th class="context__col-number">
+									<th scope="col" class="context__col-number">
 										{{ t('tables', 'Views') }}
 									</th>
-									<th>{{ t('tables', 'Used by') }}</th>
-									<th class="context__col-actions">
+									<th scope="col">
+										{{ t('tables', 'Used by') }}
+									</th>
+									<th scope="col" class="context__col-actions">
 										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
 									</th>
 								</tr>
@@ -297,10 +308,10 @@
 					</div>
 				</section>
 
-				<section class="context__section" data-cy="context-members">
+				<section v-if="ownsContext(activeContext)" class="context__section" data-cy="context-members">
 					<div class="context__section-header">
 						<h2>{{ t('tables', 'Members') }}</h2>
-						<NcButton v-if="ownsContext(activeContext)" variant="secondary" data-cy="context-edit-members" @click="editApplication">
+						<NcButton variant="secondary" data-cy="context-edit-members" @click="editApplication">
 							<template #icon>
 								<AccountMultipleOutline :size="20" />
 							</template>
@@ -567,8 +578,12 @@ export default {
 				}
 				uses.set(tableId, entry)
 			}
+			const menuTargets = new Set(this.menuItems.map(item => item.targetType + '-' + item.targetId))
 			for (const node of Object.values(this.activeContext?.nodes ?? {})) {
 				const nodeType = parseInt(node.node_type)
+				if (menuTargets.has((nodeType === NODE_TYPE_TABLE ? 'table-' : 'view-') + node.node_id)) {
+					continue
+				}
 				if (nodeType === NODE_TYPE_TABLE) {
 					add(node.node_id, t('tables', 'Application'))
 				} else if (nodeType === NODE_TYPE_VIEW) {
@@ -599,7 +614,9 @@ export default {
 		},
 		members() {
 			const owner = this.activeContext?.owner
-			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: this.activeContext.ownerDisplayName ?? owner, role: t('tables', 'Owner') }] : []
+			const currentUser = getCurrentUser()
+			const ownerName = owner === currentUser?.uid ? currentUser.displayName : owner
+			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: ownerName, role: t('tables', 'Owner') }] : []
 			for (const share of Object.values(this.activeContext?.sharing ?? {})) {
 				if (share.receiver === owner && share.receiver_type === 'user') {
 					continue
@@ -609,11 +626,15 @@ export default {
 			return list
 		},
 		stats() {
-			return [
-				{ value: this.pages.length, label: n('tables', 'page', 'pages', this.pages.length) },
-				{ value: this.usedTables.length, label: n('tables', 'table', 'tables', this.usedTables.length) },
-				{ value: this.members.length, label: n('tables', 'member', 'members', this.members.length) },
+			const stats = [
+				{ key: 'pages', label: n('tables', '%n page', '%n pages', this.pages.length) },
+				{ key: 'tables', label: n('tables', '%n table', '%n tables', this.usedTables.length) },
 			]
+			// only the owner sees every share; anyone else would see a partial count
+			if (this.ownsContext(this.activeContext)) {
+				stats.push({ key: 'members', label: n('tables', '%n member', '%n members', this.members.length) })
+			}
+			return stats
 		},
 		selectedMenuItem() {
 			const technicalName = this.$route.params.itemName
@@ -1035,7 +1056,8 @@ export default {
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: calc(3 * var(--default-grid-baseline, 4px));
-		padding: calc(4 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 	}
 
 	&__identity {
@@ -1057,9 +1079,6 @@ export default {
 
 	&__title {
 		margin: 0;
-		font-size: 26px;
-		font-weight: bold;
-		line-height: 1.2;
 		overflow-wrap: anywhere;
 	}
 
@@ -1106,7 +1125,8 @@ export default {
 		flex-wrap: wrap;
 		align-items: center;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
-		padding: calc(2 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(2 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 		border-bottom: 1px solid var(--color-border);
 	}
 
@@ -1127,18 +1147,15 @@ export default {
 		flex-wrap: wrap;
 		gap: calc(4 * var(--default-grid-baseline, 4px));
 		margin: 0;
-		padding: 0 calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: 0 calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 		color: var(--color-text-maxcontrast);
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	&__stat b {
-		color: var(--color-main-text);
-		font-variant-numeric: tabular-nums;
-	}
-
 	&__section {
-		padding: calc(5 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(5 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 		max-width: 1100px;
 	}
 
@@ -1279,7 +1296,8 @@ export default {
 		display: flex;
 		justify-content: flex-end;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
-		padding: calc(3 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) 0 calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(3 * var(--default-grid-baseline, 4px)) 0;
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 	}
 
 	&__menu-target {
