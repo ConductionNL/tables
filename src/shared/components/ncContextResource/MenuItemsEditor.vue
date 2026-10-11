@@ -29,6 +29,7 @@
 					</NcButton>
 				</NcIconPicker>
 				<NcTextField :model-value="item.label"
+					class="menu-items-editor__field"
 					:label="t('tables', 'Label')"
 					data-cy="menuItemLabel"
 					@update:model-value="value => update(index, { label: value })" />
@@ -42,6 +43,7 @@
 					data-cy="menuItemTarget"
 					@update:model-value="option => setTarget(index, option)" />
 				<NcTextField v-if="item.targetType === 'url'"
+					class="menu-items-editor__field"
 					:model-value="item.url ?? ''"
 					:label="t('tables', 'Link')"
 					placeholder="https://"
@@ -397,11 +399,6 @@ export default {
 		border-bottom: 1px solid var(--color-border);
 		list-style: none;
 
-		:deep(.input-field) {
-			flex: 1 1 160px;
-			min-width: 0;
-		}
-
 		&--child {
 			padding-inline-start: calc(9 * var(--default-grid-baseline, 4px));
 			border-inline-start: 2px solid var(--color-primary-element-light);
@@ -420,6 +417,11 @@ export default {
 		height: var(--default-clickable-area, 44px);
 		color: var(--color-text-maxcontrast);
 		cursor: grab;
+	}
+
+	&__field {
+		flex: 1 1 160px;
+		min-width: 0;
 	}
 
 	&__target {
