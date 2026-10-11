@@ -167,8 +167,10 @@ export default {
 		getAllNodes() {
 			return [...this.getFilteredTables, ...this.getOwnViews, ...this.getSharedViews]
 		},
+		// a page with widgets belongs to its application and is reached through it, so it stays out of the views list
 		getAllViews() {
 			return this.views
+				.filter(view => view.type !== 'grid')
 				.filter(view => view.title.toLowerCase().includes(this.filterString.toLowerCase()))
 				.sort((a, b) => a.title.localeCompare(b.title))
 		},
@@ -176,12 +178,12 @@ export default {
 			const sharedTableIds = this.getFilteredTables.map(table => table.id)
 
 			return this.views.filter(view => {
-				return !view.isShared && view.ownership === getCurrentUser().uid && sharedTableIds.includes(view.tableId)
+				return view.type !== 'grid' && !view.isShared && view.ownership === getCurrentUser().uid && sharedTableIds.includes(view.tableId)
 			}).filter(view => view.title.toLowerCase().includes(this.filterString.toLowerCase()))
 		},
 		getSharedViews() {
 			return this.views.filter(view => {
-				return view.isShared && view.ownership !== getCurrentUser().uid
+				return view.type !== 'grid' && view.isShared && view.ownership !== getCurrentUser().uid
 			}).filter(view => view.title.toLowerCase().includes(this.filterString.toLowerCase()))
 		},
 		getFavoriteTables() {

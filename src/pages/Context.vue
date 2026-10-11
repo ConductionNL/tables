@@ -8,64 +8,83 @@
 
 		<div v-else-if="activeContext" :class="{ 'context--standalone': isStandalone }">
 			<div v-if="!isStandalone" class="content context">
-				<div class="row first-row">
-					<h1 class="context__title" data-cy="context-title">
-						<NcIconSvgWrapper :svg="icon" :size="32" style="display: inline-block;" />&nbsp; {{
-							activeContext.name }}
-					</h1>
-					<div class="context__edit-actions">
-						<template v-if="!isEditingLayout">
-							<NcButton variant="primary" :href="applicationUrl" target="_blank" rel="noopener" data-cy="context-open-application">
-								<template #icon>
-									<OpenInNew :size="20" />
-								</template>
-								{{ t('tables', 'Open application') }}
-							</NcButton>
-							<NcButton v-if="ownsContext(activeContext)" variant="secondary" data-cy="context-add-grid-view" @click="addGridView">
-								<template #icon>
-									<ViewDashboardOutline :size="20" />
-								</template>
-								{{ t('tables', 'Add page') }}
-							</NcButton>
-							<NcButton v-if="ownsContext(activeContext)" variant="secondary" data-cy="context-edit-application" @click="editApplication">
-								<template #icon>
-									<PlaylistEdit :size="20" />
-								</template>
-								{{ t('tables', 'Edit application') }}
-							</NcButton>
+				<div v-if="selectedMenuItem" class="context__breadcrumb" data-cy="context-breadcrumb">
+					<NcButton variant="tertiary" :to="'/application/' + activeContext.id" data-cy="context-menu-overview">
+						<template #icon>
+							<ChevronLeft :size="20" />
 						</template>
+						{{ activeContext.name }}
+					</NcButton>
+					<span class="context__breadcrumb-separator" aria-hidden="true">/</span>
+					<span class="context__breadcrumb-current">{{ selectedMenuItem.label }}</span>
+					<NcButton variant="secondary" :href="applicationUrl" target="_blank" rel="noopener" class="context__breadcrumb-open" data-cy="context-open-application">
+						<template #icon>
+							<OpenInNew :size="20" />
+						</template>
+						{{ t('tables', 'Open application') }}
+					</NcButton>
+				</div>
+				<header v-else class="context__header" data-cy="context-header">
+					<div class="context__identity">
+						<NcIconSvgWrapper :svg="icon" :size="40" class="context__icon" />
+						<div class="context__identity-text">
+							<h1 class="context__title" data-cy="context-title">
+								{{ activeContext.name }}
+							</h1>
+							<p v-if="activeContext.description" class="context__description">
+								{{ activeContext.description }}
+							</p>
+							<div class="context__address-row">
+								<a :href="applicationUrl" target="_blank" rel="noopener" class="context__address" data-cy="context-address">{{ applicationUrl }}</a>
+								<NcButton variant="tertiary" :aria-label="t('tables', 'Copy the address')" :title="t('tables', 'Copy the address')" data-cy="context-copy-address" @click="copyAddress">
+									<template #icon>
+										<ContentCopy :size="18" />
+									</template>
+								</NcButton>
+							</div>
+						</div>
 					</div>
-				</div>
-				<div class="row space-L context__description">
-					{{ activeContext.description }}
-					<span class="context__address" data-cy="context-address">{{ applicationUrl }}</span>
-				</div>
-				<nav v-if="menuItems.length > 0" class="context__menu" :aria-label="t('tables', 'Application menu')" data-cy="context-menu">
-					<router-link :to="'/application/' + activeContext.id"
-						class="context__menu-item"
-						:class="{ 'context__menu-item--active': !selectedMenuItem }"
-						data-cy="context-menu-overview">
-						{{ t('tables', 'Overview') }}
-					</router-link>
-					<template v-for="item in menuItems" :key="item.id">
-						<a v-if="item.targetType === 'url'"
-							:href="item.url"
-							class="context__menu-item"
-							target="_blank"
-							rel="noopener noreferrer"
-							data-cy="context-menu-item">
-							{{ item.label }}
-							<OpenInNew :size="16" />
-						</a>
-						<router-link v-else
-							:to="menuItemRoute(item, activeContext.id)"
-							class="context__menu-item"
-							:class="{ 'context__menu-item--active': selectedMenuItem && selectedMenuItem.id === item.id }"
-							data-cy="context-menu-item">
-							{{ item.label }}
-						</router-link>
-					</template>
-				</nav>
+					<div class="context__header-actions">
+						<NcButton variant="primary" :href="applicationUrl" target="_blank" rel="noopener" data-cy="context-open-application">
+							<template #icon>
+								<OpenInNew :size="20" />
+							</template>
+							{{ t('tables', 'Open application') }}
+						</NcButton>
+						<NcActions v-if="ownsContext(activeContext)" :aria-label="t('tables', 'Application settings')" data-cy="context-actions">
+							<NcActionButton data-cy="context-edit-application" @click="editApplication">
+								<template #icon>
+									<PencilOutline :size="20" />
+								</template>
+								{{ t('tables', 'Edit name, icon and members') }}
+							</NcActionButton>
+							<NcActionButton data-cy="context-import-scheme" @click="importScheme">
+								<template #icon>
+									<TrayArrowDown :size="20" />
+								</template>
+								{{ t('tables', 'Import a scheme') }}
+							</NcActionButton>
+							<NcActionButton data-cy="context-transfer" @click="transferApplication">
+								<template #icon>
+									<SwapHorizontal :size="20" />
+								</template>
+								{{ t('tables', 'Transfer ownership') }}
+							</NcActionButton>
+							<NcActionSeparator />
+							<NcActionButton class="context__delete-action" data-cy="context-delete" @click="deleteApplication">
+								<template #icon>
+									<DeleteOutline :size="20" />
+								</template>
+								{{ t('tables', 'Delete application') }}
+							</NcActionButton>
+						</NcActions>
+					</div>
+				</header>
+				<p v-if="!selectedMenuItem" class="context__stats" data-cy="context-stats">
+					<span v-for="stat in stats" :key="stat.label" class="context__stat">
+						<b>{{ stat.value }}</b> {{ stat.label }}
+					</span>
+				</p>
 			</div>
 
 			<div v-if="selectedMenuItem" class="context__menu-target" data-cy="context-menu-target">
@@ -96,41 +115,93 @@
 				<section class="context__section" data-cy="context-pages">
 					<div class="context__section-header">
 						<h2>{{ t('tables', 'Pages') }}</h2>
-						<NcButton v-if="ownsContext(activeContext)" variant="secondary" data-cy="context-add-page" @click="addGridView">
-							<template #icon>
-								<Plus :size="20" />
-							</template>
-							{{ t('tables', 'Add page') }}
-						</NcButton>
+						<div class="context__section-actions">
+							<NcTextField v-if="pages.length > 6"
+								v-model="pageFilter"
+								:label="t('tables', 'Filter pages')"
+								:placeholder="t('tables', 'Filter pages')"
+								class="context__filter"
+								data-cy="context-page-filter" />
+							<NcActions v-if="ownsContext(activeContext)" :menu-name="t('tables', 'Add page')" :primary="pages.length === 0" data-cy="context-add-page">
+								<template #icon>
+									<Plus :size="20" />
+								</template>
+								<NcActionButton data-cy="context-add-grid-view" @click="addGridView">
+									<template #icon>
+										<ViewDashboardOutline :size="20" />
+									</template>
+									{{ t('tables', 'Page with widgets') }}
+								</NcActionButton>
+								<NcActionButton data-cy="context-add-table-page" @click="editMenu('table')">
+									<template #icon>
+										<TableIcon :size="20" />
+									</template>
+									{{ t('tables', 'Table or view') }}
+								</NcActionButton>
+								<NcActionButton data-cy="context-add-link" @click="editMenu('url')">
+									<template #icon>
+										<LinkVariant :size="20" />
+									</template>
+									{{ t('tables', 'Link') }}
+								</NcActionButton>
+							</NcActions>
+						</div>
 					</div>
-					<p v-if="pageCards.length === 0" class="context__hint">
-						{{ t('tables', 'No pages yet. A page is a view with its own entry in the application menu.') }}
+					<p v-if="pages.length === 0" class="context__hint">
+						{{ t('tables', 'No pages yet. Every page gets an entry in the menu of the application.') }}
 					</p>
-					<ul v-else class="context__cards">
-						<li v-for="card in pageCards" :key="card.item.id" class="page-card" data-cy="page-card">
-							<div class="page-card__icon">
-								<ViewDashboardOutline v-if="card.kind === 'grid'" :size="28" />
-								<TableIcon v-else-if="card.kind === 'table' || card.kind === 'view'" :size="28" />
-								<OpenInNew v-else :size="28" />
-							</div>
-							<div class="page-card__text">
-								<h3 class="page-card__title">
-									{{ card.item.label }}
-								</h3>
-								<p class="page-card__meta">
-									{{ card.description }}
-								</p>
-							</div>
-							<div class="page-card__actions">
-								<NcButton v-if="card.route" variant="secondary" :to="card.route" data-cy="page-card-open">
-									{{ card.kind === 'grid' ? t('tables', 'Design') : t('tables', 'Open') }}
-								</NcButton>
-								<NcButton v-else variant="secondary" :href="card.item.url" target="_blank" rel="noopener noreferrer">
-									{{ t('tables', 'Open') }}
-								</NcButton>
-							</div>
-						</li>
-					</ul>
+					<p v-else-if="filteredPages.length === 0" class="context__hint">
+						{{ t('tables', 'No page matches the filter.') }}
+					</p>
+					<div v-else class="context__table-wrap">
+						<table class="context__table" data-cy="context-pages-table">
+							<thead>
+								<tr>
+									<th class="context__col-position">
+										{{ t('tables', '#') }}
+									</th>
+									<th>{{ t('tables', 'Page') }}</th>
+									<th>{{ t('tables', 'Type') }}</th>
+									<th>{{ t('tables', 'Shows') }}</th>
+									<th class="context__col-actions">
+										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr v-for="page in filteredPages" :key="page.item.id" class="page-row" data-cy="page-card">
+									<td class="context__col-position">
+										{{ page.position }}
+									</td>
+									<td class="page-row__name">
+										<component :is="page.icon" :size="20" class="page-row__icon" />
+										<router-link v-if="page.route" :to="page.route" class="page-row__link" data-cy="page-card-open">
+											{{ page.item.label }}
+										</router-link>
+										<a v-else :href="page.item.url" target="_blank" rel="noopener noreferrer" class="page-row__link" data-cy="page-card-open">{{ page.item.label }}</a>
+									</td>
+									<td>{{ page.typeLabel }}</td>
+									<td class="page-row__shows">
+										{{ page.description }}
+									</td>
+									<td class="context__col-actions">
+										<NcButton v-if="page.kind === 'grid' && canManageElement(page.view)" variant="tertiary" :to="page.route" data-cy="page-card-design">
+											<template #icon>
+												<PencilOutline :size="20" />
+											</template>
+											{{ t('tables', 'Design') }}
+										</NcButton>
+										<NcButton v-else-if="page.route" variant="tertiary" :to="page.route">
+											{{ t('tables', 'Open') }}
+										</NcButton>
+										<NcButton v-else variant="tertiary" :href="page.item.url" target="_blank" rel="noopener noreferrer">
+											{{ t('tables', 'Open') }}
+										</NcButton>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
 				</section>
 
 				<section v-if="ownsContext(activeContext)" class="context__section" data-cy="context-menu-editor">
@@ -146,7 +217,7 @@
 								</template>
 								{{ t('tables', 'Save menu') }}
 							</NcButton>
-							<NcButton v-else variant="secondary" data-cy="context-menu-edit" @click="menuDraft = toEditableMenuItems(menuItems)">
+							<NcButton v-else variant="secondary" data-cy="context-menu-edit" @click="editMenu()">
 								<template #icon>
 									<PencilOutline :size="20" />
 								</template>
@@ -154,15 +225,99 @@
 							</NcButton>
 						</div>
 					</div>
+					<p class="context__section-help">
+						{{ t('tables', 'The menu is what people see on the left when they open the application. Order it the way they work.') }}
+					</p>
 					<MenuItemsEditor v-if="menuDraft !== null" v-model:items="menuDraft" />
 					<ol v-else-if="menuItems.length > 0" class="context__menu-preview" data-cy="context-menu-preview">
-						<li v-for="item in menuItems" :key="item.id">
-							{{ item.label }}
+						<li v-for="page in pages" :key="page.item.id" class="context__menu-preview-item">
+							<component :is="page.icon" :size="18" />
+							<span>{{ page.item.label }}</span>
+							<span class="context__menu-preview-target">{{ page.description }}</span>
 						</li>
 					</ol>
 					<p v-else class="context__hint">
 						{{ t('tables', 'The menu is empty. Add a page, or edit the menu to link tables and external links.') }}
 					</p>
+				</section>
+
+				<section class="context__section" data-cy="context-tables">
+					<div class="context__section-header">
+						<h2>{{ t('tables', 'Tables') }}</h2>
+					</div>
+					<p class="context__section-help">
+						{{ t('tables', 'The data this application works on. A table is listed when a page, a widget or the application itself uses it.') }}
+					</p>
+					<p v-if="usedTables.length === 0" class="context__hint">
+						{{ t('tables', 'No table is used yet. Add a table page or a widget that shows a table.') }}
+					</p>
+					<div v-else class="context__table-wrap">
+						<table class="context__table" data-cy="context-tables-table">
+							<thead>
+								<tr>
+									<th>{{ t('tables', 'Table') }}</th>
+									<th class="context__col-number">
+										{{ t('tables', 'Rows') }}
+									</th>
+									<th class="context__col-number">
+										{{ t('tables', 'Views') }}
+									</th>
+									<th>{{ t('tables', 'Used by') }}</th>
+									<th class="context__col-actions">
+										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr v-for="entry in usedTables" :key="entry.id" data-cy="context-table-row">
+									<td class="page-row__name">
+										<span class="page-row__icon page-row__emoji">{{ entry.table?.emoji || '' }}</span>
+										<router-link v-if="entry.table" :to="'/table/' + entry.id" class="page-row__link">
+											{{ entry.table.title }}
+										</router-link>
+										<span v-else>{{ t('tables', 'Table {id}, not accessible to you', { id: entry.id }) }}</span>
+									</td>
+									<td class="context__col-number">
+										{{ entry.table ? entry.table.rowsCount : '' }}
+									</td>
+									<td class="context__col-number">
+										{{ entry.viewCount }}
+									</td>
+									<td class="page-row__shows">
+										{{ entry.usedBy.join(', ') }}
+									</td>
+									<td class="context__col-actions">
+										<NcButton v-if="entry.table" variant="tertiary" :to="'/table/' + entry.id">
+											{{ t('tables', 'Open') }}
+										</NcButton>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</section>
+
+				<section class="context__section" data-cy="context-members">
+					<div class="context__section-header">
+						<h2>{{ t('tables', 'Members') }}</h2>
+						<NcButton v-if="ownsContext(activeContext)" variant="secondary" data-cy="context-edit-members" @click="editApplication">
+							<template #icon>
+								<AccountMultipleOutline :size="20" />
+							</template>
+							{{ t('tables', 'Share with people or groups') }}
+						</NcButton>
+					</div>
+					<p class="context__section-help">
+						{{ t('tables', 'Who can open the application. What each member may do with the data follows from the shares of the tables.') }}
+					</p>
+					<ul class="context__members" data-cy="context-members-list">
+						<li v-for="member in members" :key="member.key" class="context__member">
+							<NcAvatar v-if="member.type === 'user'" :user="member.id" :display-name="member.name" :size="32" />
+							<span v-else class="context__member-group" aria-hidden="true"><AccountMultipleOutline :size="20" /></span>
+							<span class="context__member-name">{{ member.name }}</span>
+							<span class="context__member-role">{{ member.role }}</span>
+						</li>
+					</ul>
 				</section>
 			</template>
 
@@ -238,9 +393,16 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
-import { NcActionRadio, NcActions, NcButton, NcEmptyContent, NcIconSvgWrapper } from '@nextcloud/vue'
+import { NcActionButton, NcActionRadio, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import AccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
+import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
+import DeleteOutline from 'vue-material-design-icons/DeleteOutline.vue'
+import LinkVariant from 'vue-material-design-icons/LinkVariant.vue'
+import SwapHorizontal from 'vue-material-design-icons/SwapHorizontal.vue'
+import TrayArrowDown from 'vue-material-design-icons/TrayArrowDown.vue'
+import { getCurrentUser } from '@nextcloud/auth'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
-import PlaylistEdit from 'vue-material-design-icons/PlaylistEdit.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import TableIcon from 'vue-material-design-icons/Table.vue'
 import MenuItemsEditor from '../shared/components/ncContextResource/MenuItemsEditor.vue'
@@ -271,13 +433,23 @@ import { GRID_COLUMNS, getGridCellStyle, loadContextLayout, saveContextLayout } 
 export default {
 	components: {
 		MainModals,
+		NcActionButton,
 		NcActionRadio,
+		NcActionSeparator,
 		NcActions,
+		NcAvatar,
 		NcButton,
 		NcEmptyContent,
 		NcIconSvgWrapper,
+		NcTextField,
+		AccountMultipleOutline,
+		ChevronLeft,
+		ContentCopy,
+		DeleteOutline,
+		LinkVariant,
+		SwapHorizontal,
+		TrayArrowDown,
 		OpenInNew,
-		PlaylistEdit,
 		Plus,
 		TableIcon,
 		MenuItemsEditor,
@@ -316,6 +488,7 @@ export default {
 			menuTargetLoading: false,
 			menuDraft: null,
 			menuSaving: false,
+			pageFilter: '',
 			standaloneContextId: loadState('tables', 'contextId', null),
 			openedFirstPage: false,
 		}
@@ -346,22 +519,94 @@ export default {
 			const stored = this.views.find(view => view.id === this.menuResource.id)
 			return stored ? { ...this.menuResource, ...stored, isView: true } : this.menuResource
 		},
-		pageCards() {
-			return this.menuItems.map(item => {
+		pages() {
+			return this.menuItems.map((item, index) => {
+				const position = index + 1
 				if (item.targetType === 'url') {
-					return { item, kind: 'url', route: null, description: item.url }
+					return { item, position, kind: 'url', icon: 'LinkVariant', route: null, typeLabel: t('tables', 'Link'), description: item.url, view: null }
 				}
 				if (item.targetType === 'table') {
 					const table = this.tables.find(table => table.id === item.targetId)
-					return { item, kind: 'table', route: menuItemRoute(item, this.activeContext.id), description: table ? t('tables', 'Table: {title}', { title: table.title }) : t('tables', 'Table') }
+					return { item, position, kind: 'table', icon: 'TableIcon', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Table'), description: table ? n('tables', '%n row', '%n rows', table.rowsCount ?? 0) : t('tables', 'Not accessible to you'), view: null }
 				}
 				const view = this.views.find(view => view.id === item.targetId)
-				const kind = view?.type === 'grid' ? 'grid' : 'view'
-				const description = kind === 'grid'
-					? n('tables', '%n widget', '%n widgets', view.grid?.widgets?.length ?? 0)
-					: (view ? t('tables', 'View: {title}', { title: view.title }) : t('tables', 'View'))
-				return { item, kind, route: menuItemRoute(item, this.activeContext.id), description }
+				if (view?.type === 'grid') {
+					return { item, position, kind: 'grid', icon: 'ViewDashboardOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Page with widgets'), description: n('tables', '%n widget', '%n widgets', view.grid?.widgets?.length ?? 0), view }
+				}
+				const table = view ? this.tables.find(table => table.id === view.tableId) : null
+				return { item, position, kind: 'view', icon: 'TableIcon', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'View'), description: view ? (table ? t('tables', 'View of {table}', { table: table.title }) : view.title) : t('tables', 'Not accessible to you'), view }
 			})
+		},
+		filteredPages() {
+			const query = this.pageFilter.trim().toLowerCase()
+			if (query === '') {
+				return this.pages
+			}
+			return this.pages.filter(page => page.item.label.toLowerCase().includes(query) || page.description.toLowerCase().includes(query) || page.typeLabel.toLowerCase().includes(query))
+		},
+		/**
+		 * Every table the application touches: through its own nodes, through a page that shows a
+		 * table or a view, and through a widget that shows one. Keyed by table id, with who uses it.
+		 */
+		usedTables() {
+			const uses = new Map()
+			const add = (tableId, usedBy) => {
+				if (!tableId) {
+					return
+				}
+				const entry = uses.get(tableId) ?? { id: tableId, usedBy: [] }
+				if (!entry.usedBy.includes(usedBy)) {
+					entry.usedBy.push(usedBy)
+				}
+				uses.set(tableId, entry)
+			}
+			for (const node of Object.values(this.activeContext?.nodes ?? {})) {
+				const nodeType = parseInt(node.node_type)
+				if (nodeType === NODE_TYPE_TABLE) {
+					add(node.node_id, t('tables', 'Application'))
+				} else if (nodeType === NODE_TYPE_VIEW) {
+					add(this.views.find(view => view.id === node.node_id)?.tableId, t('tables', 'Application'))
+				}
+			}
+			for (const page of this.pages) {
+				if (page.kind === 'table') {
+					add(page.item.targetId, page.item.label)
+				} else if (page.kind === 'view') {
+					add(page.view?.tableId, page.item.label)
+				} else if (page.kind === 'grid') {
+					for (const widget of page.view?.grid?.widgets ?? []) {
+						const target = widget.content?.target
+						if (!target) {
+							continue
+						}
+						const tableId = target.type === 'table' ? target.id : this.views.find(view => view.id === target.id)?.tableId
+						add(tableId, page.item.label)
+					}
+				}
+			}
+			return [...uses.values()].map(entry => ({
+				...entry,
+				table: this.tables.find(table => table.id === entry.id) ?? null,
+				viewCount: this.views.filter(view => view.tableId === entry.id && view.type !== 'grid').length,
+			})).sort((a, b) => (a.table?.title ?? '').localeCompare(b.table?.title ?? ''))
+		},
+		members() {
+			const owner = this.activeContext?.owner
+			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: this.activeContext.ownerDisplayName ?? owner, role: t('tables', 'Owner') }] : []
+			for (const share of Object.values(this.activeContext?.sharing ?? {})) {
+				if (share.receiver === owner && share.receiver_type === 'user') {
+					continue
+				}
+				list.push({ key: 'share-' + share.share_id, type: share.receiver_type, id: share.receiver, name: share.receiver_display_name ?? share.receiver, role: share.receiver_type === 'user' ? t('tables', 'Member') : t('tables', 'Group') })
+			}
+			return list
+		},
+		stats() {
+			return [
+				{ value: this.pages.length, label: n('tables', 'page', 'pages', this.pages.length) },
+				{ value: this.usedTables.length, label: n('tables', 'table', 'tables', this.usedTables.length) },
+				{ value: this.members.length, label: n('tables', 'member', 'members', this.members.length) },
+			]
 		},
 		selectedMenuItem() {
 			const technicalName = this.$route.params.itemName
@@ -454,12 +699,6 @@ export default {
 	},
 
 	async mounted() {
-		// inside Tables the application page wants the room; opened on its own, the navigation is the menu
-		if (!this.isStandalone) {
-			emit('toggle-navigation', {
-				open: false,
-			})
-		}
 		this.subscribeToEventBus('tables:view:grid-created', this.onGridViewCreated)
 		await this.reload()
 	},
@@ -469,6 +708,36 @@ export default {
 		...mapActions(useDataStore, ['loadColumnsFromBE', 'loadRowsFromBE', 'loadRelationsFromBE']),
 		getGridCellStyle,
 		menuItemRoute,
+		async copyAddress() {
+			try {
+				await navigator.clipboard.writeText(this.applicationUrl)
+				showSuccess(t('tables', 'Address copied'))
+			} catch (e) {
+				showError(t('tables', 'The address could not be copied. Select it and copy it yourself.'))
+			}
+		},
+		importScheme() {
+			emit('tables:context:import-scheme', this.activeContext.id)
+		},
+		transferApplication() {
+			emit('tables:context:transfer', this.activeContext)
+		},
+		deleteApplication() {
+			emit('tables:context:delete', this.activeContext)
+		},
+		/**
+		 * Opens the menu editor, with a fresh item of the given kind appended when asked for.
+		 *
+		 * @param {string|null} appendKind 'table' or 'url' to start a new entry of that kind
+		 */
+		editMenu(appendKind = null) {
+			const items = toEditableMenuItems(this.menuItems)
+			if (appendKind !== null) {
+				items.push({ key: 'new-' + Date.now(), label: '', icon: null, targetType: appendKind, targetId: null, url: '', technicalName: null })
+			}
+			this.menuDraft = items
+			this.$nextTick(() => document.querySelector('[data-cy="context-menu-editor"]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+		},
 		editApplication() {
 			emit('tables:context:edit', this.activeContext.id)
 		},
@@ -743,107 +1012,262 @@ export default {
 
 <style scoped lang="scss">
 .context {
-	.row.first-row {
+	// the header stays put while the sections scroll
+	&__header,
+	&__breadcrumb {
 		position: sticky;
-		inset-inline-start: 0;
 		top: 0;
 		z-index: 15;
 		background-color: var(--color-main-background);
-		width: var(--app-content-width, 100%);
+	}
+
+	&__header {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: calc(3 * var(--default-grid-baseline, 4px));
+		padding: calc(4 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+	}
+
+	&__identity {
+		display: flex;
+		align-items: flex-start;
+		gap: calc(3 * var(--default-grid-baseline, 4px));
+		min-width: 0;
+		flex: 1 1 320px;
+	}
+
+	&__icon {
+		flex-shrink: 0;
+		margin-top: calc(1 * var(--default-grid-baseline, 4px));
+	}
+
+	&__identity-text {
+		min-width: 0;
 	}
 
 	&__title {
-		display: inline-flex;
+		margin: 0;
+		font-size: 26px;
+		font-weight: bold;
+		line-height: 1.2;
+		overflow-wrap: anywhere;
 	}
 
-	&__edit-actions {
+	&__description {
+		margin: calc(1 * var(--default-grid-baseline, 4px)) 0 0;
+		max-width: 70ch;
+	}
+
+	&__address-row {
 		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: calc(2 * var(--default-grid-baseline, 4px));
-		margin-inline-start: auto;
-		padding-inline-end: calc(4 * var(--default-grid-baseline, 4px));
-	}
-
-	// on a narrow screen the actions drop below the title instead of pushing it off screen
-	.row.first-row {
-		flex-wrap: wrap;
-		row-gap: calc(2 * var(--default-grid-baseline, 4px));
-	}
-
-	&__menu {
-		display: flex;
-		flex-wrap: wrap;
-		gap: calc(2 * var(--default-grid-baseline, 4px));
-		padding: 0 calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
-		border-bottom: 1px solid var(--color-border);
-	}
-
-	&__menu-item {
-		display: inline-flex;
 		align-items: center;
 		gap: calc(1 * var(--default-grid-baseline, 4px));
-		padding: calc(2 * var(--default-grid-baseline, 4px)) calc(3 * var(--default-grid-baseline, 4px));
-		border-radius: var(--border-radius-element, var(--border-radius-pill));
-		color: inherit;
-		text-decoration: none;
-		font-weight: bold;
-
-		&:hover,
-		&:focus-visible {
-			background-color: var(--color-background-hover);
-		}
-
-		&--active {
-			background-color: var(--color-primary-element-light);
-			color: var(--color-primary-element-light-text);
-		}
+		margin-top: calc(1 * var(--default-grid-baseline, 4px));
+		min-width: 0;
 	}
 
 	&__address {
-		display: block;
-		margin-top: calc(1 * var(--default-grid-baseline, 4px));
 		color: var(--color-text-maxcontrast);
 		font-family: monospace;
 		font-size: 0.9em;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
+
+		&:hover,
+		&:focus-visible {
+			text-decoration: underline;
+		}
+	}
+
+	&__header-actions {
+		display: flex;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline, 4px));
+		flex-shrink: 0;
+	}
+
+	&__delete-action :deep(.action-button__text) {
+		color: var(--color-error);
+	}
+
+	&__breadcrumb {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline, 4px));
+		padding: calc(2 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	&__breadcrumb-separator {
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__breadcrumb-current {
+		font-weight: bold;
+	}
+
+	&__breadcrumb-open {
+		margin-inline-start: auto;
+	}
+
+	&__stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(4 * var(--default-grid-baseline, 4px));
+		margin: 0;
+		padding: 0 calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		color: var(--color-text-maxcontrast);
+		border-bottom: 1px solid var(--color-border);
+	}
+
+	&__stat b {
+		color: var(--color-main-text);
+		font-variant-numeric: tabular-nums;
 	}
 
 	&__section {
-		padding: calc(2 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px));
+		padding: calc(5 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		max-width: 1100px;
 	}
 
 	&__section-header {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		justify-content: space-between;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
 
 		h2 {
 			margin: 0;
-			font-size: 18px;
+			font-size: 20px;
 			font-weight: bold;
 		}
 	}
 
 	&__section-actions {
 		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
+	}
+
+	&__section-help {
+		margin: calc(1 * var(--default-grid-baseline, 4px)) 0 calc(3 * var(--default-grid-baseline, 4px));
+		color: var(--color-text-maxcontrast);
+		max-width: 70ch;
+	}
+
+	&__filter {
+		max-width: 260px;
 	}
 
 	&__hint {
 		color: var(--color-text-maxcontrast);
 	}
 
-	&__cards {
-		display: grid;
-		grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-		gap: calc(3 * var(--default-grid-baseline, 4px));
-		margin-top: calc(2 * var(--default-grid-baseline, 4px));
-		list-style: none;
+	&__table-wrap {
+		overflow-x: auto;
+		border: 1px solid var(--color-border);
+		border-radius: var(--border-radius-large);
+	}
+
+	&__table {
+		width: 100%;
+		border-collapse: collapse;
+
+		th,
+		td {
+			text-align: start;
+			padding: calc(2 * var(--default-grid-baseline, 4px)) calc(3 * var(--default-grid-baseline, 4px));
+			vertical-align: middle;
+		}
+
+		thead th {
+			background-color: var(--color-background-dark);
+			color: var(--color-text-maxcontrast);
+			font-weight: 500;
+			white-space: nowrap;
+		}
+
+		tbody tr {
+			border-top: 1px solid var(--color-border);
+
+			&:hover {
+				background-color: var(--color-background-hover);
+			}
+		}
+	}
+
+	&__col-position {
+		width: 1%;
+		color: var(--color-text-maxcontrast);
+		font-variant-numeric: tabular-nums;
+		text-align: end;
+	}
+
+	&__col-number {
+		width: 1%;
+		text-align: end;
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+
+	&__col-actions {
+		width: 1%;
+		white-space: nowrap;
+		text-align: end;
 	}
 
 	&__menu-preview {
-		margin: calc(2 * var(--default-grid-baseline, 4px)) 0 0 calc(5 * var(--default-grid-baseline, 4px));
+		margin: 0;
+		padding-inline-start: calc(6 * var(--default-grid-baseline, 4px));
+	}
+
+	&__menu-preview-item {
+		display: flex;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline, 4px));
+		padding: calc(1 * var(--default-grid-baseline, 4px)) 0;
+	}
+
+	&__menu-preview-target {
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__members {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(2 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px));
+		list-style: none;
+		margin: 0;
+		padding: 0;
+	}
+
+	&__member {
+		display: flex;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline, 4px));
+		min-width: 200px;
+	}
+
+	&__member-group {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background-color: var(--color-background-dark);
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__member-role {
+		color: var(--color-text-maxcontrast);
 	}
 
 	&__layout-toolbar {
@@ -862,15 +1286,60 @@ export default {
 		}
 	}
 
-	&__description {
-		margin: calc(3 * var(--default-grid-baseline, 4px));
-		max-width: 790px;
-		margin-inline-start: 32px;
-	}
-
 	&:deep(.icon-vue) {
 		min-width: 32px;
 		min-height: 32px;
+	}
+}
+
+.page-row {
+	&__name {
+		display: flex;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline, 4px));
+		min-width: 180px;
+	}
+
+	&__icon {
+		flex-shrink: 0;
+		color: var(--color-primary-element);
+	}
+
+	&__emoji {
+		width: 20px;
+		text-align: center;
+	}
+
+	&__link {
+		font-weight: bold;
+		color: inherit;
+
+		&:hover,
+		&:focus-visible {
+			text-decoration: underline;
+		}
+	}
+
+	&__shows {
+		color: var(--color-text-maxcontrast);
+		max-width: 36ch;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+}
+
+@media (max-width: 700px) {
+	// the header and the breadcrumb keep clear of the navigation toggle that floats at the top left
+	.context__stats,
+	.context__section,
+	.context__layout-toolbar {
+		padding-inline-start: calc(4 * var(--default-grid-baseline, 4px));
+	}
+
+	.context__header-actions {
+		width: 100%;
+		justify-content: flex-start;
 	}
 }
 
@@ -963,47 +1432,6 @@ export default {
 :deep(h1) {
 	font-size: unset;
 	font-size: revert;
-}
-
-.page-card {
-	display: flex;
-	align-items: center;
-	gap: calc(3 * var(--default-grid-baseline, 4px));
-	padding: calc(3 * var(--default-grid-baseline, 4px));
-	border: 1px solid var(--color-border);
-	border-radius: var(--border-radius-large);
-	background-color: var(--color-main-background);
-
-	&__icon {
-		flex-shrink: 0;
-		color: var(--color-primary-element);
-	}
-
-	&__text {
-		flex: 1;
-		min-width: 0;
-	}
-
-	&__title {
-		margin: 0;
-		font-size: var(--default-font-size);
-		font-weight: bold;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	&__meta {
-		margin: 0;
-		color: var(--color-text-maxcontrast);
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
-	}
-
-	&__actions {
-		flex-shrink: 0;
-	}
 }
 
 .context--standalone {
