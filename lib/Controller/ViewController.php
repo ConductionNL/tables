@@ -15,7 +15,6 @@ use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
 use OCA\Tables\Model\ViewUpdateInput;
-use OCA\Tables\Service\GridWidgetTypes;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
 use OCP\AppFramework\Controller;
@@ -59,22 +58,6 @@ class ViewController extends Controller {
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, type: Application::NODE_TYPE_TABLE, idParam: 'tableId')]
 	public function create(int $tableId, string $title, ?string $emoji): DataResponse {
 		return $this->handleError(fn () => $this->service->create($title, $emoji, $this->getTable($tableId, true)));
-	}
-
-	/**
-	 * The widget types a grid view can hold, with the schema the configuration form renders.
-	 */
-	#[NoAdminRequired]
-	public function widgetTypes(): DataResponse {
-		return new DataResponse(array_values(GridWidgetTypes::all()));
-	}
-
-	/**
-	 * Create a view that is not bound to a table, such as a grid view.
-	 */
-	#[NoAdminRequired]
-	public function createStandalone(string $title, ?string $emoji = null, string $type = 'grid', ?string $technicalName = null, string $description = ''): DataResponse {
-		return $this->handleError(fn () => $this->service->create($title, $emoji, null, $this->userId, $technicalName, null, $type, $description));
 	}
 
 	#[NoAdminRequired]

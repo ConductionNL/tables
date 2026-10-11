@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Tables\Model;
 
 use Generator;
+use InvalidArgumentException;
 use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Constants\ViewUpdatableParameters;
 use OCA\Tables\Service\ValueObject\Emoji;
@@ -110,9 +111,35 @@ class ViewUpdateInput {
 			filterSet: isset($data['filter']) ? FilterSet::createFromInputArray($data['filter'], $columnsMap) : null,
 			sortRuleSet: isset($data['sort']) ? SortRuleSet::createFromInputArray($data['sort'], $columnsMap) : null,
 			sidebarOrder: (array_key_exists('sidebarOrder', $data) && $data['sidebarOrder'] !== null) ? (int)$data['sidebarOrder'] : null,
-			type: isset($data['type']) ? (string)$data['type'] : null,
-			grid: (isset($data['grid']) && is_array($data['grid'])) ? $data['grid'] : null,
+			type: self::optionalString($data, 'type'),
+			grid: self::optionalArray($data, 'grid'),
 		);
+	}
+
+	/**
+	 * @throws InvalidArgumentException
+	 */
+	private static function optionalString(array $data, string $key): ?string {
+		if (!isset($data[$key])) {
+			return null;
+		}
+		if (!is_string($data[$key])) {
+			throw new InvalidArgumentException('The view property "' . $key . '" must be a string.');
+		}
+		return $data[$key];
+	}
+
+	/**
+	 * @throws InvalidArgumentException
+	 */
+	private static function optionalArray(array $data, string $key): ?array {
+		if (!isset($data[$key])) {
+			return null;
+		}
+		if (!is_array($data[$key])) {
+			throw new InvalidArgumentException('The view property "' . $key . '" must be an object.');
+		}
+		return $data[$key];
 	}
 
 	protected static function transformJsonToArrayInPayload(array $input, array $keys): array {

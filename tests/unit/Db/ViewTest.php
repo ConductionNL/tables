@@ -25,18 +25,25 @@ class ViewTest extends TestCase {
 		$view = new View();
 		$view->setGrid(json_encode(['widgets' => 'oops', 'layout' => [['widgetId' => 'w-1']], 'extra' => true]));
 
-		$this->assertSame(['widgets' => [], 'layout' => [['widgetId' => 'w-1']]], $view->getGridArray());
+		$this->assertSame(['widgets' => [], 'layout' => [['widgetId' => 'w-1', 'id' => 'w-1']]], $view->getGridArray());
 	}
 
 	public function testGridArrayRoundTrips(): void {
 		$grid = [
 			'widgets' => [['id' => 'w-1', 'type' => 'header', 'configuration' => ['title' => 'Hi', 'showTitle' => false], 'content' => ['title' => 'Hi']]],
-			'layout' => [['id' => 1, 'widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2]],
+			'layout' => [['id' => 'w-1', 'widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2]],
 		];
 		$view = new View();
 		$view->setGridArray($grid);
 
 		$this->assertSame($grid, $view->getGridArray());
+	}
+
+	public function testGridArrayIdentifiesLayoutItemsSavedWithANumberByTheirWidget(): void {
+		$view = new View();
+		$view->setGridArray(['widgets' => [], 'layout' => [['id' => 1, 'widgetId' => 'w-1', 'gridX' => 0], ['gridX' => 0]]]);
+
+		$this->assertSame([['id' => 'w-1', 'widgetId' => 'w-1', 'gridX' => 0]], $view->getGridArray()['layout']);
 	}
 
 	public function testGridArrayUpgradesWidgetsSavedBeforeTheConfiguration(): void {
