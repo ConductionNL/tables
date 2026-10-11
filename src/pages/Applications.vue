@@ -97,9 +97,8 @@ export default {
 
 		h1 {
 			// leave room for the navigation toggle that floats over the top left corner of the content
-			margin: 0 0 0 var(--default-clickable-area, 44px);
-			font-size: 24px;
-			font-weight: bold;
+			margin: 0;
+			margin-inline-start: var(--default-clickable-area, 44px);
 		}
 	}
 
