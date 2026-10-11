@@ -42,23 +42,28 @@
 				label="label"
 				@update:model-value="option => set(name, option ? { type: option.targetType, id: option.targetId } : null)" />
 			<div v-else-if="property.type === 'color'" class="schema-form__color">
-				<label>
-					{{ label(property) }}
-					<input :value="value(name) || '#000000'" type="color" @input="event => set(name, event.target.value)">
-				</label>
-				<NcButton v-if="value(name)" variant="tertiary" @click="set(name, '')">
-					{{ t('tables', 'Use theme color') }}
-				</NcButton>
-				<span v-else class="schema-form__hint">{{ t('tables', 'Theme color') }}</span>
+				<NcColorPicker :model-value="colorValue(name)"
+					advanced-fields
+					clearable
+					@update:model-value="color => set(name, color ?? '')">
+					<NcButton variant="secondary">
+						<template #icon>
+							<span class="schema-form__swatch" :style="{ backgroundColor: colorValue(name) ?? 'var(--color-primary-element-light)' }" />
+						</template>
+						{{ label(property) }}
+					</NcButton>
+				</NcColorPicker>
+				<span class="schema-form__hint">{{ colorValue(name) ?? t('tables', 'Theme color') }}</span>
 			</div>
 		</div>
 	</div>
 </template>
 
 <script>
-import { NcButton, NcCheckboxRadioSwitch, NcSelect, NcTextArea, NcTextField } from '@nextcloud/vue'
+import { NcButton, NcCheckboxRadioSwitch, NcColorPicker, NcSelect, NcTextArea, NcTextField } from '@nextcloud/vue'
 import { mapState } from 'pinia'
 import { useTablesStore } from '../../store/store.js'
+import { isHexColor } from '../../shared/utils/gridColors.js'
 
 /**
  * Renders the configuration form of a widget from the schema of its type, so a
@@ -69,6 +74,7 @@ export default {
 	components: {
 		NcButton,
 		NcCheckboxRadioSwitch,
+		NcColorPicker,
 		NcSelect,
 		NcTextArea,
 		NcTextField,
@@ -112,7 +118,14 @@ export default {
 			this.$emit('update:modelValue', { ...this.modelValue, [name]: value })
 		},
 		label(property) {
-			return t('tables', property.title)
+			return property.title
+		},
+		/**
+		 * @param {string} name property name
+		 * @return {string|undefined} the stored color, or undefined for the theme color
+		 */
+		colorValue(name) {
+			return isHexColor(this.value(name)) ? this.value(name) : undefined
 		},
 		enumOption(property, value) {
 			return property.options.find(option => option.value === value) ?? property.options.find(option => option.value === property.default) ?? null
@@ -143,12 +156,14 @@ export default {
 		display: flex;
 		align-items: center;
 		gap: calc(3 * var(--default-grid-baseline, 4px));
+	}
 
-		label {
-			display: inline-flex;
-			align-items: center;
-			gap: calc(2 * var(--default-grid-baseline, 4px));
-		}
+	&__swatch {
+		display: inline-block;
+		width: calc(5 * var(--default-grid-baseline, 4px));
+		height: calc(5 * var(--default-grid-baseline, 4px));
+		border: 1px solid var(--color-border-dark);
+		border-radius: var(--border-radius);
 	}
 
 	&__hint {

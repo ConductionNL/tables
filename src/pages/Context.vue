@@ -394,6 +394,7 @@
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
 import { NcActionButton, NcActionRadio, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 import AccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
@@ -441,6 +442,7 @@ export default {
 		NcButton,
 		NcEmptyContent,
 		NcIconSvgWrapper,
+		AlertCircleOutline,
 		NcTextField,
 		AccountMultipleOutline,
 		ChevronLeft,
@@ -506,7 +508,9 @@ export default {
 			return this.standaloneContextId !== null
 		},
 		applicationUrl() {
-			return window.location.origin + generateUrl('/apps/tables/app/' + (this.activeContext?.technicalName || this.activeContext?.id))
+			// technical names are unique per owner only, so an application of someone else is addressed by id
+			const technicalName = this.activeContext && this.ownsContext(this.activeContext) ? this.activeContext.technicalName : null
+			return window.location.origin + generateUrl('/apps/tables/app/' + (technicalName || this.activeContext?.id))
 		},
 		/**
 		 * The menu target is loaded once; a view the store has since updated, after a save of its
@@ -524,6 +528,9 @@ export default {
 				const position = index + 1
 				if (item.targetType === 'url') {
 					return { item, position, kind: 'url', icon: 'LinkVariant', route: null, typeLabel: t('tables', 'Link'), description: item.url, view: null }
+				}
+				if (item.broken) {
+					return { item, position, kind: 'broken', icon: 'AlertCircleOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Missing'), description: t('tables', 'The view or table this entry opened no longer exists'), view: null }
 				}
 				if (item.targetType === 'table') {
 					const table = this.tables.find(table => table.id === item.targetId)
@@ -921,7 +928,8 @@ export default {
 								} else if (nodeType === NODE_TYPE_VIEW) {
 									await this.loadContextView({ id: node.node_id })
 									const view = this.views.find(view => view.id === node.node_id)
-									if (view) {
+									// a grid view has no rows; it is a page, reached through the menu
+									if (view && view.type !== 'grid') {
 										await this.loadColumnsFromBE({
 											view,
 										})
@@ -1071,7 +1079,6 @@ export default {
 	&__address {
 		color: var(--color-text-maxcontrast);
 		font-family: monospace;
-		font-size: 0.9em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -1144,8 +1151,6 @@ export default {
 
 		h2 {
 			margin: 0;
-			font-size: 20px;
-			font-weight: bold;
 		}
 	}
 
@@ -1412,20 +1417,9 @@ export default {
 		padding-inline-start: calc(4 * var(--default-grid-baseline, 4px));
 	}
 
-	// Table look shared with OpenRegister: muted header band and horizontal row lines only
+	// the sticky table header sticks to the top of its card, not below the page header
 	&:deep(table thead) {
 		top: 0;
-	}
-
-	&:deep(table thead tr th) {
-		background-color: var(--color-background-dark);
-		font-weight: 500;
-	}
-
-	&:deep(table tbody td) {
-		border: none;
-		border-bottom: 1px solid var(--color-border);
-		padding-block: calc(3 * var(--default-grid-baseline, 4px));
 	}
 }
 

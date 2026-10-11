@@ -34,6 +34,7 @@ class ApiViewsController extends AOCSController {
 		IL10N $n,
 		string $userId,
 		private readonly ViewService $viewService,
+		private readonly GridWidgetTypes $gridWidgetTypes,
 	) {
 		parent::__construct($request, $logger, $n, $userId);
 	}
@@ -49,7 +50,7 @@ class ApiViewsController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	public function widgetTypes(): DataResponse {
-		return new DataResponse(array_values(GridWidgetTypes::all()));
+		return new DataResponse(array_values($this->gridWidgetTypes->all()));
 	}
 
 	/**

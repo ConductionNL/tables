@@ -16,6 +16,9 @@
 <script>
 import { isHexColor } from '../../../shared/utils/gridColors.js'
 
+// stored values say left and right; rendered as start and end so they follow the reading direction
+const TEXT_ALIGN = { left: 'start', center: 'center', right: 'end' }
+
 export default {
 	name: 'HeaderWidget',
 	props: {
@@ -27,7 +30,7 @@ export default {
 	computed: {
 		style() {
 			const style = {
-				textAlign: ['left', 'center', 'right'].includes(this.content.textAlign) ? this.content.textAlign : 'left',
+				textAlign: TEXT_ALIGN[this.content.textAlign] ?? 'start',
 			}
 			if (isHexColor(this.content.backgroundColor)) {
 				style.backgroundColor = this.content.backgroundColor
@@ -53,9 +56,6 @@ export default {
 
 	&__title {
 		margin: 0;
-		font-size: 24px;
-		font-weight: bold;
-		line-height: 1.3;
 	}
 
 	&__subtitle {

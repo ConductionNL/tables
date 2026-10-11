@@ -84,7 +84,7 @@ export default {
 	computed: {
 		...mapState(useTablesStore, ['widgetTypes']),
 		typeOptions() {
-			return this.widgetTypes.map(widgetType => ({ id: widgetType.type, label: t('tables', widgetType.title) }))
+			return this.widgetTypes.map(widgetType => ({ id: widgetType.type, label: widgetType.title }))
 		},
 		widgetType() {
 			return findWidgetType(this.widgetTypes, this.selectedType?.id)
@@ -135,7 +135,7 @@ export default {
 			}
 			this.$emit('submit', {
 				type: this.widgetType.type,
-				configuration: { title: this.title.trim() || t('tables', this.widgetType.title), showTitle: this.showTitle },
+				configuration: { title: this.title.trim() || this.widgetType.title, showTitle: this.showTitle },
 				content: JSON.parse(JSON.stringify(this.content)),
 			})
 		},

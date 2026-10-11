@@ -58,4 +58,10 @@ final class ContextSchemeTest extends TestCase {
 		$this->expectExceptionMessage('menuItems');
 		ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'menuItems' => 'home']);
 	}
+
+	public function testCreateFromInputRejectsAnIconThatIsNotAString(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('"icon" must be a string');
+		ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'icon' => 7]);
+	}
 }
