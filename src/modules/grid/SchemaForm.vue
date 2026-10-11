@@ -6,10 +6,12 @@
 	<div class="schema-form">
 		<div v-for="(property, name) in properties" :key="name" class="schema-form__field" :data-cy="'widgetField-' + name">
 			<NcTextField v-if="property.type === 'string'"
+				class="schema-form__input"
 				:model-value="value(name)"
 				:label="label(property)"
 				@update:model-value="text => set(name, text)" />
 			<NcTextArea v-else-if="property.type === 'text'"
+				class="schema-form__input"
 				:model-value="value(name)"
 				:label="label(property)"
 				:placeholder="t('tables', 'Leave an empty line between paragraphs')"
@@ -17,6 +19,7 @@
 				rows="6"
 				@update:model-value="text => set(name, text)" />
 			<NcTextField v-else-if="property.type === 'integer'"
+				class="schema-form__input"
 				:model-value="String(value(name) ?? '')"
 				:label="label(property)"
 				type="number"
@@ -27,6 +30,7 @@
 				{{ label(property) }}
 			</NcCheckboxRadioSwitch>
 			<NcSelect v-else-if="property.type === 'enum'"
+				class="schema-form__input"
 				:model-value="enumOption(property, value(name))"
 				:input-label="label(property)"
 				:options="property.options"
@@ -34,6 +38,7 @@
 				label="label"
 				@update:model-value="option => set(name, option?.value ?? property.default)" />
 			<NcSelect v-else-if="property.type === 'target'"
+				class="schema-form__input"
 				:model-value="targetOption(value(name))"
 				:input-label="label(property)"
 				:options="targetOptions"
@@ -144,12 +149,10 @@ export default {
 .schema-form {
 	&__field {
 		margin-top: calc(2 * var(--default-grid-baseline, 4px));
+	}
 
-		> :deep(.v-select),
-		> :deep(.input-field),
-		> :deep(.textarea) {
-			width: 100%;
-		}
+	&__input {
+		width: 100%;
 	}
 
 	&__color {

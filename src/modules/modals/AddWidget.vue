@@ -11,6 +11,7 @@
 		<div class="modal__content">
 			<div class="row space-T">
 				<NcSelect v-model="selectedType"
+					class="add-widget__input"
 					:input-label="t('tables', 'Widget type')"
 					:options="typeOptions"
 					:clearable="false"
@@ -20,7 +21,7 @@
 			</div>
 
 			<div class="row space-T">
-				<NcTextField v-model="title" :label="t('tables', 'Widget title')" data-cy="addWidgetTitle" />
+				<NcTextField v-model="title" class="add-widget__input" :label="t('tables', 'Widget title')" data-cy="addWidgetTitle" />
 			</div>
 			<div class="row">
 				<NcCheckboxRadioSwitch v-model="showTitle" data-cy="addWidgetShowTitle">
@@ -147,8 +148,7 @@ export default {
 .modal__content {
 	padding-inline-end: 0 !important;
 
-	.row > :deep(.v-select),
-	.row > :deep(.input-field) {
+	.add-widget__input {
 		width: 100%;
 	}
 }

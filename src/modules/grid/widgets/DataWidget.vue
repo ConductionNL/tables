@@ -4,7 +4,7 @@
 -->
 <template>
 	<div class="data-widget">
-		<div v-if="loading" class="icon-loading" />
+		<NcLoadingIcon v-if="loading" :size="32" class="data-widget__loading" />
 		<p v-else-if="!element" class="data-widget__empty">
 			{{ t('tables', 'Pick a table or view in the widget settings') }}
 		</p>
@@ -30,6 +30,7 @@
 </template>
 
 <script>
+import { NcLoadingIcon } from '@nextcloud/vue'
 import { mapActions, mapState, storeToRefs } from 'pinia'
 import { emit } from '@nextcloud/event-bus'
 import TableWrapper from '../../main/sections/TableWrapper.vue'
@@ -43,6 +44,7 @@ import { useDataStore } from '../../../store/data.js'
 export default {
 	name: 'DataWidget',
 	components: {
+		NcLoadingIcon,
 		TableWrapper,
 		CustomView,
 	},
@@ -150,6 +152,10 @@ export default {
 .data-widget {
 	height: 100%;
 	overflow: auto;
+
+	&__loading {
+		margin: calc(4 * var(--default-grid-baseline, 4px)) auto;
+	}
 
 	&__empty {
 		padding: calc(3 * var(--default-grid-baseline, 4px));
