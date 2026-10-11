@@ -11,13 +11,13 @@ namespace OCA\Tables\Controller;
 use InvalidArgumentException;
 use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Db\Context;
-use OCA\Tables\Db\MenuItem;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
 use OCA\Tables\Model\ContextScheme;
+use OCA\Tables\Model\MenuItemInput;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\ColumnService;
 use OCA\Tables\Service\ContextService;
@@ -103,7 +103,7 @@ class ContextController extends AOCSController {
 	 * @param string $description Descriptive text of the context
 	 * @psalm-param list<array{id: int, type: int, permissions?: int}> $nodes optional nodes to be connected to this context
 	 * @param ?string $technicalName technical name of the context
-	 * @psalm-param ?list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, technicalName?: string|null, parentIndex?: int|null}> $menuItems optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN, array{message: string}, array{}>
 	 *
@@ -125,14 +125,14 @@ class ContextController extends AOCSController {
 				$this->userId,
 				0,
 				$technicalName,
-				$menuItems !== null ? $this->sanitizeInputMenuItems($menuItems) : null,
+				$menuItems !== null ? MenuItemInput::createListFromInputArray($menuItems) : null,
 			)->jsonSerialize());
 		} catch (Exception $e) {
 			return $this->handleError($e);
 		} catch (PermissionError $e) {
 			return $this->handlePermissionError($e);
 		} catch (InvalidArgumentException $e) {
-			return $this->handleError(new InternalError($e->getMessage(), $e->getCode(), $e));
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
 		}
 	}
 
@@ -145,7 +145,7 @@ class ContextController extends AOCSController {
 	 * @param ?string $description provide this parameter to set a new description
 	 * @param ?array{id: int, type: int, permissions: int, order: int} $nodes provide this parameter to set a new list of nodes.
 	 * @param ?string $technicalName provide this parameter to set a new technical name
-	 * @psalm-param ?list<array{label: string, icon?: string|null, targetType: string, targetId?: int|null, url?: string|null, technicalName?: string|null, parentIndex?: int|null}> $menuItems provide this parameter to replace the menu; parentIndex is the position of the parent item, for one level of nesting
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems provide this parameter to replace the menu; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -171,7 +171,7 @@ class ContextController extends AOCSController {
 				$description,
 				$nodes,
 				$technicalName,
-				$menuItems !== null ? $this->sanitizeInputMenuItems($menuItems) : null,
+				$menuItems !== null ? MenuItemInput::createListFromInputArray($menuItems) : null,
 			)->jsonSerialize());
 		} catch (Exception|MultipleObjectsReturnedException $e) {
 			return $this->handleError($e);
@@ -179,49 +179,9 @@ class ContextController extends AOCSController {
 			return $this->handlePermissionError($e);
 		} catch (DoesNotExistException $e) {
 			return $this->handleNotFoundError(new NotFoundError($e->getMessage(), $e->getCode(), $e));
+		} catch (InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
 		}
-	}
-
-	/**
-	 * @psalm-return list<array{label: string, icon: string|null, targetType: string, targetId: int|null, url: string|null, technicalName: string|null, parentIndex: int|null}>
-	 * @throws InvalidArgumentException
-	 */
-	protected function sanitizeInputMenuItems(array $menuItems): array {
-		$sanitized = [];
-		$items = array_values($menuItems);
-		foreach ($items as $index => $item) {
-			if (!is_array($item) || !isset($item['label']) || trim((string)$item['label']) === '') {
-				throw new InvalidArgumentException('A menu item needs a label');
-			}
-			$parentIndex = null;
-			if (isset($item['parentIndex']) && $item['parentIndex'] !== '') {
-				if (!is_numeric($item['parentIndex'])) {
-					throw new InvalidArgumentException('A menu item\'s parent is given as the position of the parent in the menu');
-				}
-				$parentIndex = (int)$item['parentIndex'];
-				$parent = $items[$parentIndex] ?? null;
-				if ($parentIndex === $index || !is_array($parent) || (isset($parent['parentIndex']) && $parent['parentIndex'] !== '' && $parent['parentIndex'] !== null)) {
-					throw new InvalidArgumentException('A menu item can only sit under a top-level item of the same menu');
-				}
-			}
-			$targetType = (string)($item['targetType'] ?? MenuItem::TARGET_URL);
-			if (!in_array($targetType, MenuItem::TARGET_TYPES, true)) {
-				throw new InvalidArgumentException('Unexpected menu item target type');
-			}
-			if ($targetType !== MenuItem::TARGET_URL && !is_numeric($item['targetId'] ?? null)) {
-				throw new InvalidArgumentException('A menu item pointing at a ' . $targetType . ' needs its id');
-			}
-			$sanitized[] = [
-				'label' => (string)$item['label'],
-				'icon' => isset($item['icon']) ? (string)$item['icon'] : null,
-				'targetType' => $targetType,
-				'targetId' => $targetType === MenuItem::TARGET_URL ? null : (int)$item['targetId'],
-				'url' => $targetType === MenuItem::TARGET_URL ? (string)($item['url'] ?? '') : null,
-				'technicalName' => isset($item['technicalName']) ? (string)$item['technicalName'] : null,
-				'parentIndex' => $parentIndex,
-			];
-		}
-		return $sanitized;
 	}
 
 	/**
@@ -406,7 +366,7 @@ class ContextController extends AOCSController {
 	 * @param string $description Description of the context
 	 * @param list<array{node_type: int, node_uuid: string, permissions: int}> $nodes Ordered meta data of the related nodes
 	 * @param ?string $technicalName technical name of the context
-	 * @psalm-param list<array{label: string, icon?: string|null, targetType: string, targetUuid?: string|null, url?: string|null, technicalName?: string|null, parentTechnicalName?: string|null}> $menuItems Menu of the context, targets by uuid, parents by technical name
+	 * @psalm-param list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetUuid?: string, url?: string, technicalName?: string, parentTechnicalName?: string}> $menuItems Menu of the context, targets by uuid, parents by technical name
 	 * @psalm-param list<array<string, mixed>> $gridViews Views without a table that the menu points at
 	 * @psalm-param array{addTables: list<TablesTable>, modifyTables: list<TablesTable>} $tables Tables to be added or modified
 	 *

@@ -81,8 +81,8 @@
 					</div>
 				</header>
 				<p v-if="!selectedMenuItem" class="context__stats" data-cy="context-stats">
-					<span v-for="stat in stats" :key="stat.label" class="context__stat">
-						<b>{{ stat.value }}</b> {{ stat.label }}
+					<span v-for="stat in stats" :key="stat.key" class="context__stat">
+						{{ stat.label }}
 					</span>
 				</p>
 			</div>
@@ -157,13 +157,20 @@
 						<table class="context__table" data-cy="context-pages-table">
 							<thead>
 								<tr>
-									<th class="context__col-position">
-										{{ t('tables', '#') }}
+									<th scope="col" class="context__col-position">
+										<span aria-hidden="true">#</span>
+										<span class="hidden-visually">{{ t('tables', 'Position') }}</span>
 									</th>
-									<th>{{ t('tables', 'Page') }}</th>
-									<th>{{ t('tables', 'Type') }}</th>
-									<th>{{ t('tables', 'Shows') }}</th>
-									<th class="context__col-actions">
+									<th scope="col">
+										{{ t('tables', 'Page') }}
+									</th>
+									<th scope="col">
+										{{ t('tables', 'Type') }}
+									</th>
+									<th scope="col">
+										{{ t('tables', 'Shows') }}
+									</th>
+									<th scope="col" class="context__col-actions">
 										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
 									</th>
 								</tr>
@@ -257,15 +264,19 @@
 						<table class="context__table" data-cy="context-tables-table">
 							<thead>
 								<tr>
-									<th>{{ t('tables', 'Table') }}</th>
-									<th class="context__col-number">
+									<th scope="col">
+										{{ t('tables', 'Table') }}
+									</th>
+									<th scope="col" class="context__col-number">
 										{{ t('tables', 'Rows') }}
 									</th>
-									<th class="context__col-number">
+									<th scope="col" class="context__col-number">
 										{{ t('tables', 'Views') }}
 									</th>
-									<th>{{ t('tables', 'Used by') }}</th>
-									<th class="context__col-actions">
+									<th scope="col">
+										{{ t('tables', 'Used by') }}
+									</th>
+									<th scope="col" class="context__col-actions">
 										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
 									</th>
 								</tr>
@@ -299,10 +310,10 @@
 					</div>
 				</section>
 
-				<section class="context__section" data-cy="context-members">
+				<section v-if="ownsContext(activeContext)" class="context__section" data-cy="context-members">
 					<div class="context__section-header">
 						<h2>{{ t('tables', 'Members') }}</h2>
-						<NcButton v-if="ownsContext(activeContext)" variant="secondary" data-cy="context-edit-members" @click="editApplication">
+						<NcButton variant="secondary" data-cy="context-edit-members" @click="editApplication">
 							<template #icon>
 								<AccountMultipleOutline :size="20" />
 							</template>
@@ -396,6 +407,7 @@
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
 import { NcActionButton, NcActionRadio, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 import AccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
@@ -444,6 +456,7 @@ export default {
 		NcButton,
 		NcEmptyContent,
 		NcIconSvgWrapper,
+		AlertCircleOutline,
 		NcTextField,
 		AccountMultipleOutline,
 		ChevronLeft,
@@ -510,7 +523,9 @@ export default {
 			return this.standaloneContextId !== null
 		},
 		applicationUrl() {
-			return window.location.origin + generateUrl('/apps/tables/app/' + (this.activeContext?.technicalName || this.activeContext?.id))
+			// technical names are unique per owner only, so an application of someone else is addressed by id
+			const technicalName = this.activeContext && this.ownsContext(this.activeContext) ? this.activeContext.technicalName : null
+			return window.location.origin + generateUrl('/apps/tables/app/' + (technicalName || this.activeContext?.id))
 		},
 		/**
 		 * The menu target is loaded once; a view the store has since updated, after a save of its
@@ -532,6 +547,9 @@ export default {
 			return ordered.map(({ item, position, level }) => {
 				if (item.targetType === 'url') {
 					return { item, position, level, kind: 'url', icon: 'LinkVariant', route: null, typeLabel: t('tables', 'Link'), description: item.url, view: null }
+				}
+				if (item.broken) {
+					return { item, position, kind: 'broken', icon: 'AlertCircleOutline', route: menuItemRoute(item, this.activeContext.id), typeLabel: t('tables', 'Missing'), description: t('tables', 'The view or table this entry opened no longer exists'), view: null }
 				}
 				if (item.targetType === 'table') {
 					const table = this.tables.find(table => table.id === item.targetId)
@@ -568,8 +586,12 @@ export default {
 				}
 				uses.set(tableId, entry)
 			}
+			const menuTargets = new Set(this.menuItems.map(item => item.targetType + '-' + item.targetId))
 			for (const node of Object.values(this.activeContext?.nodes ?? {})) {
 				const nodeType = parseInt(node.node_type)
+				if (menuTargets.has((nodeType === NODE_TYPE_TABLE ? 'table-' : 'view-') + node.node_id)) {
+					continue
+				}
 				if (nodeType === NODE_TYPE_TABLE) {
 					add(node.node_id, t('tables', 'Application'))
 				} else if (nodeType === NODE_TYPE_VIEW) {
@@ -600,7 +622,9 @@ export default {
 		},
 		members() {
 			const owner = this.activeContext?.owner
-			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: this.activeContext.ownerDisplayName ?? owner, role: t('tables', 'Owner') }] : []
+			const currentUser = getCurrentUser()
+			const ownerName = owner === currentUser?.uid ? currentUser.displayName : owner
+			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: ownerName, role: t('tables', 'Owner') }] : []
 			for (const share of Object.values(this.activeContext?.sharing ?? {})) {
 				if (share.receiver === owner && share.receiver_type === 'user') {
 					continue
@@ -610,11 +634,15 @@ export default {
 			return list
 		},
 		stats() {
-			return [
-				{ value: this.pages.length, label: n('tables', 'page', 'pages', this.pages.length) },
-				{ value: this.usedTables.length, label: n('tables', 'table', 'tables', this.usedTables.length) },
-				{ value: this.members.length, label: n('tables', 'member', 'members', this.members.length) },
+			const stats = [
+				{ key: 'pages', label: n('tables', '%n page', '%n pages', this.pages.length) },
+				{ key: 'tables', label: n('tables', '%n table', '%n tables', this.usedTables.length) },
 			]
+			// only the owner sees every share; anyone else would see a partial count
+			if (this.ownsContext(this.activeContext)) {
+				stats.push({ key: 'members', label: n('tables', '%n member', '%n members', this.members.length) })
+			}
+			return stats
 		},
 		selectedMenuItem() {
 			const technicalName = this.$route.params.itemName
@@ -929,7 +957,8 @@ export default {
 								} else if (nodeType === NODE_TYPE_VIEW) {
 									await this.loadContextView({ id: node.node_id })
 									const view = this.views.find(view => view.id === node.node_id)
-									if (view) {
+									// a grid view has no rows; it is a page, reached through the menu
+									if (view && view.type !== 'grid') {
 										await this.loadColumnsFromBE({
 											view,
 										})
@@ -1035,7 +1064,8 @@ export default {
 		align-items: flex-start;
 		justify-content: space-between;
 		gap: calc(3 * var(--default-grid-baseline, 4px));
-		padding: calc(4 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 	}
 
 	&__identity {
@@ -1057,9 +1087,6 @@ export default {
 
 	&__title {
 		margin: 0;
-		font-size: 26px;
-		font-weight: bold;
-		line-height: 1.2;
 		overflow-wrap: anywhere;
 	}
 
@@ -1079,7 +1106,6 @@ export default {
 	&__address {
 		color: var(--color-text-maxcontrast);
 		font-family: monospace;
-		font-size: 0.9em;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
@@ -1107,7 +1133,8 @@ export default {
 		flex-wrap: wrap;
 		align-items: center;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
-		padding: calc(2 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(2 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 		border-bottom: 1px solid var(--color-border);
 	}
 
@@ -1128,18 +1155,15 @@ export default {
 		flex-wrap: wrap;
 		gap: calc(4 * var(--default-grid-baseline, 4px));
 		margin: 0;
-		padding: 0 calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: 0 calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 		color: var(--color-text-maxcontrast);
 		border-bottom: 1px solid var(--color-border);
 	}
 
-	&__stat b {
-		color: var(--color-main-text);
-		font-variant-numeric: tabular-nums;
-	}
-
 	&__section {
-		padding: calc(5 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px)) calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(5 * var(--default-grid-baseline, 4px)) calc(2 * var(--default-grid-baseline, 4px));
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 		max-width: 1100px;
 	}
 
@@ -1152,8 +1176,6 @@ export default {
 
 		h2 {
 			margin: 0;
-			font-size: 20px;
-			font-weight: bold;
 		}
 	}
 
@@ -1287,7 +1309,8 @@ export default {
 		display: flex;
 		justify-content: flex-end;
 		gap: calc(2 * var(--default-grid-baseline, 4px));
-		padding: calc(3 * var(--default-grid-baseline, 4px)) calc(4 * var(--default-grid-baseline, 4px)) 0 calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px)));
+		padding-block: calc(3 * var(--default-grid-baseline, 4px)) 0;
+		padding-inline: calc(var(--default-clickable-area, 44px) + calc(4 * var(--default-grid-baseline, 4px))) calc(4 * var(--default-grid-baseline, 4px));
 	}
 
 	&__menu-target {
@@ -1429,20 +1452,9 @@ export default {
 		padding-inline-start: calc(4 * var(--default-grid-baseline, 4px));
 	}
 
-	// Table look shared with OpenRegister: muted header band and horizontal row lines only
+	// the sticky table header sticks to the top of its card, not below the page header
 	&:deep(table thead) {
 		top: 0;
-	}
-
-	&:deep(table thead tr th) {
-		background-color: var(--color-background-dark);
-		font-weight: 500;
-	}
-
-	&:deep(table tbody td) {
-		border: none;
-		border-bottom: 1px solid var(--color-border);
-		padding-block: calc(3 * var(--default-grid-baseline, 4px));
 	}
 }
 

@@ -67,11 +67,8 @@ class Version2400Date20261008000000 extends SimpleMigrationStep {
 			$table->addColumn('url', Types::STRING, ['notnull' => false, 'length' => 2000]);
 			$table->addColumn('technical_name', Types::STRING, ['notnull' => false, 'length' => 200]);
 			$table->addColumn('order', Types::INTEGER, ['notnull' => true, 'default' => 0]);
-			$table->addColumn('parent_id', Types::INTEGER, ['notnull' => false, 'default' => null]);
 			$table->setPrimaryKey(['id']);
 			$table->addIndex(['context_id'], 'tables_ctx_menu_ctx_idx');
-		} elseif (!$schema->getTable('tables_contexts_menu_item')->hasColumn('parent_id')) {
-			$schema->getTable('tables_contexts_menu_item')->addColumn('parent_id', Types::INTEGER, ['notnull' => false, 'default' => null]);
 		}
 
 		return $schema;

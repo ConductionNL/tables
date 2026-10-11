@@ -27,6 +27,8 @@ class MenuItemTest extends TestCase {
 			'url' => null,
 			'technicalName' => null,
 			'order' => 0,
+			'parentId' => null,
+			'broken' => false,
 		], $item->jsonSerialize());
 	}
 
@@ -49,6 +51,14 @@ class MenuItemTest extends TestCase {
 		$this->assertSame(6, $json['targetId']);
 		$this->assertSame('home', $json['technicalName']);
 		$this->assertSame(20, $json['order']);
+	}
+
+	public function testBrokenIsReportedButNeverStored(): void {
+		$item = new MenuItem();
+		$item->setBroken(true);
+
+		$this->assertTrue($item->jsonSerialize()['broken']);
+		$this->assertArrayNotHasKey('broken', $item->getUpdatedFields());
 	}
 
 	public function testTargetTypesAreTheThreeKnownOnes(): void {

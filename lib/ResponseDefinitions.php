@@ -13,13 +13,29 @@
 namespace OCA\Tables;
 
 /**
+ * @psalm-type TablesGridWidget = array{
+ *  id: string,
+ *  type: string,
+ *  configuration: array<string, mixed>,
+ *  content: array<string, mixed>,
+ * }
+ *
+ * @psalm-type TablesGridLayoutItem = array{
+ *  id: string,
+ *  widgetId: string,
+ *  gridX: int,
+ *  gridY: int,
+ *  gridWidth: int,
+ *  gridHeight: int,
+ * }
+ *
  * @psalm-type TablesView = array{
  * 	id: int,
  *  uuid: string,
  * 	title: string,
  * 	technicalName: string|null,
  * 	emoji: string|null,
- *  tableId: int,
+ *  tableId: int|null,
  * 	ownership: string,
  * 	ownerDisplayName: string|null,
  * 	createdBy: string,
@@ -46,7 +62,7 @@ namespace OCA\Tables;
  *  isFederated: bool,
  *  sidebarOrder: int|null,
  *  type: string,
- *  grid: array{widgets: list<array<string, mixed>>, layout: list<array<string, mixed>>},
+ *  grid: array{widgets: list<TablesGridWidget>, layout: list<TablesGridLayoutItem>},
  * }
  *
  * @psalm-type TablesGridWidgetProperty = array{
@@ -256,7 +272,8 @@ namespace OCA\Tables;
  *   technicalName: string|null,
  *   order: int,
  *   parentId: int|null,
- *}
+ *   broken: bool,
+ * }
  *
  * @psalm-type TablesContext = array{
  *   id: int,

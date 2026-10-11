@@ -9,8 +9,11 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Service;
 
+use InvalidArgumentException;
+use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextMapper;
+use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
 use OCA\Tables\Db\MenuItem;
 use OCA\Tables\Db\MenuItemMapper;
@@ -22,6 +25,9 @@ use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
+use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Model\MenuItemInput;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
 use OCP\INavigationManager;
@@ -40,6 +46,9 @@ final class ContextServiceTest extends TestCase {
 	private MockObject $menuItemMapper;
 	private MockObject $tableMapper;
 	private MockObject $viewMapper;
+	private MockObject $permissionsService;
+	private MockObject $navigationManager;
+	private MockObject $urlGenerator;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -51,29 +60,24 @@ final class ContextServiceTest extends TestCase {
 		$this->menuItemMapper = $this->createMock(MenuItemMapper::class);
 		$this->tableMapper = $this->createMock(TableMapper::class);
 		$this->viewMapper = $this->createMock(ViewMapper::class);
-		$logger = $this->createMock(LoggerInterface::class);
-		$permissionsService = $this->createMock(PermissionsService::class);
-		$userManager = $this->createMock(IUserManager::class);
-		$eventDispatcher = $this->createMock(IEventDispatcher::class);
-		$dbConnection = $this->createMock(IDBConnection::class);
-		$shareService = $this->createMock(ShareService::class);
-		$navigationManager = $this->createMock(INavigationManager::class);
-		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$this->permissionsService = $this->createMock(PermissionsService::class);
+		$this->navigationManager = $this->createMock(INavigationManager::class);
+		$this->urlGenerator = $this->createMock(IURLGenerator::class);
 
 		$this->service = new ContextService(
 			$this->contextMapper,
 			$this->contextNodeRelMapper,
 			$this->pageMapper,
 			$this->pageContentMapper,
-			$logger,
-			$permissionsService,
-			$userManager,
-			$eventDispatcher,
-			$dbConnection,
-			$shareService,
+			$this->createMock(LoggerInterface::class),
+			$this->permissionsService,
+			$this->createMock(IUserManager::class),
+			$this->createMock(IEventDispatcher::class),
+			$this->createMock(IDBConnection::class),
+			$this->createMock(ShareService::class),
 			false,
-			$navigationManager,
-			$urlGenerator,
+			$this->navigationManager,
+			$this->urlGenerator,
 			$this->tableMapper,
 			$this->viewMapper,
 			$this->menuItemMapper,
@@ -84,12 +88,17 @@ final class ContextServiceTest extends TestCase {
 		$context = new Context();
 		$context->id = $id;
 		$context->setName('Intake portal');
+		$context->setOwnerId('user-1');
+		$context->setOwnerType(Application::OWNER_TYPE_USER);
 		$context->setNodes([]);
 		$context->setPages([]);
 		$context->setMenuItems($menuItems);
 		return $context;
 	}
 
+	/**
+	 * @param list<MenuItem> $inserted collects the stored items
+	 */
 	private function expectMenuReplacement(int $contextId, array &$inserted): void {
 		$this->menuItemMapper->expects($this->once())->method('deleteAllByContextId')->with($contextId);
 		$this->menuItemMapper->method('insert')->willReturnCallback(static function (MenuItem $item) use (&$inserted): MenuItem {
@@ -97,20 +106,40 @@ final class ContextServiceTest extends TestCase {
 			$inserted[] = $item;
 			return $item;
 		});
+		$this->menuItemMapper->method('findByContextId')->willReturnCallback(static function () use (&$inserted): array {
+			return $inserted;
+		});
+	}
+
+	private function expectExistingTargets(array $views, array $tables): void {
+		$this->viewMapper->method('findMany')->willReturnCallback(static fn (array $ids): array => array_intersect_key($views, array_flip($ids)));
+		$this->tableMapper->method('findMany')->willReturnCallback(static fn (array $ids): array => array_intersect_key($tables, array_flip($ids)));
+	}
+
+	private function expectNodeInsertion(array &$relations): void {
+		$this->contextNodeRelMapper->method('insert')->willReturnCallback(static function (ContextNodeRelation $relation) use (&$relations): ContextNodeRelation {
+			$relation->setId(200 + count($relations));
+			$relations[] = $relation;
+			return $relation;
+		});
 	}
 
 	public function testUpdateReplacesTheMenuInOrderAndDerivesTechnicalNamesFromLabels(): void {
 		$context = $this->contextWithMenu(7, []);
 		$this->contextMapper->method('findById')->with(7, 'user-1')->willReturn($context);
 		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$this->expectExistingTargets([6 => new View()], [4 => new Table()]);
+		$relations = [];
+		$this->expectNodeInsertion($relations);
 		$inserted = [];
 		$this->expectMenuReplacement(7, $inserted);
 
-		$updated = $this->service->update(7, 'user-1', null, null, null, null, 'intake', [
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, 'intake', MenuItemInput::createListFromInputArray([
 			['label' => 'Intake home', 'targetType' => 'view', 'targetId' => 6, 'technicalName' => 'home'],
 			['label' => 'Welcome table!', 'targetType' => 'table', 'targetId' => 4],
-			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://docs.nextcloud.com', 'targetId' => 99],
-		]);
+			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://docs.nextcloud.com'],
+		]));
 
 		$this->assertSame('intake', $updated->getTechnicalName());
 		$this->assertSame([10, 20, 30], array_map(static fn (MenuItem $item) => $item->getOrder(), $inserted));
@@ -122,17 +151,17 @@ final class ContextServiceTest extends TestCase {
 	}
 
 	public function testUpdateStoresAChildUnderItsParentAndKeepsTheOrder(): void {
-		$context = $this->contextWithMenu(7, []);
-		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
 		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->expectExistingTargets([], []);
 		$inserted = [];
 		$this->expectMenuReplacement(7, $inserted);
 
-		$updated = $this->service->update(7, 'user-1', null, null, null, null, null, [
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, null, MenuItemInput::createListFromInputArray([
 			['label' => 'Cases', 'targetType' => 'table', 'targetId' => 4],
 			['label' => 'Open cases', 'targetType' => 'view', 'targetId' => 6, 'parentIndex' => 0],
 			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
-		]);
+		]));
 
 		$byLabel = [];
 		foreach ($inserted as $item) {
@@ -140,22 +169,109 @@ final class ContextServiceTest extends TestCase {
 		}
 		$this->assertNull($byLabel['Cases']->getParentId());
 		$this->assertSame($byLabel['Cases']->getId(), $byLabel['Open cases']->getParentId());
-		$this->assertSame([10, 20, 30], array_map(static fn (array $item) => $item['order'], $updated->getMenuItems()));
-		$this->assertSame(['Cases', 'Open cases', 'Docs'], array_map(static fn (array $item) => $item['label'], $updated->getMenuItems()));
+		$this->assertSame([10, 20, 30], [$byLabel['Cases']->getOrder(), $byLabel['Open cases']->getOrder(), $byLabel['Docs']->getOrder()]);
+		$this->assertCount(3, $updated->getMenuItems());
 	}
 
-	public function testUpdateRejectsAChildUnderAChild(): void {
-		$context = $this->contextWithMenu(7, []);
-		$this->contextMapper->method('findById')->willReturn($context);
+	public function testReplaceMenuRefusesAChildUnderAChild(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
 		$inserted = [];
 		$this->expectMenuReplacement(7, $inserted);
 
-		$this->expectException(\InvalidArgumentException::class);
+		// built without createListFromInputArray, which already refuses this, to reach the service's own guard
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('top-level');
 		$this->service->update(7, 'user-1', null, null, null, null, null, [
-			['label' => 'A', 'targetType' => 'url', 'url' => 'https://a.example'],
-			['label' => 'B', 'targetType' => 'url', 'url' => 'https://b.example', 'parentIndex' => 0],
-			['label' => 'C', 'targetType' => 'url', 'url' => 'https://c.example', 'parentIndex' => 1],
+			new MenuItemInput('A', null, 'url', null, 'https://a.example', null),
+			new MenuItemInput('B', null, 'url', null, 'https://b.example', null, 0),
+			new MenuItemInput('C', null, 'url', null, 'https://c.example', null, 1),
 		]);
+	}
+
+	public function testMenuTargetsBecomeNodesSoRecipientsCanOpenThem(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setNodes([101 => ['id' => 101, 'node_id' => 4, 'node_type' => Application::NODE_TYPE_TABLE, 'permissions' => 1]]);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$this->expectExistingTargets([6 => new View()], [4 => new Table()]);
+		$relations = [];
+		$this->expectNodeInsertion($relations);
+		$this->pageContentMapper->method('findByPageAndNodeRelation')->willReturn(null);
+		$this->pageContentMapper->method('insert')->willReturnCallback(static function (PageContent $content): PageContent {
+			$content->setId(501);
+			return $content;
+		});
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Home', 'targetType' => 'view', 'targetId' => 6],
+			['label' => 'Requests', 'targetType' => 'table', 'targetId' => 4],
+		]));
+
+		// the table already is a node, only the view is added, with read permission
+		$this->assertCount(1, $relations);
+		$this->assertSame([6, Application::NODE_TYPE_VIEW, Application::PERMISSION_READ], [$relations[0]->getNodeId(), $relations[0]->getNodeType(), $relations[0]->getPermissions()]);
+		$this->assertSame(['id' => 200, 'node_id' => 6, 'node_type' => Application::NODE_TYPE_VIEW, 'permissions' => Application::PERMISSION_READ], $updated->getNodes()[200]);
+		$this->assertSame(200, $updated->getPages()[301]['content'][501]['node_rel_id']);
+	}
+
+	public function testAMenuTargetTheOwnerCannotManageIsRefused(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->expectExistingTargets([], [4 => new Table()]);
+		$this->permissionsService->method('canManageNodeById')->with(Application::NODE_TYPE_TABLE, 4, 'user-1')->willReturn(false);
+		$this->menuItemMapper->expects($this->never())->method('deleteAllByContextId');
+
+		$this->expectException(PermissionError::class);
+		$this->service->update(7, 'user-1', null, null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Requests', 'targetType' => 'table', 'targetId' => 4],
+		]));
+	}
+
+	public function testAMenuTargetThatNoLongerExistsIsKeptWithoutANode(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->expectExistingTargets([], []);
+		$this->contextNodeRelMapper->expects($this->never())->method('insert');
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$this->service->update(7, 'user-1', null, null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Gone', 'targetType' => 'view', 'targetId' => 99],
+		]));
+
+		$this->assertSame([99], array_map(static fn (MenuItem $item) => $item->getTargetId(), $inserted));
+	}
+
+	public function testDerivedTechnicalNamesGetASuffixWhenTheMenuAlreadyUsesThem(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$this->service->update(7, 'user-1', null, null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Docs', 'url' => 'https://example.org/a'],
+			['label' => 'Docs', 'url' => 'https://example.org/b'],
+			['label' => 'Other', 'url' => 'https://example.org/c', 'technicalName' => 'docs_2'],
+		]));
+
+		$this->assertSame(['docs', 'docs_3', 'docs_2'], array_map(static fn (MenuItem $item) => $item->getTechnicalName(), $inserted));
+	}
+
+	public function testTwoMenuItemsWithTheSameTechnicalNameAreRefused(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('share the technical name "home"');
+		$this->service->update(7, 'user-1', null, null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'A', 'url' => 'https://example.org/a', 'technicalName' => 'home'],
+			['label' => 'B', 'url' => 'https://example.org/b', 'technicalName' => 'home'],
+		]));
 	}
 
 	public function testUpdateLeavesTheMenuAloneWhenNoneIsGiven(): void {
@@ -173,8 +289,17 @@ final class ContextServiceTest extends TestCase {
 	public function testUpdateRejectsAMalformedTechnicalName(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
 
-		$this->expectException(\InvalidArgumentException::class);
+		$this->expectException(InvalidArgumentException::class);
 		$this->service->update(7, 'user-1', null, null, null, null, 'Not A Name');
+	}
+
+	public function testUpdateRejectsATechnicalNameTheOwnerAlreadyUses(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('isTechnicalNameTaken')->with('intake', 'user-1', 7)->willReturn(true);
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('already exists');
+		$this->service->update(7, 'user-1', null, null, null, null, 'intake');
 	}
 
 	public function testUpdateClearsTheTechnicalNameWhenItIsBlank(): void {
@@ -197,9 +322,9 @@ final class ContextServiceTest extends TestCase {
 		$inserted = [];
 		$this->expectMenuReplacement(8, $inserted);
 
-		$created = $this->service->create('Intake portal', 'heart', ' desc ', [], 'user-1', 0, 'intake', [
+		$created = $this->service->create('Intake portal', 'heart', ' desc ', [], 'user-1', 0, 'intake', MenuItemInput::createListFromInputArray([
 			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
-		]);
+		]));
 
 		$this->assertSame('intake', $created->getTechnicalName());
 		$this->assertSame('desc', $created->getDescription());
@@ -216,6 +341,24 @@ final class ContextServiceTest extends TestCase {
 		$this->service->delete(7, 'user-1');
 	}
 
+	public function testNavigationLinksOwnApplicationsByTechnicalNameAndOthersById(): void {
+		$own = $this->contextWithMenu(7, []);
+		$own->setTechnicalName('intake');
+		$shared = $this->contextWithMenu(8, []);
+		$shared->setOwnerId('someone-else');
+		$shared->setTechnicalName('intake');
+		$this->contextMapper->method('findForNavBar')->willReturn([$own, $shared]);
+		$linked = [];
+		$this->urlGenerator->method('linkToRoute')->willReturnCallback(static function (string $route, array $parameters) use (&$linked): string {
+			$linked[] = $parameters['contextId'];
+			return '/app/' . $parameters['contextId'];
+		});
+
+		$this->service->addToNavigation('user-1');
+
+		$this->assertSame(['intake', 8], $linked);
+	}
+
 	/**
 	 * The export and the import resolution are private because their only entry points
 	 * need the server container; they are exercised directly here.
@@ -226,19 +369,23 @@ final class ContextServiceTest extends TestCase {
 		return $reflection->invokeArgs($this->service, $arguments);
 	}
 
-	public function testExportMenuItemsUsesUuidsAndCarriesTablelessViews(): void {
-		$table = new Table();
-		$table->setId(4);
-		$table->setUuid('table-uuid');
+	private function gridViewWithWidget(array $content): View {
 		$gridView = new View();
 		$gridView->setId(6);
 		$gridView->setUuid('view-uuid');
 		$gridView->setTitle('Intake home');
 		$gridView->setType(View::TYPE_GRID);
 		$gridView->setTechnicalName('home');
-		$gridView->setGridArray(['widgets' => [['id' => 'w-1', 'type' => 'data', 'content' => ['targetType' => 'table', 'targetId' => 4]]], 'layout' => []]);
+		$gridView->setGridArray(['widgets' => [['id' => 'w-1', 'type' => 'data', 'content' => $content]], 'layout' => []]);
+		return $gridView;
+	}
+
+	public function testExportMenuItemsUsesUuidsAndCarriesTablelessViews(): void {
+		$table = new Table();
+		$table->setId(4);
+		$table->setUuid('table-uuid');
 		$this->tableMapper->method('find')->with(4)->willReturn($table);
-		$this->viewMapper->method('find')->with(6)->willReturn($gridView);
+		$this->viewMapper->method('find')->with(6)->willReturn($this->gridViewWithWidget(['target' => ['type' => 'table', 'id' => 4]]));
 
 		$context = $this->contextWithMenu(7, [
 			['label' => 'Intake home', 'icon' => null, 'targetType' => 'view', 'targetId' => 6, 'url' => null, 'technicalName' => 'home'],
@@ -252,11 +399,22 @@ final class ContextServiceTest extends TestCase {
 		$this->assertArrayNotHasKey('targetId', $menuItems[0]);
 		$this->assertCount(1, $gridViews);
 		$this->assertSame('view-uuid', $gridViews[0]['uuid']);
-		$this->assertSame('table-uuid', $gridViews[0]['grid']['widgets'][0]['content']['targetUuid']);
+		$this->assertSame(['type' => 'table', 'id' => 4, 'uuid' => 'table-uuid'], $gridViews[0]['grid']['widgets'][0]['content']['target']);
+	}
+
+	public function testExportReadsTheOlderWidgetTargetShape(): void {
+		$table = new Table();
+		$table->setId(4);
+		$table->setUuid('table-uuid');
+		$this->tableMapper->method('find')->with(4)->willReturn($table);
+
+		$exported = $this->callPrivate('exportGridView', [$this->gridViewWithWidget(['targetType' => 'table', 'targetId' => 4])]);
+
+		$this->assertSame(['target' => ['type' => 'table', 'id' => 4, 'uuid' => 'table-uuid']], $exported['grid']['widgets'][0]['content']);
 	}
 
 	public function testExportSkipsMenuItemsWhoseTargetIsGone(): void {
-		$this->tableMapper->method('find')->willThrowException(new \OCP\AppFramework\Db\DoesNotExistException('gone'));
+		$this->tableMapper->method('find')->willThrowException(new DoesNotExistException('gone'));
 		$context = $this->contextWithMenu(7, [
 			['label' => 'Gone', 'icon' => null, 'targetType' => 'table', 'targetId' => 99, 'url' => null, 'technicalName' => 'gone'],
 			['label' => 'Docs', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => 'docs'],
@@ -267,36 +425,91 @@ final class ContextServiceTest extends TestCase {
 		$this->assertSame(['Docs'], array_column($menuItems, 'label'));
 	}
 
-	public function testResolveMenuItemsMapsUuidsToLocalIdsAndDropsUnknownTargets(): void {
+	private function expectUuidLookups(): void {
 		$table = new Table();
 		$table->setId(4);
 		$this->tableMapper->method('findByUuid')->willReturnCallback(static function (string $uuid) use ($table): Table {
 			if ($uuid === 'table-uuid') {
 				return $table;
 			}
-			throw new \OCP\AppFramework\Db\DoesNotExistException('unknown');
+			throw new DoesNotExistException('unknown');
 		});
 		$view = new View();
 		$view->setId(6);
 		$this->viewMapper->method('findByUuid')->willReturnCallback(static fn (string $uuid): ?View => $uuid === 'view-uuid' ? $view : null);
+	}
 
+	public function testResolveMenuItemsMapsUuidsToLocalIdsAndDropsUnknownTargets(): void {
+		$this->expectUuidLookups();
+
+		/** @var list<MenuItemInput> $resolved */
 		$resolved = $this->callPrivate('resolveMenuItems', [[
 			['label' => 'Intake home', 'targetType' => 'view', 'targetUuid' => 'view-uuid', 'technicalName' => 'home'],
 			['label' => 'Welcome', 'targetType' => 'table', 'targetUuid' => 'table-uuid'],
 			['label' => 'Missing', 'targetType' => 'table', 'targetUuid' => 'nope'],
 			['label' => 'Weird', 'targetType' => 'kanban', 'targetUuid' => 'x'],
 			['label' => '   ', 'targetType' => 'url', 'url' => 'https://example.org'],
+			['label' => 'Script', 'targetType' => 'url', 'url' => 'javascript:alert(1)'],
 			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
 		]]);
 
-		$this->assertSame(['Intake home', 'Welcome', 'Docs'], array_column($resolved, 'label'));
-		$this->assertSame([6, 4, null], array_column($resolved, 'targetId'));
-		$this->assertSame('https://example.org', $resolved[2]['url']);
+		$this->assertSame(['Intake home', 'Welcome', 'Docs'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
+		$this->assertSame([6, 4, null], array_map(static fn (MenuItemInput $item) => $item->getTargetId(), $resolved));
+		$this->assertSame('https://example.org', $resolved[2]->getUrl());
+	}
+
+	public function testExportNamesTheParentOfANestedItemByItsTechnicalName(): void {
+		$context = $this->contextWithMenu(7, [
+			['id' => 1, 'label' => 'Docs', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => 'docs', 'parentId' => null],
+			['id' => 2, 'label' => 'API', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org/api', 'technicalName' => 'api', 'parentId' => 1],
+		]);
+
+		[$menuItems] = $this->callPrivate('exportMenuItems', [$context]);
+
+		$this->assertSame([null, 'docs'], array_column($menuItems, 'parentTechnicalName'));
+	}
+
+	public function testImportPutsAChildUnderItsParentWhenTheParentSurvivesAndIsTopLevel(): void {
+		$this->expectUuidLookups();
+
+		/** @var list<MenuItemInput> $resolved */
+		$resolved = $this->callPrivate('resolveMenuItems', [[
+			['label' => 'Missing', 'targetType' => 'table', 'targetUuid' => 'nope', 'technicalName' => 'missing'],
+			['label' => 'Docs', 'url' => 'https://example.org', 'technicalName' => 'docs'],
+			['label' => 'API', 'url' => 'https://example.org/api', 'technicalName' => 'api', 'parentTechnicalName' => 'docs'],
+			['label' => 'Orphan', 'url' => 'https://example.org/o', 'parentTechnicalName' => 'missing'],
+			['label' => 'Deep', 'url' => 'https://example.org/d', 'parentTechnicalName' => 'api'],
+		]]);
+
+		$this->assertSame(['Docs', 'API', 'Orphan', 'Deep'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
+		$this->assertSame([null, 0, null, null], array_map(static fn (MenuItemInput $item) => $item->getParentIndex(), $resolved));
+	}
+
+	public function testResolveGridTargetsDropsWidgetsWhoseTargetIsNotHere(): void {
+		$this->expectUuidLookups();
+
+		$grid = $this->callPrivate('resolveGridTargets', [[
+			'widgets' => [
+				['id' => 'w-1', 'type' => 'data', 'content' => ['target' => ['type' => 'table', 'id' => 40, 'uuid' => 'table-uuid']]],
+				['id' => 'w-2', 'type' => 'data', 'content' => ['target' => ['type' => 'view', 'id' => 60, 'uuid' => 'elsewhere']]],
+				['id' => 'w-3', 'type' => 'text', 'content' => ['text' => 'hi']],
+			],
+			'layout' => [
+				['widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 4],
+				['widgetId' => 'w-2', 'gridX' => 0, 'gridY' => 4, 'gridWidth' => 12, 'gridHeight' => 4],
+				['widgetId' => 'w-3', 'gridX' => 0, 'gridY' => 8, 'gridWidth' => 12, 'gridHeight' => 2],
+			],
+		]]);
+
+		$this->assertSame(['w-1', 'w-3'], array_column($grid['widgets'], 'id'));
+		$this->assertSame(['type' => 'table', 'id' => 4], $grid['widgets'][0]['content']['target']);
+		$this->assertSame(['w-1', 'w-3'], array_column($grid['layout'], 'widgetId'));
 	}
 
 	public function testUpdateReordersStartPageContentsFromSubmittedNodes(): void {
 		$context = new Context();
 		$context->id = 7;
+		$context->setOwnerId('user-1');
 		$context->setNodes([
 			101 => [
 				'id' => 101,

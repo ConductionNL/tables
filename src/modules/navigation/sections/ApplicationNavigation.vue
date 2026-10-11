@@ -25,7 +25,8 @@
 					:open="branch.children.some(child => isActive(child))"
 					data-cy="application-nav-item">
 					<template #icon>
-						<ApplicationIcon v-if="branch.item.icon" :icon-name="branch.item.icon" :size="20" />
+						<AlertCircleOutline v-if="branch.item.broken" :size="20" :title="t('tables', 'The view or table this entry opened no longer exists')" />
+						<ApplicationIcon v-else-if="branch.item.icon" :icon-name="branch.item.icon" :size="20" />
 						<OpenInNew v-else-if="branch.item.targetType === 'url'" :size="20" />
 						<TableIcon v-else-if="branch.item.targetType === 'table'" :size="20" />
 						<ViewDashboardOutline v-else :size="20" />
@@ -40,7 +41,8 @@
 							:class="{ active: isActive(child) }"
 							data-cy="application-nav-item">
 							<template #icon>
-								<ApplicationIcon v-if="child.icon" :icon-name="child.icon" :size="20" />
+								<AlertCircleOutline v-if="child.broken" :size="20" :title="t('tables', 'The view or table this entry opened no longer exists')" />
+								<ApplicationIcon v-else-if="child.icon" :icon-name="child.icon" :size="20" />
 								<OpenInNew v-else-if="child.targetType === 'url'" :size="20" />
 								<TableIcon v-else-if="child.targetType === 'table'" :size="20" />
 								<ViewDashboardOutline v-else :size="20" />
@@ -74,6 +76,7 @@
 
 <script>
 import { NcAppNavigation, NcAppNavigationItem, NcButton } from '@nextcloud/vue'
+import AlertCircleOutline from 'vue-material-design-icons/AlertCircleOutline.vue'
 import CogOutline from 'vue-material-design-icons/CogOutline.vue'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import TableIcon from 'vue-material-design-icons/Table.vue'
@@ -95,6 +98,7 @@ export default {
 		NcAppNavigation,
 		NcAppNavigationItem,
 		NcButton,
+		AlertCircleOutline,
 		CogOutline,
 		OpenInNew,
 		TableIcon,

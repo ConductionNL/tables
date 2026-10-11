@@ -11,6 +11,7 @@ namespace OCA\Tables\Tests\Unit\Controller;
 
 use OCA\Tables\Controller\ApiViewsController;
 use OCA\Tables\Db\View;
+use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Service\GridWidgetTypes;
@@ -25,19 +26,21 @@ use Psr\Log\LoggerInterface;
 final class ApiViewsControllerTest extends TestCase {
 	private ApiViewsController $controller;
 	private MockObject $viewService;
+	private GridWidgetTypes $gridWidgetTypes;
 
 	protected function setUp(): void {
 		parent::setUp();
 		$this->viewService = $this->createMock(ViewService::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
-		$this->controller = new ApiViewsController($this->createMock(IRequest::class), $this->createMock(LoggerInterface::class), $l10n, 'alice', $this->viewService);
+		$this->gridWidgetTypes = new GridWidgetTypes($l10n, $this->createMock(ViewMapper::class));
+		$this->controller = new ApiViewsController($this->createMock(IRequest::class), $this->createMock(LoggerInterface::class), $l10n, 'alice', $this->viewService, $this->gridWidgetTypes);
 	}
 
 	public function testWidgetTypesListsEveryTypeWithBothSchemas(): void {
 		$types = $this->controller->widgetTypes()->getData();
 
-		$this->assertCount(count(GridWidgetTypes::all()), $types);
+		$this->assertCount(count($this->gridWidgetTypes->all()), $types);
 		foreach ($types as $type) {
 			$this->assertArrayHasKey('configuration', $type);
 			$this->assertArrayHasKey('properties', $type);

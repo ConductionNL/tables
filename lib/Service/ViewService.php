@@ -59,6 +59,7 @@ class ViewService extends SuperService {
 		protected IL10N $l,
 		private readonly FederationService $federationService,
 		private readonly ActivityManager $activityManager,
+		private readonly GridWidgetTypes $gridWidgetTypes,
 	) {
 		parent::__construct($logger, $userId, $permissionsService);
 	}
@@ -273,6 +274,7 @@ class ViewService extends SuperService {
 			}
 
 			foreach ($data->updateDetail() as $parameter => $value) {
+				$insertableValue = null;
 				if ($parameter === ViewUpdatableParameters::COLUMN_SETTINGS
 					&& $value instanceof ColumnSettings
 				) {
@@ -291,8 +293,7 @@ class ViewService extends SuperService {
 				}
 
 				if ($parameter === ViewUpdatableParameters::GRID) {
-					$this->assertGridValid($value);
-					$value = $this->sanitizeGrid($value);
+					$value = $this->gridWidgetTypes->sanitizeGrid($value);
 				}
 
 				if ($value instanceof JsonSerializable || is_array($value)) {
@@ -688,13 +689,14 @@ class ViewService extends SuperService {
 	}
 
 	/**
-	 * @param int $tableId
+	 * @param int|null $tableId null for a view without a table, such as a grid view
 	 * @param array $view
 	 * @param string $userId
 	 *
 	 * @return View
 	 *
 	 * @throws InternalError
+	 * @throws BadRequestError
 	 */
 	public function importView(?int $tableId, array $view, string $userId): View {
 		$item = new View();
@@ -719,8 +721,8 @@ class ViewService extends SuperService {
 		$type = $view['type'] ?? View::TYPE_TABLE;
 		$this->assertTypeValid($type);
 		$item->setType($type);
-		if (isset($view['grid']) && is_array($view['grid'])) {
-			$item->setGridArray($view['grid']);
+		if (isset($view['grid'])) {
+			$item->setGridArray($this->gridWidgetTypes->sanitizeGrid($view['grid']));
 		}
 		try {
 			$importedView = $this->mapper->insert($item);
@@ -744,9 +746,6 @@ class ViewService extends SuperService {
 	/**
 	 * @throws BadRequestError
 	 */
-	/**
-	 * @throws BadRequestError
-	 */
 	private function assertTypeValid(string $type): void {
 		if (!in_array($type, View::TYPES, true)) {
 			throw new BadRequestError('Unknown view type "' . $type . '", expected one of: ' . implode(', ', View::TYPES));
@@ -754,54 +753,8 @@ class ViewService extends SuperService {
 	}
 
 	/**
-	 * The grid with every widget's content reduced to what its schema allows, defaults filled in.
-	 *
-	 * @param array{widgets?: list<array<string, mixed>>, layout?: list<array<string, mixed>>} $grid
-	 * @return array{widgets: list<array<string, mixed>>, layout: list<array<string, mixed>>}
 	 * @throws BadRequestError
 	 */
-	private function sanitizeGrid(array $grid): array {
-		$widgets = [];
-		foreach ($grid['widgets'] ?? [] as $widget) {
-			$widgets[] = GridWidgetTypes::sanitizeWidget($widget);
-		}
-		return ['widgets' => $widgets, 'layout' => array_values($grid['layout'] ?? [])];
-	}
-
-	/**
-	 * A grid holds widgets and where they sit. Every widget's configuration and content must
-	 * match the schemas of its type, see GridWidgetTypes.
-	 *
-	 * @throws BadRequestError
-	 */
-	private function assertGridValid(array $grid): void {
-		foreach (['widgets', 'layout'] as $key) {
-			if (isset($grid[$key]) && !is_array($grid[$key])) {
-				throw new BadRequestError('The grid property "' . $key . '" must be a list.');
-			}
-		}
-		foreach ($grid['widgets'] ?? [] as $widget) {
-			if (!is_array($widget)) {
-				throw new BadRequestError('Every widget needs a string id and type.');
-			}
-			GridWidgetTypes::sanitizeWidget($widget);
-		}
-		foreach ($grid['layout'] ?? [] as $item) {
-			if (!is_array($item) || !is_string($item['widgetId'] ?? null)) {
-				throw new BadRequestError('Every layout item needs the id of its widget.');
-			}
-			foreach (['gridX', 'gridY', 'gridWidth', 'gridHeight'] as $position) {
-				if (!is_int($item[$position] ?? null) || $item[$position] < 0) {
-					throw new BadRequestError('The layout position "' . $position . '" must be a non-negative integer.');
-				}
-			}
-		}
-	}
-
-	/**
-	 * @throws BadRequestError
-	 */
-
 	private function assertTechnicalNameValid(string $technicalName): void {
 		if (strlen($technicalName) > 200) {
 			throw new BadRequestError('Technical name must not exceed 200 characters.');

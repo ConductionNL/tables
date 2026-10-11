@@ -222,8 +222,8 @@ export const useTablesStore = defineStore('store', {
 
 		async loadWidgetTypes() {
 			try {
-				const res = await axios.get(generateUrl('/apps/tables/grid/widget-types'))
-				this.widgetTypes = res.data
+				const res = await axios.get(generateOcsUrl('/apps/tables/api/2/views/widget-types'))
+				this.widgetTypes = res.data.ocs.data
 			} catch (e) {
 				displayError(e, t('tables', 'Could not load widget types.'))
 			}
@@ -232,14 +232,14 @@ export const useTablesStore = defineStore('store', {
 		async insertStandaloneView({ data }) {
 			let res = null
 			try {
-				res = await axios.post(generateUrl('/apps/tables/view/standalone'), data)
+				res = (await axios.post(generateOcsUrl('/apps/tables/api/2/views'), data)).data.ocs.data
 			} catch (e) {
 				displayError(e, t('tables', 'Could not insert view.'))
 				return false
 			}
 
-			this.setViews([...this.views, res.data])
-			return res.data
+			this.setViews([...this.views, res])
+			return res
 		},
 
 		async updateContextMenuItems({ id, menuItems }) {
