@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   matrix:
-    runs-on: ubuntu-latest-low
+    runs-on: ${{ vars.LOW_RUNNER || 'ubuntu-latest-low' }}
     outputs:
       php-min: ${{ steps.versions.outputs.php-min }}
       php-max: ${{ steps.versions.outputs.php-max }}
@@ -34,7 +34,7 @@ jobs:
         uses: icewind1991/nextcloud-version-matrix@cd0211ffcef1065e2020cd579e4843b8746e7a58 # v1.3.3
 
   php-lint:
-    runs-on: ubuntu-latest-low
+    runs-on: ${{ vars.LOW_RUNNER || 'ubuntu-latest-low' }}
     needs: matrix
     strategy:
       matrix:
@@ -64,7 +64,7 @@ jobs:
   summary:
     permissions:
       contents: none
-    runs-on: ubuntu-latest-low
+    runs-on: ${{ vars.LOW_RUNNER || 'ubuntu-latest-low' }}
     needs: php-lint
 
     if: always()

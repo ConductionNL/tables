@@ -48,7 +48,7 @@ jobs:
         run: composer run psalm
 
   summary:
-    runs-on: ubuntu-latest-low
+    runs-on: ${{ vars.LOW_RUNNER || 'ubuntu-latest-low' }}
     needs: static-analysis
 
     if: always()

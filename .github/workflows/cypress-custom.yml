@@ -174,7 +174,7 @@ jobs:
   summary:
     permissions:
       contents: none
-    runs-on: ubuntu-latest-low
+    runs-on: ${{ vars.LOW_RUNNER || 'ubuntu-latest-low' }}
     needs: cypress
 
     if: always()
