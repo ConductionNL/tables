@@ -15,7 +15,16 @@ async function pickOption(page: Page, inputSelector: string, optionText: string)
 	await option.click()
 }
 
+/** The application settings live behind one menu button on the overview. */
+async function openApplicationSettings(page: Page) {
+	await page.getByRole('button', { name: 'Application settings' }).click()
+	await page.getByRole('menuitem', { name: 'Edit name, icon and members' }).click()
+}
+
 test.describe('Grid views inside an application', () => {
+	// the navigation stays open on the application page, so the grid needs a desktop-wide window for its twelve columns
+	test.use({ viewport: { width: 1600, height: 1000 } })
+
 	test.describe.configure({ mode: 'serial' })
 	// the demo path crosses two dialogs and a reload, more than the default budget of one test
 	test.setTimeout(180000)
@@ -30,7 +39,7 @@ test.describe('Grid views inside an application', () => {
 		await loadContext(page, contextTitle)
 
 		// The technical name through the application dialog, an external menu item through the inline menu editor
-		await page.locator('[data-cy="context-edit-application"]').click()
+		await openApplicationSettings(page)
 		await expect(page.locator('[data-cy="editContextModal"]').first()).toBeVisible()
 		await page.locator('[data-cy="editContextTechnicalName"]').fill(technicalName)
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
@@ -41,18 +50,19 @@ test.describe('Grid views inside an application', () => {
 		await page.locator('[data-cy="menuItemLabel"]').first().fill('Documentation')
 		await page.locator('[data-cy="menuItemRow"] input[placeholder="https://"]').first().fill('https://docs.nextcloud.com')
 		await page.locator('[data-cy="context-menu-save"]').click()
-		await expect(page.locator('[data-cy="context-menu-item"]').filter({ hasText: 'Documentation' })).toBeVisible()
+		await expect(page.locator('[data-cy="context-menu-preview"] li').filter({ hasText: 'Documentation' })).toBeVisible()
 		await expect(page.locator('[data-cy="page-card"]').filter({ hasText: 'Documentation' })).toBeVisible()
 
 		// A grid view created from the application gets its own menu item
-		await page.locator('[data-cy="context-add-grid-view"]').click()
+		await page.getByRole('button', { name: 'Add page' }).click()
+		await page.getByRole('menuitem', { name: 'Page with widgets' }).click()
 		await page.locator('[data-cy="gridViewTitle"]').fill('Intake home')
 		await page.locator('[data-cy="gridViewDescription"]').fill('Start here every morning')
 		await page.locator('[data-cy="gridViewTechnicalName"]').fill('home')
 		await page.locator('[data-cy="gridViewSubmit"]').click()
 		await expect(page).toHaveURL(/\/menu\/home$/)
 		await expect(page.locator('[data-cy="grid-view-title"]')).toHaveText(/Intake home/)
-		await expect(page.locator('[data-cy="context-menu-item"]').filter({ hasText: 'Intake home' })).toBeVisible()
+		await expect(page.locator('[data-cy="context-breadcrumb"]')).toContainText('Intake home')
 
 		// Design it: a header and a description
 		await page.locator('[data-cy="grid-view-edit"]').click()
@@ -129,12 +139,13 @@ test.describe('Grid views inside an application', () => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, contextTitle)
 		await loadContext(page, contextTitle)
-		await page.locator('[data-cy="context-edit-application"]').click()
+		await openApplicationSettings(page)
 		await page.locator('[data-cy="editContextTechnicalName"]').fill(technicalName)
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
 		await expect(page.locator('[data-cy="context-address"]')).toContainText('/apps/tables/app/' + technicalName)
 
-		await page.locator('[data-cy="context-add-page"]').click()
+		await page.getByRole('button', { name: 'Add page' }).click()
+		await page.getByRole('menuitem', { name: 'Page with widgets' }).click()
 		await page.locator('[data-cy="gridViewTitle"]').fill('Front page')
 		await page.locator('[data-cy="gridViewSubmit"]').click()
 		await expect(page).toHaveURL(/\/menu\/front_page$/)
