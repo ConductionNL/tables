@@ -103,7 +103,7 @@ class ContextController extends AOCSController {
 	 * @param string $description Descriptive text of the context
 	 * @psalm-param list<array{id: int, type: int, permissions?: int}> $nodes optional nodes to be connected to this context
 	 * @param ?string $technicalName technical name of the context
-	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string}> $menuItems optional menu of the context, in order; the views and tables it opens become nodes of the context
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN, array{message: string}, array{}>
 	 *
@@ -145,7 +145,7 @@ class ContextController extends AOCSController {
 	 * @param ?string $description provide this parameter to set a new description
 	 * @param ?array{id: int, type: int, permissions: int, order: int} $nodes provide this parameter to set a new list of nodes.
 	 * @param ?string $technicalName provide this parameter to set a new technical name
-	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string}> $menuItems provide this parameter to replace the menu; the views and tables it opens become nodes of the context
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems provide this parameter to replace the menu; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -366,7 +366,7 @@ class ContextController extends AOCSController {
 	 * @param string $description Description of the context
 	 * @param list<array{node_type: int, node_uuid: string, permissions: int}> $nodes Ordered meta data of the related nodes
 	 * @param ?string $technicalName technical name of the context
-	 * @psalm-param list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetUuid?: string, url?: string, technicalName?: string}> $menuItems Menu of the context, targets by uuid
+	 * @psalm-param list<array{label: string, icon?: string, targetType: 'view'|'table'|'url', targetUuid?: string, url?: string, technicalName?: string, parentTechnicalName?: string}> $menuItems Menu of the context, targets by uuid, parents by technical name
 	 * @psalm-param list<array<string, mixed>> $gridViews Views without a table that the menu points at
 	 * @psalm-param array{addTables: list<TablesTable>, modifyTables: list<TablesTable>} $tables Tables to be added or modified
 	 *

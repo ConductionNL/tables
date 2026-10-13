@@ -188,7 +188,7 @@ export default {
 				description: this.description,
 				nodes: dataResources,
 				technicalName: this.technicalName.trim() || null,
-				menuItems: this.menuItems.map(toMenuItemPayload),
+				menuItems: this.menuItems.map(item => toMenuItemPayload(item, this.menuItems)),
 			}
 			// adding share to oneself to have navigation display control
 			this.receivers.push(

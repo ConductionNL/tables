@@ -47,23 +47,22 @@ export function loadContextLayout(contextId) {
 		return Object.fromEntries(Object.entries(storedLayout ?? {})
 			.filter(([, span]) => GRID_SPANS.includes(span)))
 	} catch (error) {
-		console.debug('Application layout could not be read, using the default', error)
+		console.warn('Application layout could not be read, using the default', error)
 		return {}
 	}
 }
 
 /**
+ * Stores the current user's arrangement in this browser. Throws when the browser refuses it,
+ * so the caller can tell the user that the layout will not be kept.
+ *
  * @param {number|string} contextId id of the application
  * @param {Object<string, number>} layout map of resource key to column span; an empty map resets to the default
  */
 export function saveContextLayout(contextId, layout) {
-	try {
-		if (Object.keys(layout).length === 0) {
-			window.localStorage.removeItem(getStorageKey(contextId))
-			return
-		}
-		window.localStorage.setItem(getStorageKey(contextId), JSON.stringify(layout))
-	} catch (error) {
-		console.debug('Application layout could not be stored, it applies to this visit only', error)
+	if (Object.keys(layout).length === 0) {
+		window.localStorage.removeItem(getStorageKey(contextId))
+		return
 	}
+	window.localStorage.setItem(getStorageKey(contextId), JSON.stringify(layout))
 }

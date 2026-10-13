@@ -18,6 +18,7 @@ export function toEditableMenuItems(menuItems) {
 		targetId: item.targetId ?? null,
 		url: item.url ?? '',
 		technicalName: item.technicalName ?? null,
+		parentKey: item.parentId != null ? 'item-' + item.parentId : null,
 	}))
 }
 
@@ -25,9 +26,11 @@ export function toEditableMenuItems(menuItems) {
  * The payload the API expects for one menu item.
  *
  * @param {object} item an item from the editor
+ * @param {Array} items the whole editable list, to turn the parent key into the parent's position
  * @return {object}
  */
-export function toMenuItemPayload(item) {
+export function toMenuItemPayload(item, items) {
+	const parentIndex = item.parentKey ? items.findIndex(candidate => candidate.key === item.parentKey) : -1
 	return {
 		label: item.label,
 		icon: item.icon || null,
@@ -35,6 +38,7 @@ export function toMenuItemPayload(item) {
 		targetId: item.targetType === 'url' ? null : item.targetId,
 		url: item.targetType === 'url' ? item.url : null,
 		technicalName: item.technicalName || null,
+		parentIndex: parentIndex >= 0 ? parentIndex : null,
 	}
 }
 
@@ -50,4 +54,16 @@ export function menuItemRoute(item, contextId) {
 		return null
 	}
 	return '/application/' + contextId + '/menu/' + item.technicalName
+}
+
+/**
+ * The menu as a tree: top-level items with their children, in menu order.
+ *
+ * @param {Array} menuItems stored items with id, order and parentId
+ * @return {Array<{item: object, children: Array<object>}>}
+ */
+export function menuTree(menuItems) {
+	const sorted = [...(menuItems ?? [])].sort((a, b) => a.order - b.order)
+	const roots = sorted.filter(item => item.parentId == null)
+	return roots.map(item => ({ item, children: sorted.filter(child => child.parentId === item.id) }))
 }

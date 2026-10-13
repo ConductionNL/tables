@@ -41,6 +41,7 @@
 		</div>
 
 		<NcEmptyContent v-if="activeGrid.layout.length === 0"
+			class="grid-view__empty"
 			:name="t('tables', 'This page is empty')"
 			:description="isEditing ? t('tables', 'Add a header, a description or a table.') : t('tables', 'Edit the page to add widgets.')">
 			<template #icon>
@@ -277,9 +278,8 @@ export default {
 		flex-shrink: 0;
 	}
 
-	:deep(.empty-content) {
-		margin-top: 4vh;
-		margin-bottom: 4vh;
+	&__empty {
+		margin-block: 4vh;
 	}
 }
 </style>

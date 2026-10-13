@@ -175,17 +175,32 @@ class ContextService {
 
 		$this->menuItemMapper->deleteAllByContextId($context->getId());
 		$technicalNames = $this->menuTechnicalNames($menuItems);
-		foreach ($menuItems as $position => $item) {
-			$menuItem = new MenuItem();
-			$menuItem->setContextId($context->getId());
-			$menuItem->setLabel($item->getLabel());
-			$menuItem->setIcon($item->getIcon());
-			$menuItem->setTargetType($item->getTargetType());
-			$menuItem->setTargetId($item->getTargetId());
-			$menuItem->setUrl($item->getUrl());
-			$menuItem->setTechnicalName($technicalNames[$position]);
-			$menuItem->setOrder(($position + 1) * 10);
-			$this->menuItemMapper->insert($menuItem);
+		$topLevelIds = [];
+		// top-level items first, so a child can point at its parent's id; the order keeps the menu's sequence
+		foreach ([false, true] as $childPass) {
+			foreach ($menuItems as $position => $item) {
+				$parentIndex = $item->getParentIndex();
+				if (($parentIndex !== null) !== $childPass) {
+					continue;
+				}
+				if ($parentIndex !== null && !isset($topLevelIds[$parentIndex])) {
+					throw new InvalidArgumentException('A menu item can only sit under a top-level item of the same menu.');
+				}
+				$menuItem = new MenuItem();
+				$menuItem->setContextId($context->getId());
+				$menuItem->setLabel($item->getLabel());
+				$menuItem->setIcon($item->getIcon());
+				$menuItem->setTargetType($item->getTargetType());
+				$menuItem->setTargetId($item->getTargetId());
+				$menuItem->setUrl($item->getUrl());
+				$menuItem->setTechnicalName($technicalNames[$position]);
+				$menuItem->setOrder(($position + 1) * 10);
+				$menuItem->setParentId($parentIndex === null ? null : $topLevelIds[$parentIndex]);
+				$storedId = $this->menuItemMapper->insert($menuItem)->getId();
+				if ($parentIndex === null) {
+					$topLevelIds[$position] = $storedId;
+				}
+			}
 		}
 
 		$context->setMenuItems(array_map(
@@ -911,6 +926,24 @@ class ContextService {
 	}
 
 	/**
+	 * The technical name of a menu item's parent, which names the parent in an export.
+	 *
+	 * @param array{parentId?: int|null} $item
+	 */
+	private function parentTechnicalName(Context $context, array $item): ?string {
+		$parentId = $item['parentId'] ?? null;
+		if ($parentId === null) {
+			return null;
+		}
+		foreach ($context->getMenuItems() as $candidate) {
+			if (($candidate['id'] ?? null) === $parentId) {
+				return $candidate['technicalName'] ?? null;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Menu items with their targets as uuids, plus the table-less views they point at.
 	 *
 	 * @return array{0: list<array<string, mixed>>, 1: list<array<string, mixed>>}
@@ -926,6 +959,7 @@ class ContextService {
 				'targetUuid' => null,
 				'url' => $item['url'],
 				'technicalName' => $item['technicalName'],
+				'parentTechnicalName' => $this->parentTechnicalName($context, $item),
 			];
 			try {
 				if ($item['targetType'] === MenuItem::TARGET_TABLE && $item['targetId'] !== null) {
@@ -1099,7 +1133,7 @@ class ContextService {
 	 * @return list<MenuItemInput>
 	 */
 	private function resolveMenuItems(array $menuItems): array {
-		$resolved = [];
+		$prepared = [];
 		foreach ($menuItems as $item) {
 			if (!is_array($item)) {
 				continue;
@@ -1110,14 +1144,31 @@ class ContextService {
 					? $this->resolveTargetId($targetType, $item['targetUuid'])
 					: null;
 			}
-			unset($item['targetUuid']);
+			$parentTechnicalName = is_string($item['parentTechnicalName'] ?? null) ? $item['parentTechnicalName'] : null;
+			unset($item['targetUuid'], $item['parentTechnicalName'], $item['parentIndex']);
 			try {
-				$resolved[] = MenuItemInput::createFromInputArray($item);
+				MenuItemInput::createFromInputArray($item);
 			} catch (InvalidArgumentException $e) {
 				$this->logger->info('Menu item skipped on import: {reason}', ['reason' => $e->getMessage()]);
+				continue;
+			}
+			$prepared[] = ['item' => $item, 'parent' => $parentTechnicalName];
+		}
+
+		// a child names its parent by technical name; the parent must have survived the import and be top-level
+		$parentPositions = [];
+		foreach ($prepared as $position => $entry) {
+			$technicalName = $entry['item']['technicalName'] ?? null;
+			if ($entry['parent'] === null && is_string($technicalName) && !isset($parentPositions[$technicalName])) {
+				$parentPositions[$technicalName] = $position;
 			}
 		}
-		return $resolved;
+		$items = [];
+		foreach ($prepared as $entry) {
+			$entry['item']['parentIndex'] = $entry['parent'] === null ? null : ($parentPositions[$entry['parent']] ?? null);
+			$items[] = $entry['item'];
+		}
+		return MenuItemInput::createListFromInputArray($items);
 	}
 
 	/**

@@ -269,7 +269,7 @@ class View extends EntitySuper implements JsonSerializable {
 	}
 
 	public function setGridArray(array $array): void {
-		$this->setGrid(\json_encode($array));
+		$this->setGrid(\json_encode($array, JSON_THROW_ON_ERROR));
 	}
 
 	public function getTypeOrDefault(): string {

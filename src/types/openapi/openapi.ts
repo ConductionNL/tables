@@ -1288,6 +1288,8 @@ export type components = {
             readonly technicalName: string | null;
             /** Format: int64 */
             readonly order: number;
+            /** Format: int64 */
+            readonly parentId: number | null;
             readonly broken: boolean;
         };
         readonly NotifyConfig: {
@@ -7152,7 +7154,7 @@ export interface operations {
                      */
                     readonly technicalName?: string | null;
                     /**
-                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context
+                     * @description optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context
                      * @default null
                      */
                     readonly menuItems?: readonly {
@@ -7164,6 +7166,8 @@ export interface operations {
                         readonly targetId?: number;
                         readonly url?: string;
                         readonly technicalName?: string;
+                        /** Format: int64 */
+                        readonly parentIndex?: number;
                     }[] | null;
                 };
             };
@@ -7361,7 +7365,7 @@ export interface operations {
                      */
                     readonly technicalName?: string | null;
                     /**
-                     * @description provide this parameter to replace the menu; the views and tables it opens become nodes of the context
+                     * @description provide this parameter to replace the menu; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context
                      * @default null
                      */
                     readonly menuItems?: readonly {
@@ -7373,6 +7377,8 @@ export interface operations {
                         readonly targetId?: number;
                         readonly url?: string;
                         readonly technicalName?: string;
+                        /** Format: int64 */
+                        readonly parentIndex?: number;
                     }[] | null;
                 };
             };
@@ -7815,7 +7821,7 @@ export interface operations {
                      */
                     readonly technicalName?: string | null;
                     /**
-                     * @description Menu of the context, targets by uuid
+                     * @description Menu of the context, targets by uuid, parents by technical name
                      * @default []
                      */
                     readonly menuItems?: readonly {
@@ -7826,6 +7832,7 @@ export interface operations {
                         readonly targetUuid?: string;
                         readonly url?: string;
                         readonly technicalName?: string;
+                        readonly parentTechnicalName?: string;
                     }[];
                     /**
                      * @description Views without a table that the menu points at
