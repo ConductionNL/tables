@@ -27,6 +27,7 @@ class ContextMapper extends QBMapper {
 		IDBConnection $db,
 		protected UserHelper $userHelper,
 		protected GroupHelper $groupHelper,
+		protected MenuItemMapper $menuItemMapper,
 	) {
 		parent::__construct($db, $this->table, Context::class);
 	}
@@ -76,7 +77,10 @@ class ContextMapper extends QBMapper {
 		return $qb;
 	}
 
-	protected function formatResultRows(array $rows, ?string $userId) {
+	/**
+	 * @param array<int, list<MenuItem>> $menuItemsByContext
+	 */
+	protected function formatResultRows(array $rows, ?string $userId, array $menuItemsByContext = []) {
 		$formatted = [
 			'id' => $rows[0]['id'],
 			'name' => $rows[0]['name'],
@@ -84,6 +88,7 @@ class ContextMapper extends QBMapper {
 			'description' => $rows[0]['description'],
 			'owner_id' => $rows[0]['owner_id'],
 			'owner_type' => $rows[0]['owner_type'],
+			'technicalName' => $rows[0]['technical_name'] ?? null,
 		];
 
 		$formatted['sharing'] = array_reduce($rows, function (array $carry, array $item) use ($userId) {
@@ -141,6 +146,11 @@ class ContextMapper extends QBMapper {
 			return $carry;
 		}, []);
 
+		$formatted['menu_items'] = array_map(
+			static fn (MenuItem $menuItem): array => $menuItem->jsonSerialize(),
+			$menuItemsByContext[(int)$rows[0]['id']] ?? [],
+		);
+
 		return $this->mapRowToEntity($formatted);
 	}
 
@@ -154,26 +164,9 @@ class ContextMapper extends QBMapper {
 		$result = $qb->executeQuery();
 		$r = $result->fetchAllAssociative();
 
-		$contextIds = [];
-		foreach ($r as $row) {
-			$contextIds[$row['id']] = 1;
-		}
-		$contextIds = array_keys($contextIds);
-		unset($row);
-
-		$resultEntities = [];
-		foreach ($contextIds as $contextId) {
-			$workArray = [];
-			foreach ($r as $row) {
-				if ((int)$row['id'] === $contextId) {
-					$workArray[] = $row;
-				}
-			}
-			$resultEntities[] = $this->formatResultRows($workArray, $userId);
-		}
-
-		return $resultEntities;
+		return $this->formatResultSet($r, $userId, true);
 	}
+
 	public function findForNavBar(string $userId): array {
 		$qb = $this->getFindContextBaseQuery($userId);
 		$groupIDs = $this->userHelper->getGroupIdsForUser($userId);
@@ -204,24 +197,27 @@ class ContextMapper extends QBMapper {
 		$result = $qb->executeQuery();
 		$r = $result->fetchAllAssociative();
 
-		$contextIds = [];
-		foreach ($r as $row) {
-			$contextIds[$row['id']] = 1;
+		// the navigation bar shows the applications only, not their menus
+		return $this->formatResultSet($r, $userId, false);
+	}
+
+	/**
+	 * Groups the joined rows per context, loading the menus of all contexts in one query.
+	 *
+	 * @return Context[]
+	 * @throws Exception
+	 */
+	private function formatResultSet(array $rows, ?string $userId, bool $withMenuItems): array {
+		$rowsByContext = [];
+		foreach ($rows as $row) {
+			$rowsByContext[(int)$row['id']][] = $row;
 		}
-		$contextIds = array_keys($contextIds);
-		unset($row);
+		$menuItemsByContext = $withMenuItems ? $this->menuItemMapper->findByContextIds(array_keys($rowsByContext)) : [];
 
 		$resultEntities = [];
-		foreach ($contextIds as $contextId) {
-			$workArray = [];
-			foreach ($r as $row) {
-				if ((int)$row['id'] === $contextId) {
-					$workArray[] = $row;
-				}
-			}
-			$resultEntities[] = $this->formatResultRows($workArray, $userId);
+		foreach ($rowsByContext as $contextRows) {
+			$resultEntities[] = $this->formatResultRows($contextRows, $userId, $menuItemsByContext);
 		}
-
 		return $resultEntities;
 	}
 
@@ -240,7 +236,52 @@ class ContextMapper extends QBMapper {
 			throw new NotFoundError('Context does not exist');
 		}
 
-		return $this->formatResultRows($r, $userId);
+		return $this->formatResultRows($r, $userId, $this->menuItemMapper->findByContextIds([$contextId]));
+	}
+
+	/**
+	 * The id of the context with this technical name that the user owns, else the oldest one
+	 * shared with them. Technical names are unique per owner only.
+	 *
+	 * @throws Exception
+	 */
+	public function findIdByTechnicalName(string $technicalName, string $userId): ?int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('c.id', 'c.owner_id')
+			->from($this->table, 'c');
+		$this->applyOwnedOrSharedQuery($qb, $userId);
+		$qb->andWhere($qb->expr()->eq('c.technical_name', $qb->createNamedParameter($technicalName, IQueryBuilder::PARAM_STR)))
+			->orderBy('c.id', 'ASC');
+		$result = $qb->executeQuery();
+		$sharedId = null;
+		while ($row = $result->fetch()) {
+			if ($row['owner_id'] === $userId) {
+				$result->closeCursor();
+				return (int)$row['id'];
+			}
+			$sharedId ??= (int)$row['id'];
+		}
+		$result->closeCursor();
+		return $sharedId;
+	}
+
+	/**
+	 * @throws Exception
+	 */
+	public function isTechnicalNameTaken(string $technicalName, string $ownerId, ?int $exceptContextId = null): bool {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id')
+			->from($this->table)
+			->where($qb->expr()->eq('technical_name', $qb->createNamedParameter($technicalName, IQueryBuilder::PARAM_STR)))
+			->andWhere($qb->expr()->eq('owner_id', $qb->createNamedParameter($ownerId, IQueryBuilder::PARAM_STR)))
+			->setMaxResults(1);
+		if ($exceptContextId !== null) {
+			$qb->andWhere($qb->expr()->neq('id', $qb->createNamedParameter($exceptContextId, IQueryBuilder::PARAM_INT)));
+		}
+		$result = $qb->executeQuery();
+		$taken = $result->fetchOne() !== false;
+		$result->closeCursor();
+		return $taken;
 	}
 
 	/**
@@ -256,25 +297,7 @@ class ContextMapper extends QBMapper {
 		$result = $qb->executeQuery();
 		$r = $result->fetchAllAssociative();
 
-		$contextIds = [];
-		foreach ($r as $row) {
-			$contextIds[$row['id']] = 1;
-		}
-		$contextIds = array_keys($contextIds);
-		unset($row);
-
-		$resultEntities = [];
-		foreach ($contextIds as $contextId) {
-			$workArray = [];
-			foreach ($r as $row) {
-				if ($row['id'] === $contextId) {
-					$workArray[] = $row;
-				}
-			}
-			$resultEntities[] = $this->formatResultRows($workArray, $userId);
-		}
-
-		return $resultEntities;
+		return $this->formatResultSet($r, $userId, true);
 	}
 
 	/**

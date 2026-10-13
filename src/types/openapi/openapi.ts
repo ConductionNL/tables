@@ -508,6 +508,46 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/ocs/v2.php/apps/tables/api/2/views/widget-types": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * [api v2] The widget types a grid view can hold
+         * @description Every type carries two schemas: the configuration of the widget on the page and its content.
+         */
+        readonly get: operations["api_views-widget-types"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/ocs/v2.php/apps/tables/api/2/views": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * [api v2] Create a view without a table, such as a grid view
+         * @description The view belongs to the user who creates it and can be placed in an application menu.
+         */
+        readonly post: operations["api_views-create"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/ocs/v2.php/apps/tables/api/2/tables": {
         readonly parameters: {
             readonly query?: never;
@@ -1152,6 +1192,8 @@ export type components = {
             readonly owner: string;
             /** Format: int64 */
             readonly ownerType: number;
+            readonly technicalName: string | null;
+            readonly menuItems: readonly components["schemas"]["MenuItem"][];
         };
         readonly ContextNavigation: {
             /** Format: int64 */
@@ -1161,6 +1203,52 @@ export type components = {
             /** Format: int64 */
             readonly displayMode: number;
             readonly userId: string;
+        };
+        readonly GridLayoutItem: {
+            readonly id: string;
+            readonly widgetId: string;
+            /** Format: int64 */
+            readonly gridX: number;
+            /** Format: int64 */
+            readonly gridY: number;
+            /** Format: int64 */
+            readonly gridWidth: number;
+            /** Format: int64 */
+            readonly gridHeight: number;
+        };
+        readonly GridWidget: {
+            readonly id: string;
+            readonly type: string;
+            readonly configuration: {
+                readonly [key: string]: Record<string, never>;
+            };
+            readonly content: {
+                readonly [key: string]: Record<string, never>;
+            };
+        };
+        readonly GridWidgetProperty: {
+            readonly type: string;
+            readonly title: string;
+            readonly default: Record<string, never>;
+            readonly options?: readonly {
+                readonly value: string;
+                readonly label: string;
+            }[];
+            readonly required?: boolean;
+        };
+        readonly GridWidgetType: {
+            readonly type: string;
+            readonly title: string;
+            /** Format: int64 */
+            readonly defaultWidth: number;
+            /** Format: int64 */
+            readonly defaultHeight: number;
+            readonly configuration: {
+                readonly [key: string]: components["schemas"]["GridWidgetProperty"];
+            };
+            readonly properties: {
+                readonly [key: string]: components["schemas"]["GridWidgetProperty"];
+            };
         };
         readonly ImportState: {
             /** Format: int64 */
@@ -1185,6 +1273,22 @@ export type components = {
         readonly LinkShare: {
             readonly shareToken: string;
             readonly url: string;
+        };
+        readonly MenuItem: {
+            /** Format: int64 */
+            readonly id: number;
+            /** Format: int64 */
+            readonly contextId: number;
+            readonly label: string;
+            readonly icon: string | null;
+            readonly targetType: string;
+            /** Format: int64 */
+            readonly targetId: number | null;
+            readonly url: string | null;
+            readonly technicalName: string | null;
+            /** Format: int64 */
+            readonly order: number;
+            readonly broken: boolean;
         };
         readonly NotifyConfig: {
             readonly "notify-assigned": boolean;
@@ -1360,7 +1464,7 @@ export type components = {
             readonly technicalName: string | null;
             readonly emoji: string | null;
             /** Format: int64 */
-            readonly tableId: number;
+            readonly tableId: number | null;
             readonly ownership: string;
             readonly ownerDisplayName: string | null;
             readonly createdBy: string;
@@ -1416,6 +1520,11 @@ export type components = {
             readonly isFederated: boolean;
             /** Format: int64 */
             readonly sidebarOrder: number | null;
+            readonly type: string;
+            readonly grid: {
+                readonly widgets: readonly components["schemas"]["GridWidget"][];
+                readonly layout: readonly components["schemas"]["GridLayoutItem"][];
+            };
         };
     };
     responses: never;
@@ -4522,6 +4631,164 @@ export interface operations {
             };
         };
     };
+    readonly "api_views-widget-types": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Widget types returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: readonly components["schemas"]["GridWidgetType"][];
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "api_views-create": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** @description Title of the view */
+                    readonly title: string;
+                    /**
+                     * @description Emoji shown with the title
+                     * @default null
+                     */
+                    readonly emoji?: string | null;
+                    /**
+                     * @description Type of the view, `grid` for a page of widgets
+                     * @default grid
+                     */
+                    readonly type?: string;
+                    /**
+                     * @description Technical name, lowercase letters, numbers and underscores
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
+                    /**
+                     * @description Description shown on the page
+                     * @default
+                     */
+                    readonly description?: string;
+                };
+            };
+        };
+        readonly responses: {
+            /** @description View created */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["View"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid type or technical name */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
     readonly "api_tables-index": {
         readonly parameters: {
             readonly query?: never;
@@ -6879,6 +7146,25 @@ export interface operations {
                         /** Format: int64 */
                         readonly permissions?: number;
                     }[];
+                    /**
+                     * @description technical name of the context
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
+                    /**
+                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
+                        /** Format: int64 */
+                        readonly targetId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                    }[] | null;
                 };
             };
         };
@@ -7069,6 +7355,25 @@ export interface operations {
                         /** Format: int64 */
                         readonly order: number;
                     } | null;
+                    /**
+                     * @description provide this parameter to set a new technical name
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
+                    /**
+                     * @description provide this parameter to replace the menu; the views and tables it opens become nodes of the context
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
+                        /** Format: int64 */
+                        readonly targetId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                    }[] | null;
                 };
             };
         };
@@ -7504,6 +7809,31 @@ export interface operations {
                         readonly addTables: readonly components["schemas"]["Table"][];
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
+                    /**
+                     * @description technical name of the context
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
+                    /**
+                     * @description Menu of the context, targets by uuid
+                     * @default []
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
+                        readonly targetUuid?: string;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                    }[];
+                    /**
+                     * @description Views without a table that the menu points at
+                     * @default []
+                     */
+                    readonly gridViews?: readonly {
+                        readonly [key: string]: Record<string, never>;
+                    }[];
                 };
             };
         };

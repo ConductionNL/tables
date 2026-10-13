@@ -38,9 +38,22 @@
 			</div>
 			<div class="col-4 row space-T">
 				<div class="col-4">
+					{{ t('tables', 'Technical name') }}
+				</div>
+				<input v-model="technicalName" type="text" data-cy="createContextTechnicalName"
+					:placeholder="t('tables', 'Optional, e.g. intake. Lowercase letters, numbers and underscores.')">
+			</div>
+			<div class="col-4 row space-T">
+				<div class="col-4">
 					{{ t('tables', 'Resources') }}
 				</div>
 				<NcContextResource v-model:resources="resources" v-model:receivers="receivers" />
+			</div>
+			<div class="col-4 row space-T">
+				<div class="col-4">
+					{{ t('tables', 'Menu') }}
+				</div>
+				<MenuItemsEditor v-model:items="menuItems" />
 			</div>
 			<div class="row space-T">
 				<div data-cy="createContextShowInNavSwitch">
@@ -68,6 +81,8 @@ import { NcDialog, NcButton, NcIconSvgWrapper, NcActionCheckbox } from '@nextclo
 import { showError } from '@nextcloud/dialogs'
 import '@nextcloud/dialogs/style.css'
 import NcContextResource from '../../shared/components/ncContextResource/NcContextResource.vue'
+import MenuItemsEditor from '../../shared/components/ncContextResource/MenuItemsEditor.vue'
+import { toMenuItemPayload } from '../../shared/utils/menuItems.js'
 import NcIconPicker from '../../shared/components/ncIconPicker/NcIconPicker.vue'
 import svgHelper from '../../shared/components/ncIconPicker/mixins/svgHelper.js'
 import permissionBitmask from '../../shared/components/ncContextResource/mixins/permissionBitmask.js'
@@ -84,6 +99,7 @@ export default {
 		NcButton,
 		NcIconSvgWrapper,
 		NcContextResource,
+		MenuItemsEditor,
 		NcActionCheckbox,
 	},
 	mixins: [svgHelper, permissionBitmask],
@@ -106,6 +122,8 @@ export default {
 			customTitleChosen: false,
 			errorTitle: false,
 			description: '',
+			technicalName: '',
+			menuItems: [],
 			resources: [],
 			receivers: [],
 			showInNavigationDefault: false,
@@ -169,6 +187,8 @@ export default {
 				iconName: this.icon.name,
 				description: this.description,
 				nodes: dataResources,
+				technicalName: this.technicalName.trim() || null,
+				menuItems: this.menuItems.map(toMenuItemPayload),
 			}
 			// adding share to oneself to have navigation display control
 			this.receivers.push(
@@ -192,6 +212,8 @@ export default {
 		},
 		reset() {
 			this.title = ''
+			this.technicalName = ''
+			this.menuItems = []
 			this.errorTitle = false
 			this.setIcon(this.randomIcon())
 			this.customTitleChosen = false

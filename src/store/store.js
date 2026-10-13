@@ -27,6 +27,7 @@ export const useTablesStore = defineStore('store', {
 		activeRowId: null,
 		activeElementIsView: false,
 		activeContextId: null,
+		widgetTypes: [],
 		appNavCollapsed: false,
 	}),
 
@@ -158,7 +159,11 @@ export const useTablesStore = defineStore('store', {
 						views = views.concat(table.views)
 					}
 				})
-				this.setViews(views)
+				// shared views and views without a table are loaded separately and must survive this reload
+				const loadedIds = new Set(views.map(view => view.id))
+				const loadedTableIds = new Set(res.data.map(table => table.id))
+				const keptViews = this.views.filter(view => !loadedIds.has(view.id) && !loadedTableIds.has(view.tableId))
+				this.setViews([...views, ...keptViews])
 			} catch (e) {
 				displayError(e, t('tables', 'Could not load tables.'))
 				showError(t('tables', 'Could not fetch tables'))
@@ -213,6 +218,45 @@ export const useTablesStore = defineStore('store', {
 			table.views.push(res.data)
 
 			return res.data.id
+		},
+
+		async loadWidgetTypes() {
+			try {
+				const res = await axios.get(generateOcsUrl('/apps/tables/api/2/views/widget-types'))
+				this.widgetTypes = res.data.ocs.data
+			} catch (e) {
+				displayError(e, t('tables', 'Could not load widget types.'))
+			}
+		},
+
+		async insertStandaloneView({ data }) {
+			let res = null
+			try {
+				res = (await axios.post(generateOcsUrl('/apps/tables/api/2/views'), data)).data.ocs.data
+			} catch (e) {
+				displayError(e, t('tables', 'Could not insert view.'))
+				return false
+			}
+
+			this.setViews([...this.views, res])
+			return res
+		},
+
+		async updateContextMenuItems({ id, menuItems }) {
+			let res = null
+			try {
+				res = await axios.put(generateOcsUrl('/apps/tables/api/2/contexts/' + id), { menuItems })
+			} catch (e) {
+				displayError(e, t('tables', 'Could not update application.'))
+				return false
+			}
+
+			const context = res.data.ocs.data
+			const index = this.contexts.findIndex(c => c.id === context.id)
+			if (index !== -1) {
+				this.contexts[index] = context
+			}
+			return context
 		},
 
 		async updateView({ id, data }) {

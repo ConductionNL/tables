@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Tables\Model;
 
 use Generator;
+use InvalidArgumentException;
 use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Constants\ViewUpdatableParameters;
 use OCA\Tables\Service\ValueObject\Emoji;
@@ -31,6 +32,8 @@ class ViewUpdateInput {
 		protected readonly ?FilterSet $filterSet = null,
 		protected readonly ?SortRuleSet $sortRuleSet = null,
 		protected readonly ?int $sidebarOrder = null,
+		protected readonly ?string $type = null,
+		protected readonly ?array $grid = null,
 	) {
 	}
 
@@ -59,6 +62,12 @@ class ViewUpdateInput {
 		if ($this->sortRuleSet) {
 			yield ViewUpdatableParameters::SORT => $this->sortRuleSet;
 		}
+		if ($this->type !== null) {
+			yield ViewUpdatableParameters::TYPE => $this->type;
+		}
+		if ($this->grid !== null) {
+			yield ViewUpdatableParameters::GRID => $this->grid;
+		}
 	}
 
 	/**
@@ -71,12 +80,14 @@ class ViewUpdateInput {
 	 *     columnSettings?: list<array{columnId?: int, order?: int, readonly?: bool, mandatory?: bool}>,
 	 *     sort?: list<array{columnId: int, mode: 'ASC'|'DESC'}>,
 	 *     filter?: list<list<array{columnId: int, operator: 'begins-with'|'ends-with'|'contains'|'does-not-contain'|'contains-item'|'is-equal'|'is-not-equal'|'is-greater-than'|'is-greater-than-or-equal'|'is-lower-than'|'is-lower-than-or-equal'|'is-empty', value: string|int|float|list<array{id: int, label: string, uuid?: string}>}>>,
-	 *     sidebarOrder?: int
+	 *     sidebarOrder?: int,
+	 *     type?: string,
+	 *     grid?: array{widgets?: list<array<string, mixed>>, layout?: list<array<string, mixed>>}
 	 * } $data
 	 * @param array $columnsMap
 	 */
 	public static function fromInputArray(array $data, array $columnsMap = []): self {
-		$data = self::transformJsonToArrayInPayload($data, ['columnSettings', 'filter', 'sort']);
+		$data = self::transformJsonToArrayInPayload($data, ['columnSettings', 'filter', 'sort', 'grid']);
 
 		if (isset($data['columns']) && !isset($data['columnSettings'])) {
 			$logger = Server::get(LoggerInterface::class);
@@ -100,7 +111,35 @@ class ViewUpdateInput {
 			filterSet: isset($data['filter']) ? FilterSet::createFromInputArray($data['filter'], $columnsMap) : null,
 			sortRuleSet: isset($data['sort']) ? SortRuleSet::createFromInputArray($data['sort'], $columnsMap) : null,
 			sidebarOrder: (array_key_exists('sidebarOrder', $data) && $data['sidebarOrder'] !== null) ? (int)$data['sidebarOrder'] : null,
+			type: self::optionalString($data, 'type'),
+			grid: self::optionalArray($data, 'grid'),
 		);
+	}
+
+	/**
+	 * @throws InvalidArgumentException
+	 */
+	private static function optionalString(array $data, string $key): ?string {
+		if (!isset($data[$key])) {
+			return null;
+		}
+		if (!is_string($data[$key])) {
+			throw new InvalidArgumentException('The view property "' . $key . '" must be a string.');
+		}
+		return $data[$key];
+	}
+
+	/**
+	 * @throws InvalidArgumentException
+	 */
+	private static function optionalArray(array $data, string $key): ?array {
+		if (!isset($data[$key])) {
+			return null;
+		}
+		if (!is_array($data[$key])) {
+			throw new InvalidArgumentException('The view property "' . $key . '" must be an object.');
+		}
+		return $data[$key];
 	}
 
 	protected static function transformJsonToArrayInPayload(array $input, array $keys): array {

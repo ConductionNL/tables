@@ -4,7 +4,8 @@
 -->
 <template>
 	<NcContent app-name="tables">
-		<Navigation v-if="!isPublicShare" />
+		<ApplicationNavigation v-if="!isPublicShare && isStandaloneApplication" />
+		<Navigation v-else-if="!isPublicShare" />
 		<NcAppContent>
 			<div v-if="isLoadingSomething" class="icon-loading" />
 
@@ -18,6 +19,7 @@
 <script>
 import { NcContent, NcAppContent } from '@nextcloud/vue'
 import Navigation from './modules/navigation/sections/Navigation.vue'
+import ApplicationNavigation from './modules/navigation/sections/ApplicationNavigation.vue'
 import PublicTableView from './pages/PublicTableView.vue'
 import { mapState, mapActions } from 'pinia'
 import Sidebar from './modules/sidebar/sections/Sidebar.vue'
@@ -25,6 +27,10 @@ import { useResizeObserver } from '@vueuse/core'
 import { loadState } from '@nextcloud/initial-state'
 import { useTablesStore } from './store/store.js'
 import { generateUrl } from '@nextcloud/router'
+
+// A page that focuses its content before the person has touched it shows the browser's focus
+// ring around the whole content area. Focus moves only after a first pointer or keyboard event.
+const FIRST_INTERACTION_EVENTS = ['pointerdown', 'keydown']
 
 export default {
 	name: 'App',
@@ -34,6 +40,7 @@ export default {
 		NcContent,
 		NcAppContent,
 		Navigation,
+		ApplicationNavigation,
 	},
 	props: {
 		tableId: {
@@ -46,12 +53,17 @@ export default {
 			loading: false,
 			defaultPageTitle: false,
 			shareToken: loadState('tables', 'shareToken', false),
+			standaloneContextId: loadState('tables', 'contextId', null),
+			userHasInteracted: false,
 		}
 	},
 	computed: {
 		...mapState(useTablesStore, ['isLoadingSomething', 'activeView', 'activeTable', 'activeContext']),
 		isPublicShare() {
 			return !!this.shareToken
+		},
+		isStandaloneApplication() {
+			return this.standaloneContextId !== null
 		},
 	},
 	watch: {
@@ -60,6 +72,9 @@ export default {
 		},
 	},
 	async created() {
+		for (const type of FIRST_INTERACTION_EVENTS) {
+			document.addEventListener(type, this.onFirstInteraction, { capture: true })
+		}
 		const store = useTablesStore()
 		if (!this.isPublicShare) {
 			await Promise.all([
@@ -67,33 +82,47 @@ export default {
 				store.getAllContexts(),
 				store.loadViewsSharedWithMeFromBE(),
 				store.loadTemplatesFromBE(),
+				store.loadWidgetTypes(),
 			])
 		} else {
 			store.setLoading({ key: 'tables', value: false })
 			store.setLoading({ key: 'viewsShared', value: false })
 			store.setLoading({ key: 'contexts', value: false })
 		}
-		this.routing(this.$route)
+		this.routing(this.$route, true)
 	},
 	mounted() {
 		this.$nextTick(() => this.observeAppContent())
 	},
+	beforeUnmount() {
+		this.removeFirstInteractionListeners()
+	},
 	methods: {
+		onFirstInteraction() {
+			this.userHasInteracted = true
+			this.removeFirstInteractionListeners()
+		},
+		removeFirstInteractionListeners() {
+			for (const type of FIRST_INTERACTION_EVENTS) {
+				document.removeEventListener(type, this.onFirstInteraction, { capture: true })
+			}
+		},
 		...mapActions(useTablesStore, ['loadTablesFromBE', 'getAllContexts', 'loadViewsSharedWithMeFromBE', 'loadTemplatesFromBE', 'setActiveRowId', 'setActiveTableId', 'setActiveViewId', 'setActiveContextId']),
-		routing(currentRoute) {
+		/**
+		 * @param {object} currentRoute the route to apply
+		 * @param {boolean} initial true for the first route on page load. Routes that follow without the
+		 *   user having touched the page (the redirects of the standalone shell) do not take focus either:
+		 *   a programmatic focus before any interaction draws the focus ring around the content area
+		 */
+		routing(currentRoute, initial = false) {
 			const url = generateUrl('/apps/tables/')
 
-			try {
-				if (loadState('tables', 'contextId', undefined)) {
-					// prepare route, when Context is opened from navigation bar
-					const contextId = loadState('tables', 'contextId', undefined)
-					const originalUrl = window.location.href
-					this.$router.replace('/application/' + contextId).catch(() => { })
-					// reverts turning /apps/tables/app/28 into /apps/tables/app/28#/application/28
-					history.replaceState({}, undefined, originalUrl)
-				}
-			} catch (e) {
-				// contextId is not always set, it is fine.
+			// an application opened on its own starts at its root; later route changes inside it must stay
+			if (this.standaloneContextId !== null && currentRoute.path === '/') {
+				const originalUrl = window.location.href
+				this.$router.replace('/application/' + this.standaloneContextId).catch(() => { })
+				// reverts turning /apps/tables/app/28 into /apps/tables/app/28#/application/28
+				history.replaceState({}, undefined, originalUrl)
 			}
 
 			if (currentRoute.name === 'tableRow' || currentRoute.name === 'viewRow') {
@@ -119,6 +148,9 @@ export default {
 						|| document.querySelector(`header .header-left .app-menu a[href="${url}"]`)
 					this.switchActiveMenuEntry(targetElement)
 				}
+			} else if (currentRoute.path === '/applications') {
+				this.setActiveContextId(null)
+				this.setPageTitle(t('tables', 'Applications'))
 			} else if (currentRoute.path.startsWith('/application/')) {
 				const contextId = parseInt(currentRoute.params.contextId)
 				this.setActiveContextId(contextId)
@@ -133,13 +165,15 @@ export default {
 				}
 
 				// move the focus away from nav bar (import for app-internal switch)
-				const appContent = document.getElementById('app-content-vue')
-				const oldTabIndex = appContent.tabIndex
-				if (oldTabIndex === -1) {
-					appContent.tabIndex = 0
+				if (!initial && this.userHasInteracted) {
+					const appContent = document.getElementById('app-content-vue')
+					const oldTabIndex = appContent.tabIndex
+					if (oldTabIndex === -1) {
+						appContent.tabIndex = 0
+					}
+					appContent.focus()
+					appContent.tabIndex = oldTabIndex
 				}
-				appContent.focus()
-				appContent.tabIndex = oldTabIndex
 			}
 		},
 		switchActiveMenuEntry(targetElement) {

@@ -279,7 +279,9 @@
                     "iconName",
                     "description",
                     "owner",
-                    "ownerType"
+                    "ownerType",
+                    "technicalName",
+                    "menuItems"
                 ],
                 "properties": {
                     "id": {
@@ -301,6 +303,16 @@
                     "ownerType": {
                         "type": "integer",
                         "format": "int64"
+                    },
+                    "technicalName": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "menuItems": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/MenuItem"
+                        }
                     }
                 }
             },
@@ -327,6 +339,149 @@
                     },
                     "userId": {
                         "type": "string"
+                    }
+                }
+            },
+            "GridLayoutItem": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "widgetId",
+                    "gridX",
+                    "gridY",
+                    "gridWidth",
+                    "gridHeight"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "widgetId": {
+                        "type": "string"
+                    },
+                    "gridX": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "gridY": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "gridWidth": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "gridHeight": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
+            "GridWidget": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "type",
+                    "configuration",
+                    "content"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "configuration": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object"
+                        }
+                    },
+                    "content": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "GridWidgetProperty": {
+                "type": "object",
+                "required": [
+                    "type",
+                    "title",
+                    "default"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "default": {
+                        "type": "object"
+                    },
+                    "options": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "value",
+                                "label"
+                            ],
+                            "properties": {
+                                "value": {
+                                    "type": "string"
+                                },
+                                "label": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "required": {
+                        "type": "boolean"
+                    }
+                }
+            },
+            "GridWidgetType": {
+                "type": "object",
+                "required": [
+                    "type",
+                    "title",
+                    "defaultWidth",
+                    "defaultHeight",
+                    "configuration",
+                    "properties"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string"
+                    },
+                    "title": {
+                        "type": "string"
+                    },
+                    "defaultWidth": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "defaultHeight": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "configuration": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/GridWidgetProperty"
+                        }
+                    },
+                    "properties": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "$ref": "#/components/schemas/GridWidgetProperty"
+                        }
                     }
                 }
             },
@@ -405,6 +560,61 @@
                     },
                     "url": {
                         "type": "string"
+                    }
+                }
+            },
+            "MenuItem": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "contextId",
+                    "label",
+                    "icon",
+                    "targetType",
+                    "targetId",
+                    "url",
+                    "technicalName",
+                    "order",
+                    "broken"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "contextId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "label": {
+                        "type": "string"
+                    },
+                    "icon": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "targetType": {
+                        "type": "string"
+                    },
+                    "targetId": {
+                        "type": "integer",
+                        "format": "int64",
+                        "nullable": true
+                    },
+                    "url": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "technicalName": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "order": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "broken": {
+                        "type": "boolean"
                     }
                 }
             },
@@ -1014,7 +1224,9 @@
                     "hasShares",
                     "rowsCount",
                     "isFederated",
-                    "sidebarOrder"
+                    "sidebarOrder",
+                    "type",
+                    "grid"
                 ],
                 "properties": {
                     "id": {
@@ -1037,7 +1249,8 @@
                     },
                     "tableId": {
                         "type": "integer",
-                        "format": "int64"
+                        "format": "int64",
+                        "nullable": true
                     },
                     "ownership": {
                         "type": "string"
@@ -1257,6 +1470,30 @@
                         "type": "integer",
                         "format": "int64",
                         "nullable": true
+                    },
+                    "type": {
+                        "type": "string"
+                    },
+                    "grid": {
+                        "type": "object",
+                        "required": [
+                            "widgets",
+                            "layout"
+                        ],
+                        "properties": {
+                            "widgets": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/GridWidget"
+                                }
+                            },
+                            "layout": {
+                                "type": "array",
+                                "items": {
+                                    "$ref": "#/components/schemas/GridLayoutItem"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -6674,6 +6911,344 @@
                 }
             }
         },
+        "/ocs/v2.php/apps/tables/api/2/views/widget-types": {
+            "get": {
+                "operationId": "api_views-widget-types",
+                "summary": "[api v2] The widget types a grid view can hold",
+                "description": "Every type carries two schemas: the configuration of the widget on the page and its content.",
+                "tags": [
+                    "api_views"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Widget types returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "$ref": "#/components/schemas/GridWidgetType"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ocs/v2.php/apps/tables/api/2/views": {
+            "post": {
+                "operationId": "api_views-create",
+                "summary": "[api v2] Create a view without a table, such as a grid view",
+                "description": "The view belongs to the user who creates it and can be placed in an application menu.",
+                "tags": [
+                    "api_views"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "title"
+                                ],
+                                "properties": {
+                                    "title": {
+                                        "type": "string",
+                                        "description": "Title of the view"
+                                    },
+                                    "emoji": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Emoji shown with the title"
+                                    },
+                                    "type": {
+                                        "type": "string",
+                                        "default": "grid",
+                                        "description": "Type of the view, `grid` for a page of widgets"
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Technical name, lowercase letters, numbers and underscores"
+                                    },
+                                    "description": {
+                                        "type": "string",
+                                        "default": "",
+                                        "description": "Description shown on the page"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "parameters": [
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "View created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/View"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid type or technical name",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No permissions",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/ocs/v2.php/apps/tables/api/2/tables": {
             "get": {
                 "operationId": "api_tables-index",
@@ -11946,6 +12521,51 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "technical name of the context"
+                                    },
+                                    "menuItems": {
+                                        "type": "array",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "optional menu of the context, in order; the views and tables it opens become nodes of the context",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "label",
+                                                "targetType"
+                                            ],
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string"
+                                                },
+                                                "icon": {
+                                                    "type": "string"
+                                                },
+                                                "targetType": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "view",
+                                                        "table",
+                                                        "url"
+                                                    ]
+                                                },
+                                                "targetId": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -12376,6 +12996,51 @@
                                             "order": {
                                                 "type": "integer",
                                                 "format": "int64"
+                                            }
+                                        }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "provide this parameter to set a new technical name"
+                                    },
+                                    "menuItems": {
+                                        "type": "array",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "provide this parameter to replace the menu; the views and tables it opens become nodes of the context",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "label",
+                                                "targetType"
+                                            ],
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string"
+                                                },
+                                                "icon": {
+                                                    "type": "string"
+                                                },
+                                                "targetType": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "view",
+                                                        "table",
+                                                        "url"
+                                                    ]
+                                                },
+                                                "targetId": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
+                                                }
                                             }
                                         }
                                     }
@@ -13405,6 +14070,60 @@
                                                 "items": {
                                                     "$ref": "#/components/schemas/Table"
                                                 }
+                                            }
+                                        }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "technical name of the context"
+                                    },
+                                    "menuItems": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Menu of the context, targets by uuid",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "label",
+                                                "targetType"
+                                            ],
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string"
+                                                },
+                                                "icon": {
+                                                    "type": "string"
+                                                },
+                                                "targetType": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "view",
+                                                        "table",
+                                                        "url"
+                                                    ]
+                                                },
+                                                "targetUuid": {
+                                                    "type": "string"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "gridViews": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Views without a table that the menu points at",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object"
                                             }
                                         }
                                     }
