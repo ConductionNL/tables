@@ -6,6 +6,7 @@
 import type { Page } from '@playwright/test'
 import { test, expect } from '../support/fixtures'
 import { ocsRequest, type TestUser } from '../support/api'
+import { createContext, loadContext } from '../support/commands'
 
 /**
  * Creates a grid view and an application whose menu opens it, through the API.
@@ -47,5 +48,54 @@ test.describe('Applications', () => {
 		await expect(page.locator('[data-cy="navigationCreateTableIcon"]')).toHaveCount(0)
 		// Nothing focused the content area before the person touched the page, so no focus ring is drawn around it
 		expect(await page.evaluate(() => document.activeElement?.id ?? '')).not.toBe('app-content-vue')
+	})
+
+	test('A page with widgets added on the overview gets a menu entry and opens', async ({ userPage: { page } }) => {
+		await page.goto('/index.php/apps/tables')
+		await createContext(page, 'overview application')
+		await loadContext(page, 'overview application')
+
+		await page.locator('[data-cy="context-add-page"]').getByRole('button').first().click()
+		await page.getByRole('menuitem', { name: 'Page with widgets' }).click()
+		const dialog = page.locator('[data-cy="gridViewSettingsModal"]')
+		await dialog.getByRole('textbox', { name: 'Title', exact: true }).fill('Intake home')
+		await dialog.locator('[data-cy="gridViewSubmit"]').click()
+
+		await expect(page).toHaveURL(/\/menu\/intake_home$/)
+		await expect(page.locator('[data-cy="context-breadcrumb"]')).toContainText('Intake home')
+		await expect(page.locator('[data-cy="gridViewHeading"]')).toContainText('Intake home')
+
+		await page.locator('[data-cy="context-menu-overview"]').click()
+		await expect(page.locator('[data-cy="page-card"]').filter({ hasText: 'Intake home' })).toContainText('Page with widgets')
+	})
+
+	test('A menu entry is reordered with its buttons, sits under another one and keeps its place after a reload', async ({ userPage: { page } }) => {
+		await page.goto('/index.php/apps/tables')
+		await createContext(page, 'nested menu application')
+		await loadContext(page, 'nested menu application')
+
+		await page.locator('[data-cy="context-menu-edit"]').click()
+		for (const [label, url] of [['Handbook', 'https://docs.nextcloud.com'], ['Forum', 'https://help.nextcloud.com']]) {
+			await page.locator('[data-cy="menuItemAdd"]').click()
+			await page.locator('[data-cy="menuItemLabel"] input').last().fill(label)
+			await page.locator('[data-cy="menuItemLink"] input').last().fill(url)
+		}
+
+		// Without a pointer: move Forum to the top, then put Handbook under it
+		await page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemMoveUp"]').click()
+		await expect(page.locator('[data-cy="menuItemLabel"] input').first()).toHaveValue('Forum')
+		await page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemIndent"]').click()
+		await expect(page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemOutdent"]')).toBeVisible()
+
+		const saveResponse = page.waitForResponse(response => response.url().includes('/apps/tables/api/2/contexts/') && response.request().method() === 'PUT')
+		await page.locator('[data-cy="context-menu-save"]').click()
+		expect((await saveResponse).status()).toBe(200)
+
+		await page.reload()
+		const pages = page.locator('[data-cy="page-card"]')
+		await expect(pages).toHaveCount(2)
+		await expect(pages.nth(0)).toContainText('Forum')
+		await expect(pages.nth(1)).toContainText('1.1')
+		await expect(pages.nth(1)).toContainText('Handbook')
 	})
 })

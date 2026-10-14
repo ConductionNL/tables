@@ -66,8 +66,13 @@ export default {
 			type: Object,
 			default: null,
 		},
+		// Passed on with the created event, so an application can add the new view to its menu
+		contextId: {
+			type: Number,
+			default: null,
+		},
 	},
-	emits: ['close'],
+	emits: ['close', 'created'],
 	data() {
 		return {
 			title: '',
@@ -97,7 +102,8 @@ export default {
 			this.saving = false
 		},
 		/**
-		 * Saves the view, or creates it and opens it.
+		 * Saves the view, or creates it and opens it. A view created for an application is opened
+		 * by the application, through its menu.
 		 */
 		async submit() {
 			this.errorTitle = this.title.trim() === ''
@@ -117,8 +123,11 @@ export default {
 			const created = await this.insertStandaloneView({ data })
 			this.saving = false
 			if (created) {
+				this.$emit('created', { view: created, contextId: this.contextId })
 				this.$emit('close')
-				await this.$router.push('/view/' + created.id).catch(err => err)
+				if (this.contextId === null) {
+					await this.$router.push('/view/' + created.id).catch(err => err)
+				}
 			}
 		},
 	},
