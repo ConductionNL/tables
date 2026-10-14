@@ -614,7 +614,8 @@ export default {
 			emit('tables:view:create-grid', { contextId: this.activeContext.id })
 		},
 		/**
-		 * A grid view created from this application gets a menu item right away, and opens.
+		 * A grid view created from this application gets a menu item right away, and opens. A menu
+		 * being edited gets the new item too, so saving it later keeps the item.
 		 *
 		 * @param {{view: object, contextId: number|null}} payload the created view and the application it was created from
 		 */
@@ -622,23 +623,20 @@ export default {
 			if (!view || contextId !== this.activeContext?.id) {
 				return
 			}
-			const menuItems = [
-				...this.menuItems.map(item => ({
-					label: item.label,
-					icon: item.icon,
-					targetType: item.targetType,
-					targetId: item.targetId,
-					url: item.url,
-					technicalName: item.technicalName,
-					parentIndex: item.parentId != null ? this.menuItems.findIndex(candidate => candidate.id === item.parentId) : null,
-				})),
-				{ label: view.title, icon: null, targetType: 'view', targetId: view.id, url: null, technicalName: null, parentIndex: null },
-			]
-			const context = await this.updateContextMenuItems({ id: this.activeContext.id, menuItems })
+			const items = toEditableMenuItems(this.menuItems)
+			items.push({ key: 'new-' + view.id, label: view.title, icon: null, targetType: 'view', targetId: view.id, url: '', technicalName: null, parentKey: null })
+			const context = await this.updateContextMenuItems({ id: this.activeContext.id, menuItems: items.map(item => toMenuItemPayload(item, items)) })
 			const added = context?.menuItems?.find(item => item.targetType === 'view' && item.targetId === view.id)
-			if (added) {
-				await this.$router.push(menuItemRoute(added, this.activeContext.id)).catch(err => err)
+			if (!added) {
+				// The page exists already; it only misses its entry in the menu
+				showError(t('tables', 'The page "{title}" was created, but could not be added to the menu.', { title: view.title }, undefined, { escape: false }))
+				await this.$router.push('/view/' + view.id).catch(err => err)
+				return
 			}
+			if (this.menuDraft !== null) {
+				this.menuDraft = [...this.menuDraft, ...toEditableMenuItems([added])]
+			}
+			await this.$router.push(menuItemRoute(added, this.activeContext.id)).catch(err => err)
 		},
 		/**
 		 * Navigates inside the app. NcButton cannot take a route itself: @nextcloud/vue brings its own
@@ -780,7 +778,9 @@ export default {
 			}
 		},
 		/**
-		 * Loads the tables and views of the application's start page, with their columns, rows and relations.
+		 * Loads the tables and views of the application's start page. Opened on its own, the application
+		 * shows them, so their columns, rows and relations load as well; inside Tables the overview only
+		 * needs what they are, for the pages and their descriptions.
 		 */
 		async loadResources() {
 			this.resourcesLoaded = true
@@ -803,7 +803,7 @@ export default {
 
 								await this.loadContextTable({ id: node.node_id })
 								const table = this.tables.find(table => table.id === node.node_id)
-								if (table) {
+								if (table && this.isStandalone) {
 									await this.loadColumnsFromBE({
 										view: null,
 										tableId: table.id,
@@ -825,7 +825,7 @@ export default {
 								await this.loadContextView({ id: node.node_id })
 								const view = this.views.find(view => view.id === node.node_id)
 								// A grid view has no rows; it is a page, reached through the menu
-								if (view && view.type !== 'grid') {
+								if (view && view.type !== 'grid' && this.isStandalone) {
 									await this.loadColumnsFromBE({
 										view,
 									})
