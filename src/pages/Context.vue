@@ -121,11 +121,21 @@
 						</NcActions>
 					</div>
 				</header>
+				<p class="context__stats" data-cy="context-stats">
+					<span v-for="stat in stats" :key="stat.key">
+						{{ stat.label }}
+					</span>
+				</p>
 
 				<section class="context__section" data-cy="context-pages">
 					<div class="context__section-header">
 						<h2>{{ t('tables', 'Pages') }}</h2>
 						<div class="context__section-actions">
+							<NcTextField v-if="pages.length > 6"
+								v-model="pageFilter"
+								:label="t('tables', 'Filter pages')"
+								class="context__filter"
+								data-cy="context-page-filter" />
 							<NcActions v-if="ownsContext(activeContext)" :menu-name="t('tables', 'Add page')" :primary="pages.length === 0" data-cy="context-add-page">
 								<template #icon>
 									<Plus :size="20" />
@@ -154,6 +164,9 @@
 					<p v-if="pages.length === 0" class="context__hint">
 						{{ t('tables', 'No pages yet. Every page gets an entry in the menu of the application.') }}
 					</p>
+					<p v-else-if="filteredPages.length === 0" class="context__hint">
+						{{ t('tables', 'No page matches the filter.') }}
+					</p>
 					<div v-else class="context__table-wrap">
 						<table class="context__table" data-cy="context-pages-table">
 							<thead>
@@ -177,7 +190,7 @@
 								</tr>
 							</thead>
 							<tbody>
-								<tr v-for="page in pages"
+								<tr v-for="page in filteredPages"
 									:key="page.item.id"
 									class="page-row"
 									:class="{ 'page-row--child': page.level === 1 }"
@@ -271,6 +284,89 @@
 						{{ t('tables', 'The menu is empty. Add a page, or edit the menu to link tables and external links.') }}
 					</p>
 				</section>
+
+				<section class="context__section" data-cy="context-tables">
+					<div class="context__section-header">
+						<h2>{{ t('tables', 'Tables') }}</h2>
+					</div>
+					<p class="context__section-help">
+						{{ t('tables', 'The data this application works on. A table is listed when a page, a widget or the application itself uses it.') }}
+					</p>
+					<p v-if="usedTables.length === 0" class="context__hint">
+						{{ t('tables', 'No table is used yet. Add a table page or a widget that shows a table.') }}
+					</p>
+					<div v-else class="context__table-wrap">
+						<table class="context__table" data-cy="context-tables-table">
+							<thead>
+								<tr>
+									<th scope="col">
+										{{ t('tables', 'Table') }}
+									</th>
+									<th scope="col" class="context__col-number">
+										{{ t('tables', 'Rows') }}
+									</th>
+									<th scope="col" class="context__col-number">
+										{{ t('tables', 'Views') }}
+									</th>
+									<th scope="col">
+										{{ t('tables', 'Used by') }}
+									</th>
+									<th scope="col" class="context__col-actions">
+										<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
+									</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr v-for="entry in usedTables" :key="entry.id" data-cy="context-table-row">
+									<td class="page-row__name">
+										<span class="page-row__icon page-row__emoji">{{ entry.table?.emoji || '' }}</span>
+										<router-link v-if="entry.table" :to="'/table/' + entry.id" class="page-row__link">
+											{{ entry.table.title }}
+										</router-link>
+										<span v-else>{{ t('tables', 'Table {id}, not accessible to you', { id: entry.id }) }}</span>
+									</td>
+									<td class="context__col-number">
+										{{ entry.table ? entry.table.rowsCount : '' }}
+									</td>
+									<td class="context__col-number">
+										{{ entry.viewCount }}
+									</td>
+									<td class="page-row__shows">
+										{{ entry.usedBy.join(', ') }}
+									</td>
+									<td class="context__col-actions">
+										<NcButton v-if="entry.table" variant="tertiary" @click="openRoute('/table/' + entry.id)">
+											{{ t('tables', 'Open') }}
+										</NcButton>
+									</td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</section>
+
+				<section v-if="ownsContext(activeContext)" class="context__section" data-cy="context-members">
+					<div class="context__section-header">
+						<h2>{{ t('tables', 'Members') }}</h2>
+						<NcButton variant="secondary" data-cy="context-edit-members" @click="editApplication">
+							<template #icon>
+								<AccountMultipleOutline :size="20" />
+							</template>
+							{{ t('tables', 'Share with people or groups') }}
+						</NcButton>
+					</div>
+					<p class="context__section-help">
+						{{ t('tables', 'Who can open the application. What each member may do with the data follows from the shares of the tables.') }}
+					</p>
+					<ul class="context__members" data-cy="context-members-list">
+						<li v-for="member in members" :key="member.key" class="context__member">
+							<NcAvatar v-if="member.type === 'user'" :user="member.id" :display-name="member.name" :size="32" />
+							<span v-else class="context__member-group" aria-hidden="true"><AccountMultipleOutline :size="20" /></span>
+							<span>{{ member.name }}</span>
+							<span class="context__member-role">{{ member.role }}</span>
+						</li>
+					</ul>
+				</section>
 			</div>
 
 			<NcEmptyContent v-if="!selectedMenuItem && isStandalone && resourcesLoaded && contextResources.length === 0"
@@ -305,9 +401,11 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
-import { NcActionButton, NcActionSeparator, NcActions, NcButton, NcEmptyContent, NcIconSvgWrapper, NcLoadingIcon } from '@nextcloud/vue'
+import { NcActionButton, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcLoadingIcon, NcTextField } from '@nextcloud/vue'
+import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
+import AccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
 import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
 import ContentSaveOutline from 'vue-material-design-icons/ContentSaveOutline.vue'
@@ -344,10 +442,13 @@ export default {
 		NcActionButton,
 		NcActionSeparator,
 		NcActions,
+		NcAvatar,
 		NcButton,
 		NcEmptyContent,
 		NcIconSvgWrapper,
 		NcLoadingIcon,
+		NcTextField,
+		AccountMultipleOutline,
 		ChevronLeft,
 		ContentCopy,
 		ContentSaveOutline,
@@ -390,6 +491,7 @@ export default {
 			menuTargetLoading: false,
 			menuDraft: null,
 			menuSaving: false,
+			pageFilter: '',
 			standaloneContextId: loadState('tables', 'contextId', null),
 			openedFirstPage: false,
 			// Whether the tables and views of the overview are loaded; a menu page does not need them
@@ -485,6 +587,100 @@ export default {
 					: t('tables', 'Not accessible to you')
 				return { ...page, kind: 'view', typeLabel: t('tables', 'View'), description, view }
 			})
+		},
+		filteredPages() {
+			const query = this.pageFilter.trim().toLowerCase()
+			if (query === '') {
+				return this.pages
+			}
+			return this.pages.filter(page => [page.item.label, page.description, page.typeLabel].some(text => (text ?? '').toLowerCase().includes(query)))
+		},
+		/**
+		 * Every table the application touches: through its own nodes, through a page that shows a
+		 * table or a view, and through a widget that shows one. Keyed by table id, with who uses it.
+		 *
+		 * @return {Array<object>}
+		 */
+		usedTables() {
+			const uses = new Map()
+			const add = (tableId, usedBy) => {
+				if (!tableId) {
+					return
+				}
+				const entry = uses.get(tableId) ?? { id: tableId, usedBy: [] }
+				if (!entry.usedBy.includes(usedBy)) {
+					entry.usedBy.push(usedBy)
+				}
+				uses.set(tableId, entry)
+			}
+			const menuTargets = new Set(this.menuItems.map(item => item.targetType + '-' + item.targetId))
+			for (const node of Object.values(this.activeContext?.nodes ?? {})) {
+				const nodeType = parseInt(node.node_type)
+				if (menuTargets.has((nodeType === NODE_TYPE_TABLE ? 'table-' : 'view-') + node.node_id)) {
+					continue
+				}
+				if (nodeType === NODE_TYPE_TABLE) {
+					add(node.node_id, t('tables', 'Application'))
+				} else if (nodeType === NODE_TYPE_VIEW) {
+					add(this.views.find(view => view.id === node.node_id)?.tableId, t('tables', 'Application'))
+				}
+			}
+			for (const page of this.pages) {
+				if (page.kind === 'table') {
+					add(page.item.targetId, page.item.label)
+				} else if (page.kind === 'view') {
+					add(page.view?.tableId, page.item.label)
+				} else if (page.kind === 'grid') {
+					for (const widget of page.view?.grid?.widgets ?? []) {
+						const target = widget.content?.target
+						if (!target) {
+							continue
+						}
+						const tableId = target.type === 'table' ? target.id : this.views.find(view => view.id === target.id)?.tableId
+						add(tableId, page.item.label)
+					}
+				}
+			}
+			return [...uses.values()].map(entry => ({
+				...entry,
+				table: this.tables.find(table => table.id === entry.id) ?? null,
+				viewCount: this.views.filter(view => view.tableId === entry.id && view.type !== 'grid').length,
+			})).sort((a, b) => (a.table?.title ?? '').localeCompare(b.table?.title ?? ''))
+		},
+		/**
+		 * The owner and everyone the application is shared with. Only the owner gets every share.
+		 *
+		 * @return {Array<object>}
+		 */
+		members() {
+			const owner = this.activeContext?.owner
+			const currentUser = getCurrentUser()
+			const ownerName = owner === currentUser?.uid ? currentUser.displayName : owner
+			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: ownerName, role: t('tables', 'Owner') }] : []
+			for (const share of Object.values(this.activeContext?.sharing ?? {})) {
+				if (share.receiver === owner && share.receiver_type === 'user') {
+					continue
+				}
+				list.push({
+					key: 'share-' + share.share_id,
+					type: share.receiver_type,
+					id: share.receiver,
+					name: share.receiver_display_name ?? share.receiver,
+					role: share.receiver_type === 'user' ? t('tables', 'Member') : t('tables', 'Group'),
+				})
+			}
+			return list
+		},
+		stats() {
+			const stats = [
+				{ key: 'pages', label: n('tables', '%n page', '%n pages', this.pages.length) },
+				{ key: 'tables', label: n('tables', '%n table', '%n tables', this.usedTables.length) },
+			]
+			// Only the owner sees every share; anyone else would see a partial count
+			if (this.ownsContext(this.activeContext)) {
+				stats.push({ key: 'members', label: n('tables', '%n member', '%n members', this.members.length) })
+			}
+			return stats
 		},
 		rows() {
 			const rows = {}
@@ -1001,6 +1197,59 @@ export default {
 		gap: calc(2 * var(--default-grid-baseline));
 	}
 
+	&__stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(4 * var(--default-grid-baseline));
+		margin: 0;
+		padding-block: calc(2 * var(--default-grid-baseline));
+		padding-inline: calc(var(--default-clickable-area) + 4 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+		border-bottom: 1px solid var(--color-border);
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__filter {
+		max-width: 260px;
+	}
+
+	&__col-number {
+		width: 1%;
+		font-variant-numeric: tabular-nums;
+		text-align: end;
+		white-space: nowrap;
+	}
+
+	&__members {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(2 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	&__member {
+		display: flex;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline));
+		min-width: 200px;
+	}
+
+	&__member-group {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background-color: var(--color-background-dark);
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__member-role {
+		color: var(--color-text-maxcontrast);
+	}
+
 	&__section {
 		max-width: 1100px;
 		padding-block: calc(5 * var(--default-grid-baseline)) calc(2 * var(--default-grid-baseline));
@@ -1160,6 +1409,11 @@ export default {
 		color: var(--color-primary-element);
 	}
 
+	&__emoji {
+		width: 20px;
+		text-align: center;
+	}
+
 	&__link {
 		color: inherit;
 		font-weight: bold;
@@ -1181,6 +1435,7 @@ export default {
 
 @media (max-width: 700px) {
 	// The header keeps clear of the navigation toggle that floats at the top left
+	.context__stats,
 	.context__section {
 		padding-inline-start: calc(4 * var(--default-grid-baseline));
 	}
