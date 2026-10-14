@@ -14,6 +14,25 @@ export const MAX_LABEL_LENGTH = 200
 export const MAX_URL_LENGTH = 2000
 
 /**
+ * Menu items as the API stores them, as items for the editor, with a stable key for list rendering.
+ *
+ * @param {Array|undefined|null} menuItems items from the application
+ * @return {Array<object>} the items for the editor
+ */
+export function toEditableMenuItems(menuItems) {
+	return (menuItems ?? []).map((item, index) => ({
+		key: 'item-' + (item.id ?? index),
+		label: item.label ?? '',
+		icon: item.icon ?? null,
+		targetType: item.targetType ?? 'url',
+		targetId: item.targetId ?? null,
+		url: item.url ?? '',
+		technicalName: item.technicalName ?? null,
+		parentKey: item.parentId != null ? 'item-' + item.parentId : null,
+	}))
+}
+
+/**
  * The payload the API expects for one menu item.
  *
  * @param {object} item an item from the editor

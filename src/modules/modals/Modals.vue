@@ -38,6 +38,8 @@
 		<GridViewSettings
 			:show-modal="gridView !== null"
 			:view="gridView?.view ?? null"
+			:context-id="gridView?.contextId ?? null"
+			@created="emitGridViewCreated"
 			@close="gridView = null" />
 
 		<Import
@@ -64,6 +66,7 @@
 
 <script>
 
+import { emit } from '@nextcloud/event-bus'
 import { useEventBusSubscriptions } from '../../shared/composables/useEventBusSubscriptions.js'
 import CreateRow from './CreateRow.vue'
 import ImportScheme from './ImportScheme.vue'
@@ -159,7 +162,7 @@ export default {
 			}
 			this.viewToEdit = { ...view, createView: false }
 		})
-		this.subscribeToEventBus('tables:view:create-grid', () => { this.gridView = { view: null } })
+		this.subscribeToEventBus('tables:view:create-grid', payload => { this.gridView = { view: null, contextId: payload?.contextId ?? null } })
 		this.subscribeToEventBus('tables:view:create', tableInfos => {
 			this.viewToEdit = {
 				view: { tableId: tableInfos.tableId, sort: [], filter: [] },
@@ -196,6 +199,14 @@ export default {
 
 	},
 	methods: {
+		/**
+		 * Tells the application a grid view was created from, so it can add the view to its menu.
+		 *
+		 * @param {{view: object, contextId: number|null}} payload the created view and its application
+		 */
+		emitGridViewCreated(payload) {
+			emit('tables:view:grid-created', payload)
+		},
 		onSaveNewColumn(event) {
 			if (this.createColumnInfo?.onSave) {
 				this.createColumnInfo.onSave(event)
