@@ -96,6 +96,18 @@ test.describe('Applications', () => {
 		await expect(page.locator('[data-cy="application-nav-header"]')).toContainText('named application')
 	})
 
+	test('All applications are listed on one page that opens each of them', async ({ userPage: { page } }) => {
+		await page.goto('/index.php/apps/tables')
+		await createContext(page, 'listed application')
+
+		await page.locator('[data-cy="navigationAllApplications"] a').first().click()
+		const card = page.locator('[data-cy="application-card"]').filter({ hasText: 'listed application' })
+		await expect(card).toBeVisible()
+		await card.click()
+
+		await expect(page.locator('[data-cy="context-title"]')).toContainText('listed application')
+	})
+
 	test('A page with widgets added on the overview gets a menu entry and opens', async ({ userPage: { page } }) => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, 'overview application')
