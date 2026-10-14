@@ -28,6 +28,7 @@ use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\MenuItemInput;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
 use OCP\INavigationManager;
@@ -394,6 +395,139 @@ final class ContextServiceTest extends TestCase {
 		$this->service->delete(7, 'alice');
 
 		$this->assertSame(['application', 'menu'], $calls);
+	}
+
+	/**
+	 * The export and the import resolution are private because their only entry points
+	 * need the server container; they are exercised directly here.
+	 */
+	private function callPrivate(string $method, array $arguments): mixed {
+		$reflection = new \ReflectionMethod($this->service, $method);
+		return $reflection->invokeArgs($this->service, $arguments);
+	}
+
+	private function gridViewWithWidget(array $content): View {
+		$gridView = new View();
+		$gridView->setId(6);
+		$gridView->setUuid('view-uuid');
+		$gridView->setTitle('Intake home');
+		$gridView->setType(View::TYPE_GRID);
+		$gridView->setGridArray(['widgets' => [['id' => 'w-1', 'type' => 'data', 'content' => $content]], 'layout' => []]);
+		return $gridView;
+	}
+
+	private function expectUuidLookups(): void {
+		$table = new Table();
+		$table->setId(4);
+		$this->tableMapper->method('findByUuid')->willReturnCallback(static function (string $uuid) use ($table): Table {
+			if ($uuid === 'table-uuid') {
+				return $table;
+			}
+			throw new DoesNotExistException('unknown');
+		});
+		$view = new View();
+		$view->setId(6);
+		$this->viewMapper->method('findByUuid')->willReturnCallback(static fn (string $uuid): ?View => $uuid === 'view-uuid' ? $view : null);
+	}
+
+	public function testExportNamesMenuTargetsByUuidAndCarriesTheViewsWithoutATable(): void {
+		$table = new Table();
+		$table->setId(4);
+		$table->setUuid('table-uuid');
+		$this->tableMapper->method('find')->with(4)->willReturn($table);
+		$this->viewMapper->method('find')->with(6)->willReturn($this->gridViewWithWidget(['target' => ['type' => 'table', 'id' => 4]]));
+
+		$context = $this->contextWithMenu(7, [
+			['label' => 'Intake home', 'icon' => null, 'targetType' => 'view', 'targetId' => 6, 'url' => null, 'technicalName' => 'home'],
+			['label' => 'Welcome', 'icon' => null, 'targetType' => 'table', 'targetId' => 4, 'url' => null, 'technicalName' => 'welcome'],
+			['label' => 'Docs', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => 'docs'],
+		]);
+
+		[$menuItems, $gridViews] = $this->callPrivate('exportMenuItems', [$context]);
+
+		$this->assertSame(['view-uuid', 'table-uuid', null], array_column($menuItems, 'targetUuid'));
+		$this->assertArrayNotHasKey('targetId', $menuItems[0]);
+		$this->assertCount(1, $gridViews);
+		$this->assertSame('view-uuid', $gridViews[0]['uuid']);
+		$this->assertSame(['type' => 'table', 'id' => 4, 'uuid' => 'table-uuid'], $gridViews[0]['grid']['widgets'][0]['content']['target']);
+	}
+
+	public function testExportSkipsMenuItemsWhoseTargetIsGone(): void {
+		$this->tableMapper->method('find')->willThrowException(new DoesNotExistException('gone'));
+		$context = $this->contextWithMenu(7, [
+			['label' => 'Gone', 'icon' => null, 'targetType' => 'table', 'targetId' => 99, 'url' => null, 'technicalName' => 'gone'],
+			['label' => 'Docs', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => 'docs'],
+		]);
+
+		[$menuItems] = $this->callPrivate('exportMenuItems', [$context]);
+
+		$this->assertSame(['Docs'], array_column($menuItems, 'label'));
+	}
+
+	public function testExportNamesTheParentOfANestedItemByItsTechnicalName(): void {
+		$context = $this->contextWithMenu(7, [
+			['id' => 1, 'label' => 'Docs', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org', 'technicalName' => 'docs', 'parentId' => null],
+			['id' => 2, 'label' => 'API', 'icon' => null, 'targetType' => 'url', 'targetId' => null, 'url' => 'https://example.org/api', 'technicalName' => 'api', 'parentId' => 1],
+		]);
+
+		[$menuItems] = $this->callPrivate('exportMenuItems', [$context]);
+
+		$this->assertSame([null, 'docs'], array_column($menuItems, 'parentTechnicalName'));
+	}
+
+	public function testImportMapsMenuTargetsToLocalIdsAndSkipsWhatItCannotUse(): void {
+		$this->expectUuidLookups();
+
+		/** @var list<MenuItemInput> $resolved */
+		$resolved = $this->callPrivate('resolveMenuItems', [[
+			['label' => 'Intake home', 'targetType' => 'view', 'targetUuid' => 'view-uuid', 'technicalName' => 'home'],
+			['label' => 'Welcome', 'targetType' => 'table', 'targetUuid' => 'table-uuid'],
+			['label' => 'Missing', 'targetType' => 'table', 'targetUuid' => 'nope'],
+			['label' => 'Weird', 'targetType' => 'kanban', 'targetUuid' => 'x'],
+			['label' => '   ', 'targetType' => 'url', 'url' => 'https://example.org'],
+			['label' => 'Script', 'targetType' => 'url', 'url' => 'javascript:alert(1)'],
+			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
+		]]);
+
+		$this->assertSame(['Intake home', 'Welcome', 'Docs'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
+		$this->assertSame([6, 4, null], array_map(static fn (MenuItemInput $item) => $item->getTargetId(), $resolved));
+	}
+
+	public function testImportPutsAChildUnderItsParentWhenTheParentSurvivesAndIsTopLevel(): void {
+		$this->expectUuidLookups();
+
+		/** @var list<MenuItemInput> $resolved */
+		$resolved = $this->callPrivate('resolveMenuItems', [[
+			['label' => 'Missing', 'targetType' => 'table', 'targetUuid' => 'nope', 'technicalName' => 'missing'],
+			['label' => 'Docs', 'url' => 'https://example.org', 'technicalName' => 'docs'],
+			['label' => 'API', 'url' => 'https://example.org/api', 'technicalName' => 'api', 'parentTechnicalName' => 'docs'],
+			['label' => 'Orphan', 'url' => 'https://example.org/o', 'parentTechnicalName' => 'missing'],
+			['label' => 'Deep', 'url' => 'https://example.org/d', 'parentTechnicalName' => 'api'],
+		]]);
+
+		$this->assertSame(['Docs', 'API', 'Orphan', 'Deep'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
+		$this->assertSame([null, 0, null, null], array_map(static fn (MenuItemInput $item) => $item->getParentIndex(), $resolved));
+	}
+
+	public function testImportDropsGridWidgetsWhoseTargetIsNotHere(): void {
+		$this->expectUuidLookups();
+
+		$grid = $this->callPrivate('resolveGridTargets', [[
+			'widgets' => [
+				['id' => 'w-1', 'type' => 'data', 'content' => ['target' => ['type' => 'table', 'id' => 40, 'uuid' => 'table-uuid']]],
+				['id' => 'w-2', 'type' => 'data', 'content' => ['target' => ['type' => 'view', 'id' => 60, 'uuid' => 'elsewhere']]],
+				['id' => 'w-3', 'type' => 'text', 'content' => ['text' => 'hi']],
+			],
+			'layout' => [
+				['widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 4],
+				['widgetId' => 'w-2', 'gridX' => 0, 'gridY' => 4, 'gridWidth' => 12, 'gridHeight' => 4],
+				['widgetId' => 'w-3', 'gridX' => 0, 'gridY' => 8, 'gridWidth' => 12, 'gridHeight' => 2],
+			],
+		]]);
+
+		$this->assertSame(['w-1', 'w-3'], array_column($grid['widgets'], 'id'));
+		$this->assertSame(['type' => 'table', 'id' => 4], $grid['widgets'][0]['content']['target']);
+		$this->assertSame(['w-1', 'w-3'], array_column($grid['layout'], 'widgetId'));
 	}
 
 	public function testUpdateReordersStartPageContentsFromSubmittedNodes(): void {

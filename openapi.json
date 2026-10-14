@@ -13855,6 +13855,57 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "menuItems": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Menu of the context, targets by uuid, parents by technical name",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "label",
+                                                "targetType"
+                                            ],
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string"
+                                                },
+                                                "icon": {
+                                                    "type": "string"
+                                                },
+                                                "targetType": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "view",
+                                                        "table",
+                                                        "url"
+                                                    ]
+                                                },
+                                                "targetUuid": {
+                                                    "type": "string"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
+                                                },
+                                                "parentTechnicalName": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "gridViews": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Views without a table that the menu points at",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object"
+                                            }
+                                        }
                                     }
                                 }
                             }
