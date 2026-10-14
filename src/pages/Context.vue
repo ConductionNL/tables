@@ -64,6 +64,10 @@
 				</div>
 			</div>
 
+			<NcEmptyContent v-if="!selectedMenuItem && isStandalone && resourcesLoaded && contextResources.length === 0"
+				:name="t('tables', 'No tables or views')"
+				:description="t('tables', 'This application shows no tables or views here. Its pages are in the menu.')"
+				data-cy="context-no-resources" />
 			<div v-if="!selectedMenuItem" class="resources">
 				<div v-for="resource in contextResources" :key="resource.key">
 					<div v-if="!resource.isView" class="resource">
@@ -149,6 +153,8 @@ export default {
 			menuTargetLoading: false,
 			standaloneContextId: loadState('tables', 'contextId', null),
 			openedFirstPage: false,
+			// Whether the tables and views of the overview are loaded; a menu page does not need them
+			resourcesLoaded: false,
 		}
 	},
 
@@ -167,6 +173,25 @@ export default {
 		},
 		applicationUrl() {
 			return window.location.origin + generateUrl('/apps/tables/app/' + this.activeContext?.id)
+		},
+		/**
+		 * The page an application opened on its own is about to open: its first entry that is not a link.
+		 *
+		 * @return {object|null}
+		 */
+		firstStandalonePage() {
+			if (!this.isStandalone || this.openedFirstPage) {
+				return null
+			}
+			return this.menuItems.find(item => item.targetType !== 'url') ?? null
+		},
+		/**
+		 * Whether the overview with the tables and views is shown, rather than a menu page.
+		 *
+		 * @return {boolean}
+		 */
+		showsOverview() {
+			return !this.$route.params.itemName && this.firstStandalonePage === null
 		},
 		selectedMenuItem() {
 			const technicalName = this.$route.params.itemName
@@ -229,6 +254,7 @@ export default {
 			handler() {
 				this.loadMenuTarget()
 				this.openFirstPageWhenStandalone()
+				this.loadResourcesWhenShown()
 			},
 		},
 		menuItems() {
@@ -283,10 +309,10 @@ export default {
 		 * Only once: the overview stays reachable from the menu afterwards.
 		 */
 		openFirstPageWhenStandalone() {
-			if (!this.isStandalone || this.openedFirstPage || this.$route.params.itemName || this.menuItems.length === 0) {
+			if (this.$route.params.itemName) {
 				return
 			}
-			const first = this.menuItems.find(item => item.targetType !== 'url')
+			const first = this.firstStandalonePage
 			if (first) {
 				this.openedFirstPage = true
 				this.$router.replace(menuItemRoute(first, this.activeContext.id)).catch(err => err)
@@ -296,9 +322,14 @@ export default {
 		 * Loads the view or table the selected menu item opens.
 		 */
 		async loadMenuTarget() {
+			// Counts the loads, so a load that a newer menu choice overtook leaves the page alone. Not
+			// reactive, as nothing renders it; the immediate watcher calls this before created()
+			this.menuTargetRequest = (this.menuTargetRequest ?? 0) + 1
+			const request = this.menuTargetRequest
 			const item = this.selectedMenuItem
 			this.menuResource = null
 			if (!item || item.targetType === 'url') {
+				this.menuTargetLoading = false
 				return
 			}
 			this.menuTargetLoading = true
@@ -312,8 +343,10 @@ export default {
 							await this.loadRowsFromBE({ viewId: view.id, tableId: view.tableId })
 							await this.loadRelationsFromBE({ viewId: view.id })
 						}
-						this.menuViewSetting = this.createViewSetting(view)
-						this.menuResource = { ...view, isView: true, key: 'view-' + view.id }
+						if (request === this.menuTargetRequest) {
+							this.menuViewSetting = this.createViewSetting(view)
+							this.menuResource = { ...view, isView: true, key: 'view-' + view.id }
+						}
 					}
 				} else {
 					await this.loadContextTable({ id: item.targetId })
@@ -322,15 +355,21 @@ export default {
 						await this.loadColumnsFromBE({ view: null, tableId: table.id })
 						await this.loadRowsFromBE({ viewId: null, tableId: table.id })
 						await this.loadRelationsFromBE({ tableId: table.id })
-						this.menuViewSetting = this.createViewSetting(table)
-						this.menuResource = { ...table, isView: false, key: String(table.id) }
+						if (request === this.menuTargetRequest) {
+							this.menuViewSetting = this.createViewSetting(table)
+							this.menuResource = { ...table, isView: false, key: String(table.id) }
+						}
 					}
 				}
 			} catch (error) {
 				console.error('The menu target could not be loaded', error)
-				this.menuResource = null
+				if (request === this.menuTargetRequest) {
+					this.menuResource = null
+				}
 			} finally {
-				this.menuTargetLoading = false
+				if (request === this.menuTargetRequest) {
+					this.menuTargetLoading = false
+				}
 			}
 		},
 		contextSignature() {
@@ -349,6 +388,7 @@ export default {
 			this.loading = true
 			this.contextResources = []
 			this.resourceViewSettings = {}
+			this.resourcesLoaded = false
 
 			try {
 				await this.loadContext({ id: this.activeContextId })
@@ -364,72 +404,8 @@ export default {
 
 				this.icon = await this.getContextIcon(this.activeContext.iconName)
 
-				if (this.context && this.context.pages) {
-					const pages = Object.values(this.context.pages)
-					const startPage = pages.find(p => p.page_type === 'startpage')
-
-					if (startPage && startPage.content) {
-						const sortedContent = Object.values(startPage.content).sort((a, b) => a.order - b.order)
-
-						for (const content of sortedContent) {
-							const node = this.context.nodes[content.node_rel_id]
-							if (!node) continue
-
-							try {
-								const nodeType = parseInt(node.node_type)
-								if (nodeType === NODE_TYPE_TABLE) {
-
-									await this.loadContextTable({ id: node.node_id })
-									const table = this.tables.find(table => table.id === node.node_id)
-									if (table) {
-										await this.loadColumnsFromBE({
-											view: null,
-											tableId: table.id,
-										})
-										await this.loadRowsFromBE({
-											viewId: null,
-											tableId: table.id,
-										})
-										await this.loadRelationsFromBE({
-											tableId: table.id,
-										})
-										table.key = (table.id).toString()
-										table.isView = false
-										this.resourceViewSettings[table.key] = this.createViewSetting(table)
-										this.contextResources.push(table)
-									}
-
-								} else if (nodeType === NODE_TYPE_VIEW) {
-									await this.loadContextView({ id: node.node_id })
-									const view = this.views.find(view => view.id === node.node_id)
-									// A grid view has no rows; it is a page, reached through the menu
-									if (view && view.type !== 'grid') {
-										await this.loadColumnsFromBE({
-											view,
-										})
-										await this.loadRowsFromBE({
-											viewId: view.id,
-											tableId: view.tableId,
-										})
-										await this.loadRelationsFromBE({
-											viewId: view.id,
-										})
-										view.key = 'view-' + (view.id).toString()
-										view.isView = true
-										this.resourceViewSettings[view.key] = this.createViewSetting(view)
-										this.contextResources.push(view)
-									}
-								}
-							} catch (err) {
-								console.error(`Failed to load resource ${node.node_id}:`, err)
-								this.errorMessage = t('tables', 'Some resources in this application could not be loaded')
-							}
-						}
-					}
-					// TODO: check this
-					// Fallback if no startpage or content (though unexpected for valid contexts with nodes)
-					// If nodes exist but not in startpage content, they won't be shown.
-					// This matches backend logic where nodes are added to startpage.
+				if (this.showsOverview) {
+					await this.loadResources()
 				}
 			} catch (e) {
 				if (e.message === 'NOT_FOUND') {
@@ -441,6 +417,96 @@ export default {
 			} finally {
 				this.loading = false
 				this.isReloading = false
+			}
+		},
+		/**
+		 * Loads the tables and views of the overview when it is shown and has not loaded them yet,
+		 * for instance after leaving a menu page that the application opened on.
+		 */
+		async loadResourcesWhenShown() {
+			if (this.loading || this.resourcesLoaded || !this.showsOverview || !this.context) {
+				return
+			}
+			this.loading = true
+			try {
+				await this.loadResources()
+			} finally {
+				this.loading = false
+			}
+		},
+		/**
+		 * Loads the tables and views of the application's start page, with their columns, rows and relations.
+		 */
+		async loadResources() {
+			this.resourcesLoaded = true
+			this.contextResources = []
+			this.resourceViewSettings = {}
+			if (this.context && this.context.pages) {
+				const pages = Object.values(this.context.pages)
+				const startPage = pages.find(p => p.page_type === 'startpage')
+
+				if (startPage && startPage.content) {
+					const sortedContent = Object.values(startPage.content).sort((a, b) => a.order - b.order)
+
+					for (const content of sortedContent) {
+						const node = this.context.nodes[content.node_rel_id]
+						if (!node) continue
+
+						try {
+							const nodeType = parseInt(node.node_type)
+							if (nodeType === NODE_TYPE_TABLE) {
+
+								await this.loadContextTable({ id: node.node_id })
+								const table = this.tables.find(table => table.id === node.node_id)
+								if (table) {
+									await this.loadColumnsFromBE({
+										view: null,
+										tableId: table.id,
+									})
+									await this.loadRowsFromBE({
+										viewId: null,
+										tableId: table.id,
+									})
+									await this.loadRelationsFromBE({
+										tableId: table.id,
+									})
+									table.key = (table.id).toString()
+									table.isView = false
+									this.resourceViewSettings[table.key] = this.createViewSetting(table)
+									this.contextResources.push(table)
+								}
+
+							} else if (nodeType === NODE_TYPE_VIEW) {
+								await this.loadContextView({ id: node.node_id })
+								const view = this.views.find(view => view.id === node.node_id)
+								// A grid view has no rows; it is a page, reached through the menu
+								if (view && view.type !== 'grid') {
+									await this.loadColumnsFromBE({
+										view,
+									})
+									await this.loadRowsFromBE({
+										viewId: view.id,
+										tableId: view.tableId,
+									})
+									await this.loadRelationsFromBE({
+										viewId: view.id,
+									})
+									view.key = 'view-' + (view.id).toString()
+									view.isView = true
+									this.resourceViewSettings[view.key] = this.createViewSetting(view)
+									this.contextResources.push(view)
+								}
+							}
+						} catch (err) {
+							console.error(`Failed to load resource ${node.node_id}:`, err)
+							this.errorMessage = t('tables', 'Some resources in this application could not be loaded')
+						}
+					}
+				}
+				// TODO: check this
+				// Fallback if no startpage or content (though unexpected for valid contexts with nodes)
+				// If nodes exist but not in startpage content, they won't be shown.
+				// This matches backend logic where nodes are added to startpage.
 			}
 		},
 		createColumn(isView, element) {
