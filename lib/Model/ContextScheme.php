@@ -21,6 +21,7 @@ class ContextScheme implements JsonSerializable {
 		protected ?array $tables = [],
 		protected array $menuItems = [],
 		protected array $gridViews = [],
+		protected ?string $technicalName = null,
 	) {
 	}
 
@@ -43,7 +44,7 @@ class ContextScheme implements JsonSerializable {
 		if (!is_string($data['name'] ?? null) || trim($data['name']) === '') {
 			throw new InvalidArgumentException('A scheme needs a name.');
 		}
-		foreach (['icon', 'description'] as $optional) {
+		foreach (['icon', 'description', 'technicalName'] as $optional) {
 			if (isset($data[$optional]) && !is_string($data[$optional])) {
 				throw new InvalidArgumentException('The scheme property "' . $optional . '" must be a string.');
 			}
@@ -57,7 +58,12 @@ class ContextScheme implements JsonSerializable {
 			tables: $tables,
 			menuItems: array_values($data['menuItems'] ?? []),
 			gridViews: array_values($data['gridViews'] ?? []),
+			technicalName: isset($data['technicalName']) && $data['technicalName'] !== '' ? $data['technicalName'] : null,
 		);
+	}
+
+	public function getTechnicalName(): ?string {
+		return $this->technicalName;
 	}
 
 	public function getName(): ?string {
@@ -108,6 +114,7 @@ class ContextScheme implements JsonSerializable {
 			'tables' => $this->tables,
 			'menuItems' => $this->menuItems,
 			'gridViews' => $this->gridViews,
+			'technicalName' => $this->technicalName,
 		];
 	}
 }
