@@ -1192,6 +1192,7 @@ export type components = {
             readonly owner: string;
             /** Format: int64 */
             readonly ownerType: number;
+            readonly technicalName: string | null;
             readonly menuItems: readonly components["schemas"]["MenuItem"][];
         };
         readonly ContextNavigation: {
@@ -7038,6 +7039,11 @@ export interface operations {
                         /** Format: int64 */
                         readonly parentIndex?: number;
                     }[] | null;
+                    /**
+                     * @description names the context in its address, lowercase letters, numbers and underscores; unique per owner
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };
@@ -7244,6 +7250,11 @@ export interface operations {
                         /** Format: int64 */
                         readonly parentIndex?: number;
                     }[] | null;
+                    /**
+                     * @description provide this parameter to set a new technical name; an empty one removes it
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };
@@ -7700,6 +7711,11 @@ export interface operations {
                     readonly gridViews?: readonly {
                         readonly [key: string]: Record<string, never>;
                     }[];
+                    /**
+                     * @description technical name of the context
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };

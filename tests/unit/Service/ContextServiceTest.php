@@ -48,6 +48,7 @@ final class ContextServiceTest extends TestCase {
 	private MockObject $tableMapper;
 	private MockObject $viewMapper;
 	private MockObject $permissionsService;
+	private MockObject $urlGenerator;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -66,7 +67,7 @@ final class ContextServiceTest extends TestCase {
 		$dbConnection = $this->createMock(IDBConnection::class);
 		$shareService = $this->createMock(ShareService::class);
 		$navigationManager = $this->createMock(INavigationManager::class);
-		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$this->urlGenerator = $this->createMock(IURLGenerator::class);
 
 		$this->service = new ContextService(
 			$this->contextMapper,
@@ -81,7 +82,7 @@ final class ContextServiceTest extends TestCase {
 			$shareService,
 			false,
 			$navigationManager,
-			$urlGenerator,
+			$this->urlGenerator,
 			$this->tableMapper,
 			$this->viewMapper,
 			$this->menuItemMapper,
@@ -395,6 +396,79 @@ final class ContextServiceTest extends TestCase {
 		$this->service->delete(7, 'alice');
 
 		$this->assertSame(['application', 'menu'], $calls);
+	}
+
+	public function testUpdateRejectsAMalformedTechnicalName(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->service->update(7, 'user-1', null, null, null, null, null, 'Not A Name');
+	}
+
+	public function testUpdateRejectsATechnicalNameTheOwnerAlreadyUses(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('isTechnicalNameTaken')->with('intake', 'user-1', 7)->willReturn(true);
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('already exists');
+		$this->service->update(7, 'user-1', null, null, null, null, null, 'intake');
+	}
+
+	public function testUpdateClearsTheTechnicalNameWhenItIsBlank(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setTechnicalName('old');
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, null, '  ');
+
+		$this->assertNull($updated->getTechnicalName());
+	}
+
+	public function testUpdateLeavesTheTechnicalNameAloneWhenNoneIsGiven(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setTechnicalName('intake');
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->contextMapper->expects($this->never())->method('isTechnicalNameTaken');
+
+		$updated = $this->service->update(7, 'user-1', 'Renamed', null, null, null);
+
+		$this->assertSame('intake', $updated->getTechnicalName());
+	}
+
+	public function testCreateStoresTheTechnicalName(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(8);
+			return $context;
+		});
+		$this->pageMapper->method('insert')->willReturnCallback(static function (Page $page): Page {
+			$page->setId(3);
+			return $page;
+		});
+		$this->menuItemMapper->method('findByContextId')->willReturn([]);
+
+		$created = $this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, [], 'intake');
+
+		$this->assertSame('intake', $created->getTechnicalName());
+	}
+
+	public function testNavigationLinksOwnApplicationsByTechnicalNameAndOthersById(): void {
+		$own = $this->contextWithMenu(7, []);
+		$own->setTechnicalName('intake');
+		$shared = $this->contextWithMenu(8, []);
+		$shared->setOwnerId('someone-else');
+		$shared->setTechnicalName('intake');
+		$this->contextMapper->method('findForNavBar')->willReturn([$own, $shared]);
+		$linked = [];
+		$this->urlGenerator->method('linkToRoute')->willReturnCallback(static function (string $route, array $parameters) use (&$linked): string {
+			$linked[] = $parameters['contextId'];
+			return '/app/' . $parameters['contextId'];
+		});
+
+		$this->service->addToNavigation('user-1');
+
+		$this->assertSame(['intake', 8], $linked);
 	}
 
 	/**
