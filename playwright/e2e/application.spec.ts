@@ -127,8 +127,9 @@ test.describe('Applications', () => {
 		await expect(item).toHaveCount(1, { timeout: 10000 })
 
 		await page.locator('[data-cy="context-layout-edit"]').click()
-		await item.getByRole('button', { name: 'Width of Layout table' }).click()
-		await page.getByRole('menuitemradio', { name: 'Half' }).click()
+		// The width menu is the only menu in the card's toolbar while the layout is edited
+		await item.locator('.context__grid-item-toolbar').getByRole('button').first().click()
+		await page.getByRole('menuitemradio', { name: 'Half' }).or(page.getByRole('radio', { name: 'Half' })).first().click()
 		await page.locator('[data-cy="context-layout-save"]').click()
 		await expect(item).toHaveAttribute('style', /--context-grid-span: 6/)
 
