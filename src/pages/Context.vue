@@ -8,7 +8,7 @@
 
 		<div v-else-if="activeContext" :class="{ 'context--standalone': isStandalone }">
 			<div v-if="selectedMenuItem && !isStandalone" class="context__breadcrumb" data-cy="context-breadcrumb">
-				<NcButton variant="tertiary" :to="'/application/' + activeContext.id" data-cy="context-menu-overview">
+				<NcButton variant="tertiary" data-cy="context-menu-overview" @click="openRoute('/application/' + activeContext.id)">
 					<template #icon>
 						<ChevronLeft :size="20" />
 					</template>
@@ -269,6 +269,15 @@ export default {
 	methods: {
 		...mapActions(useTablesStore, ['loadContext', 'validateExportAccess', 'loadContextTable', 'loadContextView']),
 		...mapActions(useDataStore, ['loadColumnsFromBE', 'loadRowsFromBE', 'loadRelationsFromBE']),
+		/**
+		 * Navigates inside the app. NcButton cannot take a route itself: @nextcloud/vue brings its own
+		 * vue-router, whose router key the app's router does not provide, so its "to" renders a plain button.
+		 *
+		 * @param {string} route the route to open
+		 */
+		openRoute(route) {
+			this.$router.push(route).catch(err => err)
+		},
 		/**
 		 * An application opened on its own starts on its first page, not on the resource overview.
 		 * Only once: the overview stays reachable from the menu afterwards.
