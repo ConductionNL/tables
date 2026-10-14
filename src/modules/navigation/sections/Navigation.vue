@@ -66,6 +66,12 @@
 					</template>
 				</NcAppNavigationCaption>
 
+				<NcAppNavigationItem :name="t('tables', 'All applications')" to="/applications" data-cy="navigationAllApplications">
+					<template #icon>
+						<ViewGridOutline :size="20" />
+					</template>
+				</NcAppNavigationItem>
+
 				<template v-for="node in getAllContexts" :key="node.id">
 					<NavigationContextItem :context="node" />
 				</template>
@@ -121,6 +127,7 @@ import { emit } from '@nextcloud/event-bus'
 import { useEventBusSubscriptions } from '../../../shared/composables/useEventBusSubscriptions.js'
 import Magnify from 'vue-material-design-icons/Magnify.vue'
 import ArchiveOutline from 'vue-material-design-icons/ArchiveOutline.vue'
+import ViewGridOutline from 'vue-material-design-icons/ViewGridOutline.vue'
 import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
 import { mapState, mapActions } from 'pinia'
@@ -138,6 +145,7 @@ export default {
 		NcTextField,
 		Magnify,
 		ArchiveOutline,
+		ViewGridOutline,
 		NcButton,
 		NcCounterBubble,
 		NcEmptyContent,
