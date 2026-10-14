@@ -287,6 +287,7 @@ namespace OCA\Tables;
  *   description: string,
  *   owner: string,
  *   ownerType: int,
+ *   technicalName: string|null,
  *   menuItems: list<TablesMenuItem>,
  * }
  *

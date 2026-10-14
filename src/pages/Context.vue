@@ -513,7 +513,9 @@ export default {
 			return this.standaloneContextId !== null
 		},
 		applicationUrl() {
-			return window.location.origin + generateUrl('/apps/tables/app/' + this.activeContext?.id)
+			// Technical names are unique per owner only, so an application of someone else is addressed by id
+			const technicalName = this.activeContext && this.ownsContext(this.activeContext) ? this.activeContext.technicalName : null
+			return window.location.origin + generateUrl('/apps/tables/app/' + (technicalName || this.activeContext?.id))
 		},
 		/**
 		 * The page an application opened on its own is about to open: its first entry that is not a link.
