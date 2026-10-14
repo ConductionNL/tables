@@ -79,6 +79,23 @@ test.describe('Applications', () => {
 		await expect(row).toContainText('All requests')
 	})
 
+	test('An application with a technical name is opened at its readable address', async ({ userPage: { page } }) => {
+		// Technical names are unique per owner; a fresh one keeps reruns on the same instance apart
+		const technicalName = 'intake_' + Date.now()
+		await page.goto('/index.php/apps/tables')
+		await createContext(page, 'named application')
+		await loadContext(page, 'named application')
+
+		await page.getByRole('button', { name: 'Application settings' }).click()
+		await page.getByRole('menuitem', { name: 'Edit name, icon and members' }).click()
+		await page.locator('[data-cy="editContextTechnicalName"]').fill(technicalName)
+		await page.locator('[data-cy="editContextSubmitBtn"]').click()
+		await expect(page.locator('[data-cy="context-address"]')).toContainText('/apps/tables/app/' + technicalName)
+
+		await page.goto('/index.php/apps/tables/app/' + technicalName)
+		await expect(page.locator('[data-cy="application-nav-header"]')).toContainText('named application')
+	})
+
 	test('A page with widgets added on the overview gets a menu entry and opens', async ({ userPage: { page } }) => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, 'overview application')
