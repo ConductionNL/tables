@@ -27,6 +27,7 @@ use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\MenuItemInput;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\EventDispatcher\IEventDispatcher;
@@ -48,6 +49,8 @@ final class ContextServiceTest extends TestCase {
 	private MockObject $tableMapper;
 	private MockObject $viewMapper;
 	private MockObject $permissionsService;
+	/** @var list<mixed> the constructor arguments of the service, to build a partial mock with */
+	private array $serviceArguments;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -68,7 +71,7 @@ final class ContextServiceTest extends TestCase {
 		$navigationManager = $this->createMock(INavigationManager::class);
 		$urlGenerator = $this->createMock(IURLGenerator::class);
 
-		$this->service = new ContextService(
+		$this->serviceArguments = [
 			$this->contextMapper,
 			$this->contextNodeRelMapper,
 			$this->pageMapper,
@@ -85,7 +88,20 @@ final class ContextServiceTest extends TestCase {
 			$this->tableMapper,
 			$this->viewMapper,
 			$this->menuItemMapper,
-		);
+		];
+		$this->service = new ContextService(...$this->serviceArguments);
+	}
+
+	/**
+	 * A service whose given methods are mocked, such as the container lookups of the scheme import.
+	 *
+	 * @param list<string> $methods
+	 */
+	private function serviceWith(array $methods): ContextService&MockObject {
+		return $this->getMockBuilder(ContextService::class)
+			->setConstructorArgs($this->serviceArguments)
+			->onlyMethods($methods)
+			->getMock();
 	}
 
 	private function contextWithMenu(int $id, array $menuItems): Context {
@@ -416,7 +432,9 @@ final class ContextServiceTest extends TestCase {
 		return $gridView;
 	}
 
-	private function expectUuidLookups(): void {
+	private function expectUuidLookups(bool $usable = true): void {
+		$this->permissionsService->method('canManageNodeById')->willReturn($usable);
+		$this->permissionsService->method('canReadRowsByElementId')->willReturn($usable);
 		$table = new Table();
 		$table->setId(4);
 		$this->tableMapper->method('findByUuid')->willReturnCallback(static function (string $uuid) use ($table): Table {
@@ -487,7 +505,7 @@ final class ContextServiceTest extends TestCase {
 			['label' => '   ', 'targetType' => 'url', 'url' => 'https://example.org'],
 			['label' => 'Script', 'targetType' => 'url', 'url' => 'javascript:alert(1)'],
 			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
-		]]);
+		], 'user-1']);
 
 		$this->assertSame(['Intake home', 'Welcome', 'Docs'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
 		$this->assertSame([6, 4, null], array_map(static fn (MenuItemInput $item) => $item->getTargetId(), $resolved));
@@ -503,7 +521,7 @@ final class ContextServiceTest extends TestCase {
 			['label' => 'API', 'url' => 'https://example.org/api', 'technicalName' => 'api', 'parentTechnicalName' => 'docs'],
 			['label' => 'Orphan', 'url' => 'https://example.org/o', 'parentTechnicalName' => 'missing'],
 			['label' => 'Deep', 'url' => 'https://example.org/d', 'parentTechnicalName' => 'api'],
-		]]);
+		], 'user-1']);
 
 		$this->assertSame(['Docs', 'API', 'Orphan', 'Deep'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
 		$this->assertSame([null, 0, null, null], array_map(static fn (MenuItemInput $item) => $item->getParentIndex(), $resolved));
@@ -523,11 +541,178 @@ final class ContextServiceTest extends TestCase {
 				['widgetId' => 'w-2', 'gridX' => 0, 'gridY' => 4, 'gridWidth' => 12, 'gridHeight' => 4],
 				['widgetId' => 'w-3', 'gridX' => 0, 'gridY' => 8, 'gridWidth' => 12, 'gridHeight' => 2],
 			],
-		]]);
+		], 'user-1']);
 
 		$this->assertSame(['w-1', 'w-3'], array_column($grid['widgets'], 'id'));
 		$this->assertSame(['type' => 'table', 'id' => 4], $grid['widgets'][0]['content']['target']);
 		$this->assertSame(['w-1', 'w-3'], array_column($grid['layout'], 'widgetId'));
+	}
+
+	public function testImportSkipsAMenuTargetTheImporterCannotManage(): void {
+		$this->expectUuidLookups(false);
+
+		/** @var list<MenuItemInput> $resolved */
+		$resolved = $this->callPrivate('resolveMenuItems', [[
+			['label' => 'Welcome', 'targetType' => 'table', 'targetUuid' => 'table-uuid'],
+			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
+		], 'user-1']);
+
+		$this->assertSame(['Docs'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
+	}
+
+	public function testImportDropsAGridWidgetWhoseRowsTheImporterCannotRead(): void {
+		$this->expectUuidLookups(false);
+
+		$grid = $this->callPrivate('resolveGridTargets', [[
+			'widgets' => [
+				['id' => 'w-1', 'type' => 'data', 'content' => ['target' => ['type' => 'table', 'id' => 40, 'uuid' => 'table-uuid']]],
+				['id' => 'w-2', 'type' => 'text', 'content' => ['text' => 'hi']],
+			],
+			'layout' => [
+				['widgetId' => 'w-1', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 4],
+				['widgetId' => 'w-2', 'gridX' => 0, 'gridY' => 4, 'gridWidth' => 12, 'gridHeight' => 2],
+			],
+		], 'user-1']);
+
+		$this->assertSame(['w-2'], array_column($grid['widgets'], 'id'));
+		$this->assertSame(['w-2'], array_column($grid['layout'], 'widgetId'));
+	}
+
+	public function testImportGivesALaterItemWithATakenTechnicalNameADerivedOne(): void {
+		$this->expectUuidLookups();
+
+		/** @var list<MenuItemInput> $resolved */
+		$resolved = $this->callPrivate('resolveMenuItems', [[
+			['label' => 'Docs', 'url' => 'https://example.org/a', 'technicalName' => 'docs'],
+			['label' => 'More docs', 'url' => 'https://example.org/b', 'technicalName' => 'docs'],
+		], 'user-1']);
+
+		$this->assertSame(['docs', null], array_map(static fn (MenuItemInput $item) => $item->getTechnicalName(), $resolved));
+	}
+
+	public function testExportCarriesAGridViewOnceWhenTwoItemsOpenIt(): void {
+		$this->viewMapper->method('find')->with(6)->willReturn($this->gridViewWithWidget(['text' => 'hi']));
+		$context = $this->contextWithMenu(7, [
+			['label' => 'Home', 'icon' => null, 'targetType' => 'view', 'targetId' => 6, 'url' => null, 'technicalName' => 'home'],
+			['label' => 'Home again', 'icon' => null, 'targetType' => 'view', 'targetId' => 6, 'url' => null, 'technicalName' => 'home_again'],
+		]);
+
+		[, $gridViews] = $this->callPrivate('exportMenuItems', [$context]);
+
+		$this->assertSame(['view-uuid'], array_column($gridViews, 'uuid'));
+	}
+
+	public function testExportCarriesAGridViewThatIsOnlyAResource(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setNodes([3 => ['id' => 3, 'node_id' => 6, 'node_type' => Application::NODE_TYPE_VIEW, 'permissions' => 1]]);
+		$this->contextMapper->method('findById')->with(7)->willReturn($context);
+		$viewService = $this->createMock(ViewService::class);
+		$viewService->method('find')->with(6)->willReturn($this->gridViewWithWidget(['text' => 'hi']));
+		$service = $this->serviceWith(['tableService', 'viewService']);
+		$service->method('tableService')->willReturn($this->createMock(TableService::class));
+		$service->method('viewService')->willReturn($viewService);
+
+		$scheme = $service->getScheme(7, 'user-1');
+
+		$this->assertSame(['view-uuid'], array_column($scheme->getGridViews(), 'uuid'));
+	}
+
+	public function testImportReusesAGridViewTheImporterCanManage(): void {
+		$existing = new View();
+		$existing->setId(6);
+		$this->viewMapper->method('findByUuid')->with('view-uuid')->willReturn($existing);
+		$this->permissionsService->method('canManageNodeById')->with(Application::NODE_TYPE_VIEW, 6, 'user-1')->willReturn(true);
+		$viewService = $this->createMock(ViewService::class);
+		$viewService->expects($this->never())->method('importView');
+		$service = $this->serviceWith(['viewService']);
+		$service->method('viewService')->willReturn($viewService);
+
+		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 'user-1']);
+
+		$this->assertSame(['view-uuid' => 6], $ids);
+	}
+
+	public function testImportCopiesAGridViewTheImporterCannotManage(): void {
+		$existing = new View();
+		$existing->setId(6);
+		$copy = new View();
+		$copy->setId(66);
+		$this->viewMapper->method('findByUuid')->with('view-uuid')->willReturn($existing);
+		$this->permissionsService->method('canManageNodeById')->willReturn(false);
+		$viewService = $this->createMock(ViewService::class);
+		$viewService->expects($this->once())->method('importView')->with(null, $this->callback(static fn (array $view): bool => $view['uuid'] === 'view-uuid' && $view['type'] === View::TYPE_GRID), 'user-1')->willReturn($copy);
+		$service = $this->serviceWith(['viewService']);
+		$service->method('viewService')->willReturn($viewService);
+
+		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 'user-1']);
+
+		$this->assertSame(['view-uuid' => 66], $ids);
+	}
+
+	/**
+	 * A service for importScheme whose container lookups return mocks; the scheme imports no tables.
+	 *
+	 * @param list<string> $alsoMock further methods to mock
+	 */
+	private function importingService(MockObject $viewService, array $alsoMock = []): ContextService&MockObject {
+		$service = $this->serviceWith(array_merge(['tableService', 'viewService', 'columnService'], $alsoMock));
+		$service->method('tableService')->willReturn($this->createMock(TableService::class));
+		$service->method('viewService')->willReturn($viewService);
+		$service->method('columnService')->willReturn($this->createMock(ColumnService::class));
+		return $service;
+	}
+
+	private function scheme(array $extra = []): ContextScheme {
+		return ContextScheme::createFromInputArray(array_merge([
+			'name' => 'Intake portal',
+			'icon' => 'star',
+			'tables' => ['addTables' => [], 'modifyTables' => []],
+		], $extra));
+	}
+
+	public function testImportOfASchemeWithoutAMenuLeavesTheMenuAlone(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->menuItemMapper->expects($this->never())->method('deleteAllByContextId');
+
+		$this->importingService($this->createMock(ViewService::class))->importScheme(7, $this->scheme(), 'user-1');
+	}
+
+	public function testImportOfAnEmptyMenuClearsTheMenu(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->menuItemMapper->expects($this->once())->method('deleteAllByContextId')->with(7);
+		$this->menuItemMapper->method('findByContextId')->willReturn([]);
+
+		$this->importingService($this->createMock(ViewService::class))->importScheme(7, $this->scheme(['menuItems' => []]), 'user-1');
+	}
+
+	public function testImportBringsGridViewsInBeforeTheNodesAndTheMenuThatPointAtThem(): void {
+		$copy = new View();
+		$copy->setId(66);
+		$this->viewMapper->method('findByUuid')->willReturn(null);
+		$viewService = $this->createMock(ViewService::class);
+		$viewService->method('importView')->willReturn($copy);
+		$service = $this->importingService($viewService, ['update']);
+		$service->expects($this->once())->method('update')->with(
+			7,
+			'user-1',
+			'Intake portal',
+			'star',
+			'',
+			[['id' => 66, 'type' => Application::NODE_TYPE_VIEW, 'permissions' => 1]],
+			$this->callback(static fn (?array $items): bool => $items !== null && count($items) === 1 && $items[0]->getTargetId() === 66),
+		)->willReturn($this->contextWithMenu(7, []));
+
+		$service->importScheme(7, $this->scheme([
+			'nodes' => [['node_type' => Application::NODE_TYPE_VIEW, 'node_uuid' => 'view-uuid', 'permissions' => 1]],
+			'menuItems' => [['label' => 'Home', 'targetType' => 'view', 'targetUuid' => 'view-uuid']],
+			'gridViews' => [['uuid' => 'view-uuid', 'title' => 'Home']],
+		]), 'user-1');
+	}
+
+	private function callPrivateOn(ContextService $service, string $method, array $arguments): mixed {
+		return (new \ReflectionMethod(ContextService::class, $method))->invokeArgs($service, $arguments);
 	}
 
 	public function testUpdateReordersStartPageContentsFromSubmittedNodes(): void {

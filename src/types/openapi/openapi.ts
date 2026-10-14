@@ -7680,8 +7680,8 @@ export interface operations {
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
                     /**
-                     * @description Menu of the context, targets by uuid, parents by technical name
-                     * @default []
+                     * @description Menu of the context, targets by uuid, parents by technical name; leave it out to keep the current menu
+                     * @default null
                      */
                     readonly menuItems?: readonly {
                         readonly label: string;
@@ -7692,7 +7692,7 @@ export interface operations {
                         readonly url?: string;
                         readonly technicalName?: string;
                         readonly parentTechnicalName?: string;
-                    }[];
+                    }[] | null;
                     /**
                      * @description Views without a table that the menu points at
                      * @default []
