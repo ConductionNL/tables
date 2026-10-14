@@ -97,6 +97,14 @@ namespace OCA\Tables;
  *  dataByAlias: array<string, array{columnId: int, value: mixed}>,
  * }
  *
+ * @psalm-type TablesRowPage = array{
+ * 	results: list<TablesRow>,
+ * 	total: int,
+ * 	limit: int,
+ * 	page: int,
+ * 	pages: int,
+ * }
+ *
  * @psalm-type TablesPublicRow = array{
  *    id: int,
  *    createdAt: string,

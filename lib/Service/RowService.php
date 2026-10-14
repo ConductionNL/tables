@@ -25,6 +25,7 @@ use OCA\Tables\Event\RowDeletedEvent;
 use OCA\Tables\Event\RowUpdatedEvent;
 use OCA\Tables\Helper\ColumnsHelper;
 use OCA\Tables\Model\RowDataInput;
+use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Notification\NotificationHelper;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\ColumnTypes\IColumnTypeBusiness;
@@ -60,6 +61,7 @@ class RowService extends SuperService {
 		private readonly ActivityManager $activityManager,
 		private readonly NotificationHelper $notificationHelper,
 		private readonly IDBConnection $connection,
+		private readonly RowQueryResolver $rowQueryResolver,
 	) {
 		parent::__construct($logger, $userId, $permissionsService);
 
@@ -151,6 +153,88 @@ class RowService extends SuperService {
 		} catch (Exception $e) {
 			$this->logger->error($e->getMessage());
 			throw new InternalError($e->getMessage());
+		}
+	}
+
+	/**
+	 * Lists a page of the rows of a table or view, filtered, searched and sorted by the query.
+	 *
+	 * @return array{rows: Row2[], total: int}
+	 * @throws BadRequestError
+	 * @throws InternalError
+	 * @throws NotFoundError
+	 * @throws PermissionError
+	 */
+	public function findPage(RowListQuery $query, ?int $tableId, ?int $viewId, string $userId): array {
+		if ($viewId !== null) {
+			$view = $this->findViewOrFail($viewId);
+			if (!$this->permissionsService->canReadRowsByElementId($viewId, 'view', $userId)) {
+				throw new PermissionError('no read access to view id = ' . $viewId);
+			}
+			$tableId = $view->getTableId();
+			$columns = $this->findColumns($view->getColumnIds());
+			$viewFilter = $view->getFilterArray();
+			$defaultSort = $view->getSortArray();
+			$filterUserId = $this->resolveFilterUserId($userId, $view);
+		} elseif ($tableId !== null) {
+			if (!$this->permissionsService->canReadRowsByElementId($tableId, 'table', $userId)) {
+				throw new PermissionError('no read access to table id = ' . $tableId);
+			}
+			try {
+				$columns = $this->columnMapper->findAllByTable($tableId);
+				$defaultSort = $this->tableMapper->find($tableId)->getSortArray();
+			} catch (DoesNotExistException $e) {
+				throw new NotFoundError('Table not found.');
+			} catch (MultipleObjectsReturnedException|Exception $e) {
+				$this->logger->error($e->getMessage(), ['exception' => $e]);
+				throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
+			}
+			$viewFilter = [];
+			$filterUserId = $userId;
+		} else {
+			throw new InternalError('Rows are listed without a table or view.');
+		}
+
+		$criteria = $this->rowQueryResolver->resolve($query, $columns, $viewFilter, $defaultSort);
+		if ($criteria['matchesNothing']) {
+			return ['rows' => [], 'total' => 0];
+		}
+
+		$allColumnIds = array_map(static fn (Column $column): int => $column->getId(), $columns);
+		$total = $this->row2Mapper->countRows($tableId, $allColumnIds, $criteria['filter'], $filterUserId);
+		// Row2Mapper only returns rows that have columns to load, so a request for metadata only
+		// loads all columns and drops their values afterwards
+		$isMetadataOnly = $criteria['columnIds'] === [];
+		$rows = $this->row2Mapper->findAll(
+			$isMetadataOnly ? $allColumnIds : $criteria['columnIds'],
+			$tableId,
+			$query->limit,
+			$query->offset,
+			$criteria['filter'] ?: null,
+			$criteria['sort'] ?: null,
+			$filterUserId,
+		);
+		$this->attachAliasPayloads($rows, $columns);
+		if ($isMetadataOnly) {
+			foreach ($rows as $row) {
+				$row->filterDataByColumns([]);
+				$row->filterDataByAliasByColumns([]);
+			}
+		}
+		return ['rows' => $rows, 'total' => $total];
+	}
+
+	/**
+	 * @param int[] $columnIds
+	 * @return Column[]
+	 * @throws InternalError
+	 */
+	private function findColumns(array $columnIds): array {
+		try {
+			return $this->columnMapper->findAll($columnIds);
+		} catch (Exception $e) {
+			$this->logger->error($e->getMessage(), ['exception' => $e]);
+			throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
 		}
 	}
 

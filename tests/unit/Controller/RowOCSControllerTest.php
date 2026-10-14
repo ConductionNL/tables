@@ -14,6 +14,7 @@ use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
@@ -153,5 +154,59 @@ class RowOCSControllerTest extends TestCase {
 		$this->federationService->expects($this->never())->method('deleteRow');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->deleteRow('tables', 3, self::UUID)->getStatus());
+	}
+
+	public function testGetRowsReturnsAPage(): void {
+		$this->rowService->expects($this->once())
+			->method('findPage')
+			->with(
+				$this->callback(fn (RowListQuery $query): bool => $query->limit === 2 && $query->offset === 2 && $query->sort === [['field' => 'name', 'mode' => 'ASC']]),
+				3,
+				null,
+				'user1',
+			)
+			->willReturn(['rows' => [$this->row(7)], 'total' => 5]);
+
+		$response = $this->controller->getRows('tables', 3, page: '2', limit: '2', sort: 'name');
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$data = $response->getData();
+		$this->assertSame(self::UUID, $data['results'][0]['uuid']);
+		$this->assertSame(['total' => 5, 'limit' => 2, 'page' => 2, 'pages' => 3], array_diff_key($data, ['results' => true]));
+	}
+
+	public function testGetRowsOnAViewListsWithinTheView(): void {
+		$this->rowService->expects($this->once())
+			->method('findPage')
+			->with($this->anything(), null, 5, 'user1')
+			->willReturn(['rows' => [], 'total' => 0]);
+
+		$data = $this->controller->getRows('views', 5)->getData();
+
+		$this->assertSame(['results' => [], 'total' => 0, 'limit' => 25, 'page' => 1, 'pages' => 1], $data);
+	}
+
+	public function testGetRowsRejectsInvalidParameters(): void {
+		$this->rowService->expects($this->never())->method('findPage');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, limit: '0')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, page: '-1')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, filter: ['name' => ['like' => 'x']])->getStatus());
+	}
+
+	public function testGetRowsPassesResolutionErrorsOnAsBadRequest(): void {
+		$this->rowService->method('findPage')->willThrowException(new BadRequestError('salary is not a column of this table or view.'));
+
+		$response = $this->controller->getRows('tables', 3, fields: 'salary');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertSame('salary is not a column of this table or view.', $response->getData()['message']);
+	}
+
+	public function testGetRowsIsNotSupportedOnAFederatedView(): void {
+		$this->federationService->method('isNodeFederated')->with(5, 'view')->willReturn(true);
+		$this->rowService->expects($this->never())->method('findPage');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('views', 5)->getStatus());
 	}
 }

@@ -1074,6 +1074,37 @@ class Row2Mapper {
 		}
 	}
 
+	/**
+	 * Counts the rows of a table that match a filter.
+	 *
+	 * @param int[] $columnIds the columns the filter may refer to
+	 * @param array $filter a list of OR groups, each a list of filters that must all match
+	 * @throws InternalError
+	 */
+	public function countRows(int $tableId, array $columnIds, array $filter, string $userId): int {
+		if ($filter === []) {
+			return $this->countRowsForTable($tableId);
+		}
+
+		try {
+			$this->columnMapper->preloadColumns($columnIds, $filter);
+
+			$qb = $this->db->getQueryBuilder();
+			$qb->select($qb->func()->count('*', 'counter'))
+				->from('tables_row_sleeves', 'sleeves')
+				->where($qb->expr()->eq('table_id', $qb->createNamedParameter($tableId, IQueryBuilder::PARAM_INT)));
+			$this->addFilterToQuery($qb, $filter, $userId);
+
+			$result = $this->db->executeQuery($qb->getSQL(), $qb->getParameters(), $qb->getParameterTypes());
+			$count = (int)$result->fetchOne();
+			$result->closeCursor();
+			return $count;
+		} catch (Exception $e) {
+			$this->logger->error($e->getMessage(), ['exception' => $e]);
+			throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
+		}
+	}
+
 	private function getFormattedDefaultValue(Column $column) {
 		$defaultValue = null;
 		$defaultValue = match ($column->getType()) {

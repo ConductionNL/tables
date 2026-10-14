@@ -1024,7 +1024,11 @@ export type paths = {
             readonly path?: never;
             readonly cookie?: never;
         };
-        readonly get?: never;
+        /**
+         * [api v2] List the rows of a table or a view
+         * @description Filters, search and sort only apply to the columns the table or view shows, and on a view they narrow its own filter, never widen it.
+         */
+        readonly get: operations["rowocs-get-rows"];
         readonly put?: never;
         /** [api v2] Create a new row in a table or a view */
         readonly post: operations["rowocs-create-row"];
@@ -1292,6 +1296,17 @@ export type components = {
                     readonly value: Record<string, never>;
                 };
             };
+        };
+        readonly RowPage: {
+            readonly results: readonly components["schemas"]["Row"][];
+            /** Format: int64 */
+            readonly total: number;
+            /** Format: int64 */
+            readonly limit: number;
+            /** Format: int64 */
+            readonly page: number;
+            /** Format: int64 */
+            readonly pages: number;
         };
         readonly Share: {
             /** Format: int64 */
@@ -8476,6 +8491,132 @@ export interface operations {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
                             readonly data: components["schemas"]["PublicRow"];
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Internal error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "rowocs-get-rows": {
+        readonly parameters: {
+            readonly query?: {
+                /** @description The page to return, an integer of at least 1, defaults to 1 */
+                readonly page?: string | null;
+                /** @description The number of rows to skip, an alternative to page */
+                readonly offset?: string | null;
+                /** @description The number of rows per page, an integer of at least 1, defaults to 25 */
+                readonly limit?: string | null;
+                /** @description Comma separated technical names, column ids or meta fields (id, createdBy, createdAt, updatedBy, updatedAt), a minus sorts descending. Defaults to the sort of the table or view */
+                readonly sort?: string | null;
+                /** @description Text to look for in the text cells and the selection labels */
+                readonly search?: string | null;
+                /** @description Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned */
+                readonly fields?: string | null;
+                /** @description Filters as filter[field]=value or filter[field][operator]=value, all of which must match */
+                readonly filter?: string | null;
+            };
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description Indicates whether to list the rows of a table or view */
+                readonly nodeCollection: "tables" | "views";
+                /** @description The identifier of the targeted table or view */
+                readonly nodeId: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Rows returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["RowPage"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid query parameters, or the table or view is federated */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
                         };
                     };
                 };

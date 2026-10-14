@@ -15,6 +15,7 @@ use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Helper\ConversionHelper;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
 use OCA\Tables\Model\RowDataInput;
+use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowService;
@@ -30,6 +31,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * @psalm-import-type TablesRow from ResponseDefinitions
+ * @psalm-import-type TablesRowPage from ResponseDefinitions
  */
 class RowOCSController extends AOCSController {
 
@@ -94,6 +96,73 @@ class RowOCSController extends AOCSController {
 				return new DataResponse($this->federationService->createRow($view, $data));
 			}
 			return new DataResponse($this->rowService->create($tableId, $viewId, $newRowData)->jsonSerialize());
+		} catch (BadRequestError $e) {
+			return $this->handleBadRequestError($e);
+		} catch (NotFoundError $e) {
+			return $this->handleNotFoundError($e);
+		} catch (PermissionError $e) {
+			return $this->handlePermissionError($e);
+		} catch (InternalError|\Exception $e) {
+			return $this->handleError($e);
+		}
+	}
+
+	/**
+	 * [api v2] List the rows of a table or a view
+	 *
+	 * Filters, search and sort only apply to the columns the table or view shows, and on a view
+	 * they narrow its own filter, never widen it.
+	 *
+	 * @param 'tables'|'views' $nodeCollection Indicates whether to list the rows of a table or view
+	 * @param int $nodeId The identifier of the targeted table or view
+	 * @param string|null $page The page to return, an integer of at least 1, defaults to 1
+	 * @param string|null $offset The number of rows to skip, an alternative to page
+	 * @param string|null $limit The number of rows per page, an integer of at least 1, defaults to 25
+	 * @param string|null $sort Comma separated technical names, column ids or meta fields (id, createdBy, createdAt, updatedBy, updatedAt), a minus sorts descending. Defaults to the sort of the table or view
+	 * @param string|null $search Text to look for in the text cells and the selection labels
+	 * @param string|null $fields Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned
+	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match
+	 * @return DataResponse<Http::STATUS_OK, TablesRowPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 *
+	 * 200: Rows returned
+	 * 400: Invalid query parameters, or the table or view is federated
+	 * 403: No permissions
+	 * 404: Not found
+	 * 500: Internal error
+	 */
+	#[NoAdminRequired]
+	#[RequirePermission(permission: Application::PERMISSION_READ, typeParam: 'nodeCollection')]
+	#[ApiRoute(verb: 'GET', url: '/api/2/{nodeCollection}/{nodeId}/rows', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
+	public function getRows(
+		string $nodeCollection,
+		int $nodeId,
+		?string $page = null,
+		?string $offset = null,
+		?string $limit = null,
+		?string $sort = null,
+		?string $search = null,
+		?string $fields = null,
+		mixed $filter = null,
+	): DataResponse {
+		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
+		try {
+			if ($this->isFederated($tableId, $viewId)) {
+				throw new BadRequestError('Listing rows is not supported for federated tables and views yet.');
+			}
+			try {
+				$query = RowListQuery::createFromRequest($page, $offset, $limit, $sort, $search, $fields, $filter);
+			} catch (\InvalidArgumentException $e) {
+				throw new BadRequestError($e->getMessage());
+			}
+
+			$found = $this->rowService->findPage($query, $tableId, $viewId, $this->userId);
+			return new DataResponse([
+				'results' => array_values(array_map(static fn ($row) => $row->jsonSerialize(), $found['rows'])),
+				'total' => $found['total'],
+				'limit' => $query->limit,
+				'page' => $query->getPage(),
+				'pages' => max(1, (int)ceil($found['total'] / $query->limit)),
+			]);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
