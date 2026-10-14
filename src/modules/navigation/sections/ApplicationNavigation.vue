@@ -19,7 +19,6 @@
 					:name="branch.item.label"
 					:to="branch.item.targetType === 'url' ? undefined : menuItemRoute(branch.item, context.id)"
 					:href="branch.item.targetType === 'url' ? branch.item.url : undefined"
-					:target="branch.item.targetType === 'url' ? '_blank' : undefined"
 					:class="{ active: isActive(branch.item) }"
 					:allow-collapse="branch.children.length > 0"
 					:open="branch.children.some(child => isActive(child))"
@@ -33,7 +32,6 @@
 							:name="child.label"
 							:to="child.targetType === 'url' ? undefined : menuItemRoute(child, context.id)"
 							:href="child.targetType === 'url' ? child.url : undefined"
-							:target="child.targetType === 'url' ? '_blank' : undefined"
 							:class="{ active: isActive(child) }"
 							data-cy="application-nav-item">
 							<template #icon>
@@ -76,6 +74,7 @@ import ApplicationIcon from '../../../shared/components/ApplicationIcon.vue'
 import MenuItemIcon from '../../../shared/components/MenuItemIcon.vue'
 import permissionsMixin from '../../../shared/components/ncTable/mixins/permissionsMixin.js'
 import { menuItemRoute, menuTree } from '../../../shared/utils/menuItems.js'
+import { NODE_TYPE_TABLE } from '../../../shared/constants.ts'
 import { useTablesStore } from '../../../store/store.js'
 
 /**
@@ -95,7 +94,7 @@ export default {
 	},
 	mixins: [permissionsMixin],
 	computed: {
-		...mapState(useTablesStore, ['activeContext']),
+		...mapState(useTablesStore, ['activeContext', 'views']),
 		context() {
 			return this.activeContext
 		},
@@ -105,8 +104,15 @@ export default {
 		menuTree() {
 			return menuTree(this.menuItems)
 		},
+		/**
+		 * Whether the overview has a table or view to show. A grid view is a page of its own, reached
+		 * through the menu, so it does not count.
+		 *
+		 * @return {boolean}
+		 */
 		hasResources() {
-			return Object.keys(this.context?.nodes ?? {}).length > 0
+			return Object.values(this.context?.nodes ?? {}).some(node => parseInt(node.node_type) === NODE_TYPE_TABLE
+				|| this.views.find(view => view.id === node.node_id)?.type !== 'grid')
 		},
 		configurationUrl() {
 			return generateUrl('/apps/tables/') + '#/application/' + this.context.id
