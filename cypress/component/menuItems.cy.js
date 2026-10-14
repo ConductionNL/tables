@@ -10,6 +10,8 @@ import {
 	indentItem,
 	isValidMenuLink,
 	menuItemErrors,
+	menuItemRoute,
+	menuTree,
 	moveItem,
 	outdentItem,
 	parentOfPosition,
@@ -114,5 +116,26 @@ describe('menu items', () => {
 
 		expect(dragItemOver(items, 0, 1)).to.equal(null, 'a block cannot be dropped on its own child')
 		expect(dragItemOver(items, 2, 2)).to.equal(null)
+	})
+
+	it('routes a view or table entry inside the app and leaves a link outside it', () => {
+		expect(menuItemRoute({ targetType: 'view', technicalName: 'home' }, 7)).to.equal('/application/7/menu/home')
+		expect(menuItemRoute({ targetType: 'table', technicalName: 'cases' }, 7)).to.equal('/application/7/menu/cases')
+		expect(menuItemRoute({ targetType: 'url', technicalName: 'docs' }, 7)).to.equal(null)
+	})
+
+	it('builds the stored menu into a tree in menu order', () => {
+		const stored = [
+			{ id: 3, order: 30, parentId: null, label: 'Docs' },
+			{ id: 2, order: 20, parentId: 1, label: 'Open cases' },
+			{ id: 1, order: 10, parentId: null, label: 'Cases' },
+		]
+
+		const tree = menuTree(stored)
+
+		expect(tree.map(branch => branch.item.label)).to.deep.equal(['Cases', 'Docs'])
+		expect(tree[0].children.map(child => child.label)).to.deep.equal(['Open cases'])
+		expect(tree[1].children).to.deep.equal([])
+		expect(menuTree(undefined)).to.deep.equal([])
 	})
 })
