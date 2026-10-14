@@ -106,13 +106,14 @@ test.describe('Applications', () => {
 		await page.locator('[data-cy="context-menu-edit"]').click()
 		for (const [label, url] of [['Handbook', 'https://docs.nextcloud.com'], ['Forum', 'https://help.nextcloud.com']]) {
 			await page.locator('[data-cy="menuItemAdd"]').click()
-			await page.locator('[data-cy="menuItemLabel"] input').last().fill(label)
-			await page.locator('[data-cy="menuItemLink"] input').last().fill(url)
+			const row = page.locator('[data-cy="menuItemRow"]').last()
+			await row.getByRole('textbox', { name: 'Label' }).fill(label)
+			await row.getByRole('textbox', { name: 'Link' }).fill(url)
 		}
 
 		// Without a pointer: move Forum to the top, then put Handbook under it
 		await page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemMoveUp"]').click()
-		await expect(page.locator('[data-cy="menuItemLabel"] input').first()).toHaveValue('Forum')
+		await expect(page.locator('[data-cy="menuItemRow"]').first().getByRole('textbox', { name: 'Label' })).toHaveValue('Forum')
 		await page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemIndent"]').click()
 		await expect(page.locator('[data-cy="menuItemRow"]').nth(1).locator('[data-cy="menuItemOutdent"]')).toBeVisible()
 
