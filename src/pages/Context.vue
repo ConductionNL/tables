@@ -204,14 +204,14 @@
 									<td class="context__col-actions">
 										<NcButton v-if="page.kind === 'grid' && canManageElement(page.view)"
 											variant="tertiary"
-											data-cy="page-card-design"
-											@click="openRoute(page.route)">
+											:href="routeHref(page.route)"
+											data-cy="page-card-design">
 											<template #icon>
 												<PencilOutline :size="20" />
 											</template>
 											{{ t('tables', 'Design') }}
 										</NcButton>
-										<NcButton v-else-if="page.route" variant="tertiary" @click="openRoute(page.route)">
+										<NcButton v-else-if="page.route" variant="tertiary" :href="routeHref(page.route)">
 											{{ t('tables', 'Open') }}
 										</NcButton>
 										<NcButton v-else
@@ -646,6 +646,16 @@ export default {
 		 */
 		openRoute(route) {
 			this.$router.push(route).catch(err => err)
+		},
+		/**
+		 * The address of a route inside Tables, so a button can be a real link: it opens in a new tab and
+		 * can be copied. The router keeps its routes in the hash, so following it stays within the app.
+		 *
+		 * @param {string} route the route inside Tables
+		 * @return {string}
+		 */
+		routeHref(route) {
+			return generateUrl('/apps/tables/') + '#' + route
 		},
 		/**
 		 * An application opened on its own starts on its first page, not on the resource overview.
