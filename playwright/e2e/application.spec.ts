@@ -4,9 +4,10 @@
  */
 
 import type { Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
 import { test, expect } from '../support/fixtures'
 import { ocsRequest, type TestUser } from '../support/api'
-import { createContext, loadContext } from '../support/commands'
+import { createContext, ensureNavigationOpen, loadContext } from '../support/commands'
 
 /**
  * Creates a grid view and an application whose menu opens it, through the API.
@@ -98,5 +99,50 @@ test.describe('Applications', () => {
 		await expect(pages.nth(0)).toContainText('Forum')
 		await expect(pages.nth(1)).toContainText('1.1')
 		await expect(pages.nth(1)).toContainText('Handbook')
+	})
+
+	test('A scheme imported through the dialog brings its menu and the page it opens', async ({ userPage: { page, user } }) => {
+		const source = await createApplicationWithGridPage(page, user, 'exported application', 'Exported page')
+		const exportResponse = await ocsRequest(page.request, user, {
+			method: 'GET',
+			url: `/ocs/v2.php/apps/tables/api/2/contexts/${source.id}/scheme/export?format=json`,
+		})
+		const scheme = (await exportResponse.json()).ocs.data
+		// A grid view uuid this instance does not know, as for a scheme exported on another instance
+		const fileContent = JSON.stringify(scheme).split(scheme.gridViews[0].uuid).join(randomUUID())
+		const targetResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: '/ocs/v2.php/apps/tables/api/2/contexts?format=json',
+			data: { name: 'importing application', iconName: 'star' },
+		})
+		const target = (await targetResponse.json()).ocs.data
+
+		await page.goto('/index.php/apps/tables')
+		await ensureNavigationOpen(page)
+		const contextItem = page.locator('[data-cy="navigationContextItem"]').filter({ hasText: 'importing application' }).first()
+		await contextItem.hover()
+		await contextItem.getByRole('button', { name: /Actions|Open menu/i }).first().click({ force: true })
+		await page.locator('[data-cy="navigationContextExportSchemeBtn"]').filter({ hasText: 'Import scheme' }).click({ force: true })
+
+		const dialog = page.getByRole('dialog', { name: /application scheme/ })
+		await dialog.locator('input[type=file]').setInputFiles({
+			name: 'exported-application.json',
+			mimeType: 'application/json',
+			buffer: Buffer.from(fileContent),
+		})
+		await dialog.getByRole('button', { name: 'Preview' }).click()
+		const importResponse = page.waitForResponse(r => r.url().includes('/scheme/import') && r.request().method() === 'POST')
+		await dialog.getByRole('button', { name: 'Import' }).click()
+		const response = await importResponse
+
+		expect(response.status()).toBe(200)
+		expect(response.request().postDataJSON().menuItems).toHaveLength(1)
+		await expect(dialog).toContainText('Import completed successfully.')
+		const importedResponse = await ocsRequest(page.request, user, {
+			method: 'GET',
+			url: `/ocs/v2.php/apps/tables/api/2/contexts/${target.id}?format=json`,
+		})
+		const imported = (await importedResponse.json()).ocs.data
+		expect(imported.menuItems.map((item: { label: string }) => item.label)).toEqual(['Exported page'])
 	})
 })

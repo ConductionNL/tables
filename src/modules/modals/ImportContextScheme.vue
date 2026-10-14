@@ -145,6 +145,8 @@ export default {
 			importFinished: false,
 			preview: null,
 			schemeData: null,
+			// The scheme as read from the file; the preview rebuilds schemeData without its menu and grid views
+			uploadedScheme: null,
 			waitForReload: false,
 			mimeTypes: [
 				'application/json',
@@ -241,8 +243,21 @@ export default {
 				this.loading = false
 			}
 		},
+		/**
+		 * Takes the scheme as chosen in the preview, with the menu and grid views of the file. A file
+		 * without a menu leaves menuItems out, so the import keeps the current menu.
+		 *
+		 * @param {object} newScheme the scheme the preview built
+		 */
 		onUpdateScheme(newScheme) {
-			this.schemeData = newScheme
+			const scheme = { ...newScheme }
+			if (Array.isArray(this.uploadedScheme?.menuItems)) {
+				scheme.menuItems = this.uploadedScheme.menuItems
+			}
+			if (Array.isArray(this.uploadedScheme?.gridViews)) {
+				scheme.gridViews = this.uploadedScheme.gridViews
+			}
+			this.schemeData = scheme
 		},
 		async actionImport() {
 			if (!this.schemeData) {
@@ -300,7 +315,8 @@ export default {
 			reader.readAsText(this.selectedUploadFile, 'UTF-8')
 			reader.onload = (evt) => {
 				try {
-					this.schemeData = JSON.parse(evt.target.result)
+					this.uploadedScheme = JSON.parse(evt.target.result)
+					this.schemeData = this.uploadedScheme
 				} catch (parseError) {
 					this.importFailed = true
 					this.errorMessage = t('tables', 'The selected file is not valid JSON.')
