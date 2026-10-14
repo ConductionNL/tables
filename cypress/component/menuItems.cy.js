@@ -16,6 +16,7 @@ import {
 	outdentItem,
 	parentOfPosition,
 	removeItem,
+	toEditableMenuItems,
 	toMenuItemPayload,
 } from '../../src/shared/utils/menuItems.js'
 
@@ -116,6 +117,18 @@ describe('menu items', () => {
 
 		expect(dragItemOver(items, 0, 1)).to.equal(null, 'a block cannot be dropped on its own child')
 		expect(dragItemOver(items, 2, 2)).to.equal(null)
+	})
+
+	it('turns the stored menu into editor items that keep their parent', () => {
+		const editable = toEditableMenuItems([
+			{ id: 1, label: 'Cases', icon: 'star', targetType: 'table', targetId: 4, url: null, technicalName: 'cases', parentId: null },
+			{ id: 2, label: 'Docs', targetType: 'url', url: 'https://example.org', technicalName: 'docs', parentId: 1 },
+		])
+
+		expect(editable.map(entry => entry.key)).to.deep.equal(['item-1', 'item-2'])
+		expect(editable[0]).to.deep.include({ label: 'Cases', icon: 'star', targetType: 'table', targetId: 4, url: '', parentKey: null })
+		expect(editable[1]).to.deep.include({ icon: null, targetId: null, url: 'https://example.org', parentKey: 'item-1' })
+		expect(toEditableMenuItems(null)).to.deep.equal([])
 	})
 
 	it('routes a view or table entry inside the app and leaves a link outside it', () => {

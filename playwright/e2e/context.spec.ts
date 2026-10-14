@@ -27,6 +27,20 @@ async function setupContextAndNavigate(page: Page, contextTitle: string) {
 	await loadContext(page, contextTitle)
 }
 
+/**
+ * Inside Tables the application page is where an application is configured; its tables and
+ * views render in the application itself.
+ */
+async function openApplication(page: Page, contextTitle: string) {
+	await loadContext(page, contextTitle)
+	const contextId = page.url().match(/\/application\/(\d+)/)?.[1]
+	if (!contextId) {
+		throw new Error(`Could not find the id of application ${contextTitle}`)
+	}
+	await page.goto(`/index.php/apps/tables/app/${contextId}`)
+	await expect(page.locator('[data-cy="application-nav-header"]')).toContainText(contextTitle, { timeout: 10000 })
+}
+
 async function selectFromVueDropdown(page: Page, inputSelector: string, value: string) {
 	const input = page.locator(inputSelector).first()
 	await input.click()
@@ -92,11 +106,10 @@ test.describe('Manage a context', () => {
 		await expect(page.getByRole('dialog', { name: 'Edit application' })).toBeHidden({ timeout: 10000 })
 
 		await expect(page.locator('[data-cy="navigationContextItem"]').filter({ hasText: `updated ${contextTitle}` })).toBeVisible()
-		await loadContext(page, `updated ${contextTitle}`)
+		await openApplication(page, `updated ${contextTitle}`)
 
-		await expect(page.locator('h1', { hasText: `updated ${contextTitle}` })).toBeVisible()
-		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible()
-		await expect(page.locator('h1', { hasText: viewTitle })).toBeVisible()
+		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
+		await expect(page.locator('h1', { hasText: viewTitle })).toBeVisible({ timeout: 10000 })
 	})
 
 	test('Share context with resources', async ({ userPage: { page }, request }) => {
@@ -119,8 +132,7 @@ test.describe('Manage a context', () => {
 		await updateResponse
 		await expect(page.locator('[class*="toast_success"]').first()).toBeVisible({ timeout: 10000 })
 
-		await loadContext(page, contextTitle)
-		await expect(page.locator('h1', { hasText: contextTitle })).toBeVisible({ timeout: 10000 })
+		await openApplication(page, contextTitle)
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
 
 		// verify context was shared properly
@@ -128,9 +140,8 @@ test.describe('Manage a context', () => {
 		await login(page, nonLocalUser)
 		await page.goto('/index.php/apps/tables')
 
-		await loadContext(page, contextTitle)
-		await expect(page.locator('h1', { hasText: contextTitle })).toBeVisible()
-		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible()
+		await openApplication(page, contextTitle)
+		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
 	})
 
 	test('Transfer context', async ({ userPage: { page }, request }) => {
@@ -221,8 +232,11 @@ test.describe('Manage a context', () => {
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
 
 		await expect(page.locator('h1', { hasText: contextTitle })).toBeVisible()
-		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible()
+		await openApplication(page, contextTitle)
+		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
 
+		await page.goto('/index.php/apps/tables')
+		await loadContext(page, contextTitle)
 		await openContextEditModal(page, contextTitle)
 		await page.locator('[data-cy="contextResourceList"] button').filter({ hasText: 'Delete' }).click({ force: true })
 
@@ -230,6 +244,9 @@ test.describe('Manage a context', () => {
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
 
 		await expect(page.locator('h1', { hasText: contextTitle })).toBeVisible()
+		await openApplication(page, contextTitle)
+		// The application has loaded once its loading icon is gone; only then does a missing table mean anything
+		await expect(page.locator('.main-context-view > .icon-loading')).toHaveCount(0, { timeout: 10000 })
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeHidden()
 	})
 
@@ -248,7 +265,10 @@ test.describe('Manage a context', () => {
 		await expect(page.locator('[data-cy="contextResourceList"]')).toContainText(tableTitle)
 		await expect(page.locator('[data-cy="contextResourcePerms"]')).toContainText(tableTitle)
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
+		await expect(page.getByRole('dialog', { name: 'Edit application' })).toBeHidden({ timeout: 10000 })
 
+		await openApplication(page, contextTitle)
+		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
 		await createTextLineColumn(page, 'title', '', '', true)
 		await page.locator('button').filter({ hasText: 'Create row' }).first().click()
 		await fillInValueTextLine(page, 'title', 'first row')
@@ -293,6 +313,7 @@ test.describe('Manage a context', () => {
 		await updatePermsResponse
 
 		await expect(page.locator('h1', { hasText: contextTitle })).toBeVisible({ timeout: 10000 })
+		await openApplication(page, contextTitle)
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
 
 		// verify that shared user can modify and delete data in the resource
@@ -300,9 +321,8 @@ test.describe('Manage a context', () => {
 		await login(page, nonLocalUser)
 		await page.goto('/index.php/apps/tables')
 
-		await loadContext(page, contextTitle)
-		await expect(page.locator('h1', { hasText: contextTitle })).toBeVisible()
-		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible()
+		await openApplication(page, contextTitle)
+		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 10000 })
 
 		await page.locator('button').filter({ hasText: 'Create row' }).first().click()
 		await fillInValueTextLine(page, 'title', 'first row')
