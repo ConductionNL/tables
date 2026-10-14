@@ -202,13 +202,16 @@
 										{{ page.description }}
 									</td>
 									<td class="context__col-actions">
-										<NcButton v-if="page.kind === 'grid' && canManageElement(page.view)" variant="tertiary" :to="page.route" data-cy="page-card-design">
+										<NcButton v-if="page.kind === 'grid' && canManageElement(page.view)"
+											variant="tertiary"
+											data-cy="page-card-design"
+											@click="openRoute(page.route)">
 											<template #icon>
 												<PencilOutline :size="20" />
 											</template>
 											{{ t('tables', 'Design') }}
 										</NcButton>
-										<NcButton v-else-if="page.route" variant="tertiary" :to="page.route">
+										<NcButton v-else-if="page.route" variant="tertiary" @click="openRoute(page.route)">
 											{{ t('tables', 'Open') }}
 										</NcButton>
 										<NcButton v-else
