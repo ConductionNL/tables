@@ -247,6 +247,7 @@ test.describe('Manage a context', () => {
 		await openApplication(page, contextTitle)
 		// The application has loaded once its loading icon is gone; only then does a missing table mean anything
 		await expect(page.locator('.main-context-view > .icon-loading')).toHaveCount(0, { timeout: 10000 })
+		await expect(page.locator('[data-cy="context-grid-item"]')).toHaveCount(0)
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeHidden()
 	})
 
