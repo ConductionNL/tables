@@ -335,7 +335,7 @@
 										{{ entry.usedBy.join(', ') }}
 									</td>
 									<td class="context__col-actions">
-										<NcButton v-if="entry.table" variant="tertiary" :to="'/table/' + entry.id">
+										<NcButton v-if="entry.table" variant="tertiary" @click="openRoute('/table/' + entry.id)">
 											{{ t('tables', 'Open') }}
 										</NcButton>
 									</td>
