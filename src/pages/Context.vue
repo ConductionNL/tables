@@ -369,8 +369,52 @@
 				</section>
 			</div>
 
-			<div v-if="!selectedMenuItem && isStandalone" class="resources">
-				<div v-for="resource in contextResources" :key="resource.key">
+			<div v-if="!selectedMenuItem && isStandalone" class="context__layout-toolbar" data-cy="context-layout-toolbar">
+				<template v-if="isEditingLayout">
+					<NcButton v-if="hasCustomLayout" variant="tertiary" data-cy="context-layout-reset" @click="draftLayout = {}">
+						<template #icon>
+							<Restore :size="20" />
+						</template>
+						{{ t('tables', 'Reset layout') }}
+					</NcButton>
+					<NcButton variant="tertiary" data-cy="context-layout-cancel" @click="draftLayout = null">
+						{{ t('tables', 'Cancel') }}
+					</NcButton>
+					<NcButton variant="primary" data-cy="context-layout-save" @click="saveLayout">
+						<template #icon>
+							<ContentSaveOutline :size="20" />
+						</template>
+						{{ t('tables', 'Save') }}
+					</NcButton>
+				</template>
+				<NcButton v-else variant="secondary" data-cy="context-layout-edit" @click="draftLayout = { ...layout }">
+					<template #icon>
+						<PencilOutline :size="20" />
+					</template>
+					{{ t('tables', 'Edit layout') }}
+				</NcButton>
+			</div>
+			<div v-if="!selectedMenuItem && isStandalone" class="context__grid" :class="{ 'context__grid--editing': isEditingLayout }">
+				<section v-for="resource in contextResources"
+					:key="resource.key"
+					class="context__grid-item"
+					:style="getGridCellStyle(getResourceSpan(resource))"
+					data-cy="context-grid-item">
+					<div v-if="isEditingLayout" class="context__grid-item-toolbar">
+						<NcActions :menu-name="t('tables', 'Width')" :aria-label="t('tables', 'Width of {title}', { title: resource.title }, undefined, { escape: false })">
+							<template #icon>
+								<TableColumnWidth :size="20" />
+							</template>
+							<NcActionRadio v-for="option in widthOptions"
+								:key="option.span"
+								:name="'context-width-' + resource.key"
+								:value="option.span"
+								:model-value="getResourceSpan(resource)"
+								@update:model-value="span => setResourceSpan(resource, span)">
+								{{ option.label }}
+							</NcActionRadio>
+						</NcActions>
+					</div>
 					<div v-if="!resource.isView" class="resource">
 						<TableWrapper v-model:view-setting="resourceViewSettings[resource.key]" :table="resource" :columns="columns[resource.key]"
 							:rows="rows[resource.key]" @create-column="createColumn(false, resource)"
@@ -384,7 +428,7 @@
 							@import="openImportModal(resource, true)" @download-csv="downloadCSV(resource, true)"
 							@download-filtered-csv="rows => downloadFilteredCSV(rows, resource, true)" />
 					</div>
-				</div>
+				</section>
 			</div>
 		</div>
 
@@ -397,7 +441,7 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
-import { NcActionButton, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcLoadingIcon, NcTextField } from '@nextcloud/vue'
+import { NcActionButton, NcActionRadio, NcActionSeparator, NcActions, NcAvatar, NcButton, NcEmptyContent, NcIconSvgWrapper, NcLoadingIcon, NcTextField } from '@nextcloud/vue'
 import { getCurrentUser } from '@nextcloud/auth'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
@@ -410,8 +454,10 @@ import LinkVariant from 'vue-material-design-icons/LinkVariant.vue'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import PencilOutline from 'vue-material-design-icons/PencilOutline.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
+import Restore from 'vue-material-design-icons/Restore.vue'
 import SwapHorizontal from 'vue-material-design-icons/SwapHorizontal.vue'
 import TableIcon from 'vue-material-design-icons/Table.vue'
+import TableColumnWidth from 'vue-material-design-icons/TableColumnWidth.vue'
 import TrayArrowDown from 'vue-material-design-icons/TrayArrowDown.vue'
 import ViewDashboardOutline from 'vue-material-design-icons/ViewDashboardOutline.vue'
 import GridView from '../modules/grid/GridView.vue'
@@ -419,6 +465,7 @@ import MenuItemIcon from '../shared/components/MenuItemIcon.vue'
 import MenuItemsEditor from '../shared/components/ncContextResource/MenuItemsEditor.vue'
 import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMixin.js'
 import { useEventBusSubscriptions } from '../shared/composables/useEventBusSubscriptions.js'
+import { GRID_COLUMNS, getGridCellStyle, loadContextLayout, saveContextLayout } from '../shared/utils/contextLayout.js'
 import { areMenuItemsValid, menuItemRoute, menuTree, toEditableMenuItems, toMenuItemPayload } from '../shared/utils/menuItems.js'
 import TableWrapper from '../modules/main/sections/TableWrapper.vue'
 import CustomView from '../modules/main/sections/View.vue'
@@ -436,6 +483,7 @@ export default {
 	components: {
 		MainModals,
 		NcActionButton,
+		NcActionRadio,
 		NcActionSeparator,
 		NcActions,
 		NcAvatar,
@@ -453,7 +501,9 @@ export default {
 		OpenInNew,
 		PencilOutline,
 		Plus,
+		Restore,
 		SwapHorizontal,
+		TableColumnWidth,
 		TableIcon,
 		TrayArrowDown,
 		ViewDashboardOutline,
@@ -488,6 +538,9 @@ export default {
 			menuDraft: null,
 			menuSaving: false,
 			pageFilter: '',
+			// The user's own widths of the tables and views, and the ones being edited
+			layout: {},
+			draftLayout: null,
 			standaloneContextId: loadState('tables', 'contextId', null),
 			openedFirstPage: false,
 		}
@@ -564,6 +617,23 @@ export default {
 					: t('tables', 'Not accessible to you')
 				return { ...page, kind: 'view', typeLabel: t('tables', 'View'), description, view }
 			})
+		},
+		isEditingLayout() {
+			return this.draftLayout !== null
+		},
+		activeLayout() {
+			return this.draftLayout ?? this.layout
+		},
+		hasCustomLayout() {
+			return Object.keys(this.activeLayout).length > 0
+		},
+		widthOptions() {
+			return [
+				{ span: 12, label: t('tables', 'Full width') },
+				{ span: 8, label: t('tables', 'Two thirds') },
+				{ span: 6, label: t('tables', 'Half') },
+				{ span: 4, label: t('tables', 'One third') },
+			]
 		},
 		filteredPages() {
 			const query = this.pageFilter.trim().toLowerCase()
@@ -735,6 +805,33 @@ export default {
 	methods: {
 		...mapActions(useTablesStore, ['loadContext', 'validateExportAccess', 'loadContextTable', 'loadContextView', 'updateContextMenuItems']),
 		...mapActions(useDataStore, ['loadColumnsFromBE', 'loadRowsFromBE', 'loadRelationsFromBE']),
+		getGridCellStyle,
+		getResourceSpan(resource) {
+			return this.activeLayout[resource.key] ?? GRID_COLUMNS
+		},
+		setResourceSpan(resource, span) {
+			const draftLayout = { ...this.activeLayout }
+			if (span === GRID_COLUMNS) {
+				delete draftLayout[resource.key]
+			} else {
+				draftLayout[resource.key] = span
+			}
+			this.draftLayout = draftLayout
+		},
+		saveLayout() {
+			if (this.draftLayout === null) {
+				return
+			}
+			// The layout is the user's own arrangement and saves once, when editing ends
+			this.layout = this.draftLayout
+			this.draftLayout = null
+			try {
+				saveContextLayout(this.activeContextId, this.layout)
+			} catch (error) {
+				console.error('The application layout could not be stored', error)
+				showError(t('tables', 'Your layout applies to this visit only, as this browser does not allow storing it.'))
+			}
+		},
 		async copyAddress() {
 			try {
 				await navigator.clipboard.writeText(this.applicationUrl)
@@ -892,6 +989,8 @@ export default {
 			this.loading = true
 			this.contextResources = []
 			this.resourceViewSettings = {}
+			this.layout = loadContextLayout(this.activeContextId)
+			this.draftLayout = null
 
 			try {
 				await this.loadContext({ id: this.activeContextId })
@@ -1392,6 +1491,90 @@ export default {
 	&:deep(.row.first-row) {
 		margin-inline-start: 0;
 		padding-inline-start: 20px;
+	}
+}
+
+.context__layout-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	gap: calc(2 * var(--default-grid-baseline));
+	width: var(--app-content-width, 100%);
+	padding-block: calc(3 * var(--default-grid-baseline)) 0;
+	padding-inline: calc(var(--default-clickable-area) + 4 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+}
+
+// A 12-column grid of the tables and views, collapsing to 6 columns and then to one on smaller screens
+.context__grid {
+	display: grid;
+	grid-template-columns: repeat(12, minmax(0, 1fr));
+	gap: calc(4 * var(--default-grid-baseline));
+	width: var(--app-content-width, 100%);
+	padding: calc(4 * var(--default-grid-baseline));
+}
+
+.context__grid-item {
+	overflow-x: auto;
+	grid-column: span var(--context-grid-span, 12);
+	min-width: 0;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large);
+	background-color: var(--color-main-background);
+	box-shadow: 0 2px 4px var(--color-box-shadow);
+
+	// A table or view fits its card instead of the whole page
+	.resource {
+		width: auto;
+		min-width: 0;
+		margin: 0;
+
+		&:deep(.row.first-row),
+		&:deep(.row.space-T),
+		&:deep(.options.row),
+		&:deep(.options .sticky) {
+			position: static;
+			width: auto;
+		}
+
+		&:deep(.row.first-row) {
+			padding-inline-start: calc(4 * var(--default-grid-baseline));
+		}
+
+		// The sticky table header sticks to the top of its card, not below the page header
+		&:deep(table thead) {
+			top: 0;
+		}
+	}
+}
+
+.context__grid--editing .context__grid-item {
+	outline: 2px dashed var(--color-border-dark);
+	outline-offset: 2px;
+}
+
+.context__grid-item-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	padding: calc(2 * var(--default-grid-baseline));
+	border-bottom: 1px solid var(--color-border);
+}
+
+@media (max-width: 900px) {
+	.context__grid {
+		grid-template-columns: repeat(6, minmax(0, 1fr));
+	}
+
+	.context__grid-item {
+		grid-column: span var(--context-grid-span-medium, 6);
+	}
+}
+
+@media (max-width: 600px) {
+	.context__grid {
+		grid-template-columns: minmax(0, 1fr);
+	}
+
+	.context__grid-item {
+		grid-column: 1 / -1;
 	}
 }
 

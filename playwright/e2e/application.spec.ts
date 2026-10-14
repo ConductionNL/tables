@@ -108,6 +108,35 @@ test.describe('Applications', () => {
 		await expect(page.locator('[data-cy="context-title"]')).toContainText('listed application')
 	})
 
+	test('A width chosen for a table in an application opened on its own is kept after a reload', async ({ userPage: { page, user } }) => {
+		const tableResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: '/ocs/v2.php/apps/tables/api/2/tables?format=json',
+			data: { title: 'Layout table', template: 'custom' },
+		})
+		const table = (await tableResponse.json()).ocs.data
+		const contextResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: '/ocs/v2.php/apps/tables/api/2/contexts?format=json',
+			data: { name: 'layout application', iconName: 'star', nodes: [{ id: table.id, type: 0, permissions: 1 }] },
+		})
+		const context = (await contextResponse.json()).ocs.data
+
+		await page.goto(`/index.php/apps/tables/app/${context.id}`)
+		const item = page.locator('[data-cy="context-grid-item"]')
+		await expect(item).toHaveCount(1, { timeout: 10000 })
+
+		await page.locator('[data-cy="context-layout-edit"]').click()
+		// The width menu is the only menu in the card's toolbar while the layout is edited
+		await item.locator('.context__grid-item-toolbar').getByRole('button').first().click()
+		await page.getByRole('menuitemradio', { name: 'Half' }).or(page.getByRole('radio', { name: 'Half' })).first().click()
+		await page.locator('[data-cy="context-layout-save"]').click()
+		await expect(item).toHaveAttribute('style', /--context-grid-span: 6/)
+
+		await page.reload()
+		await expect(page.locator('[data-cy="context-grid-item"]')).toHaveAttribute('style', /--context-grid-span: 6/, { timeout: 10000 })
+	})
+
 	test('A page with widgets added on the overview gets a menu entry and opens', async ({ userPage: { page } }) => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, 'overview application')
