@@ -82,6 +82,7 @@
 					:context="context"
 					:page="menuTarget.page"
 					:can-edit="canManage"
+					:personal-layout="isStandalone"
 					@saved="onPageSaved" />
 				<DataWidget v-else :key="menuTarget.data.type + '-' + menuTarget.data.id" :target="menuTarget.data" />
 			</div>
@@ -92,6 +93,7 @@
 					:page="activePage"
 					:can-edit="canManage"
 					:start-in-edit-mode="$route.query.edit === '1'"
+					:personal-layout="isStandalone"
 					@saved="onPageSaved" />
 				<ErrorMessage v-else :message="t('tables', 'This page could not be found')" />
 			</template>

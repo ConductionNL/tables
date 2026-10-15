@@ -4,9 +4,26 @@
 -->
 <template>
 	<div class="grid-page" data-cy="gridPage">
-		<div v-if="canEdit" class="grid-page__header">
+		<div v-if="canEdit || personalLayout" class="grid-page__header">
 			<div class="grid-page__actions">
-				<template v-if="isEditing">
+				<template v-if="isEditingWidths">
+					<NcButton v-if="Object.keys(widthDraft).length > 0" variant="tertiary" data-cy="context-layout-reset" @click="widthDraft = {}">
+						<template #icon>
+							<Restore :size="20" />
+						</template>
+						{{ t('tables', 'Reset layout') }}
+					</NcButton>
+					<NcButton variant="tertiary" data-cy="context-layout-cancel" @click="widthDraft = null">
+						{{ t('tables', 'Cancel') }}
+					</NcButton>
+					<NcButton variant="primary" data-cy="context-layout-save" @click="saveWidths">
+						<template #icon>
+							<ContentSaveOutline :size="20" />
+						</template>
+						{{ t('tables', 'Save') }}
+					</NcButton>
+				</template>
+				<template v-else-if="isEditing">
 					<NcButton variant="secondary" data-cy="gridPageAddWidget" @click="openAddWidget">
 						<template #icon>
 							<Plus :size="20" />
@@ -23,12 +40,23 @@
 						{{ t('tables', 'Save') }}
 					</NcButton>
 				</template>
-				<NcButton v-else variant="secondary" data-cy="gridPageEdit" @click="startEditing">
-					<template #icon>
-						<PencilOutline :size="20" />
-					</template>
-					{{ t('tables', 'Edit page') }}
-				</NcButton>
+				<template v-else>
+					<NcButton v-if="personalLayout && shownLayout.length > 0"
+						variant="tertiary"
+						data-cy="context-layout-edit"
+						@click="widthDraft = { ...widths }">
+						<template #icon>
+							<TableColumnWidth :size="20" />
+						</template>
+						{{ t('tables', 'Edit layout') }}
+					</NcButton>
+					<NcButton v-if="canEdit" variant="secondary" data-cy="gridPageEdit" @click="startEditing">
+						<template #icon>
+							<PencilOutline :size="20" />
+						</template>
+						{{ t('tables', 'Edit page') }}
+					</NcButton>
+				</template>
 			</div>
 		</div>
 
@@ -46,13 +74,16 @@
 			</template>
 		</NcEmptyContent>
 
-		<GridCanvas :layout="activeGrid.layout" :editable="isEditing" @layout-change="onLayoutChange">
+		<GridCanvas :layout="shownLayout" :editable="isEditing" @layout-change="onLayoutChange">
 			<template #widget="{ item, narrow }">
 				<GridWidget v-if="widgetsById[item.widgetId]"
 					:widget="widgetsById[item.widgetId]"
 					:layout-item="item"
 					:editable="isEditing"
 					:arrangeable="!narrow"
+					:width-options="isEditingWidths ? widthOptions : null"
+					:width="item.gridWidth"
+					@set-width="setWidth"
 					@configure="configureWidget"
 					@remove="removeWidget"
 					@move="moveWidget" />
@@ -68,10 +99,12 @@
 
 <script>
 import { NcButton, NcEmptyContent } from '@nextcloud/vue'
-import { showConfirmation, showSuccess } from '@nextcloud/dialogs'
+import { showConfirmation, showError, showSuccess } from '@nextcloud/dialogs'
 import ContentSaveOutline from 'vue-material-design-icons/ContentSaveOutline.vue'
 import PencilOutline from 'vue-material-design-icons/PencilOutline.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
+import Restore from 'vue-material-design-icons/Restore.vue'
+import TableColumnWidth from 'vue-material-design-icons/TableColumnWidth.vue'
 import ViewDashboardOutline from 'vue-material-design-icons/ViewDashboardOutline.vue'
 import { computed, ref } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router'
@@ -80,6 +113,7 @@ import GridCanvas from './GridCanvas.vue'
 import GridWidget from './GridWidget.vue'
 import AddWidget from '../modals/AddWidget.vue'
 import { useTablesStore } from '../../store/store.js'
+import { applyPersonalWidths, loadContextLayout, saveContextLayout } from '../../shared/utils/contextLayout.js'
 import { GRID_COLUMNS, GRID_MIN_WIDTH, cloneGrid, findWidgetType, gridToWidgets, nextFreeRow, pageToGrid } from './gridLayout.js'
 
 /**
@@ -94,6 +128,8 @@ export default {
 		ContentSaveOutline,
 		PencilOutline,
 		Plus,
+		Restore,
+		TableColumnWidth,
 		ViewDashboardOutline,
 		GridCanvas,
 		GridWidget,
@@ -115,6 +151,11 @@ export default {
 		},
 		// Opens the page in edit mode, for a link from the application settings
 		startInEditMode: {
+			type: Boolean,
+			default: false,
+		},
+		// Lets the user choose their own widths of the widgets, kept in this browser
+		personalLayout: {
 			type: Boolean,
 			default: false,
 		},
@@ -159,6 +200,9 @@ export default {
 			saving: false,
 			addWidgetOpen: false,
 			widgetBeingConfigured: null,
+			// The user's own widths of the widgets, and the ones being edited
+			widths: {},
+			widthDraft: null,
 		}
 	},
 	computed: {
@@ -169,6 +213,29 @@ export default {
 		isEditing() {
 			return this.draftGrid !== null
 		},
+		isEditingWidths() {
+			return this.widthDraft !== null
+		},
+		/**
+		 * The layout on screen: the draft while the page is edited, else the page as arranged with
+		 * the user's own widths.
+		 *
+		 * @return {Array}
+		 */
+		shownLayout() {
+			if (this.isEditing || !this.personalLayout) {
+				return this.activeGrid.layout
+			}
+			return applyPersonalWidths(this.storedGrid.layout, this.widthDraft ?? this.widths)
+		},
+		widthOptions() {
+			return [
+				{ span: 12, label: t('tables', 'Full width') },
+				{ span: 8, label: t('tables', 'Two thirds') },
+				{ span: 6, label: t('tables', 'Half') },
+				{ span: 4, label: t('tables', 'One third') },
+			]
+		},
 		widgetsById() {
 			return Object.fromEntries(this.activeGrid.widgets.map(widget => [widget.id, widget]))
 		},
@@ -176,6 +243,7 @@ export default {
 	watch: {
 		'page.id'() {
 			this.draftGrid = null
+			this.loadWidths()
 		},
 		startInEditMode(startInEditMode) {
 			if (startInEditMode && this.canEdit && !this.isEditing) {
@@ -184,6 +252,7 @@ export default {
 		},
 	},
 	mounted() {
+		this.loadWidths()
 		window.addEventListener('beforeunload', this.warnBeforeUnload)
 		if (this.startInEditMode && this.canEdit) {
 			this.startEditing()
@@ -202,6 +271,43 @@ export default {
 		warnBeforeUnload(event) {
 			if (this.hasUnsavedChanges) {
 				event.preventDefault()
+			}
+		},
+		loadWidths() {
+			this.widths = this.personalLayout ? loadContextLayout(this.context.id, this.page.id) : {}
+			this.widthDraft = null
+		},
+		/**
+		 * Sets the user's own width of one widget; the full width of the page as arranged is no choice
+		 * of its own, so it is not kept.
+		 *
+		 * @param {string} widgetId the widget
+		 * @param {number} span the number of columns
+		 */
+		setWidth(widgetId, span) {
+			const draft = { ...this.widthDraft }
+			const arranged = this.storedGrid.layout.find(item => item.widgetId === widgetId)
+			if (arranged && arranged.gridWidth === span) {
+				delete draft[widgetId]
+			} else {
+				draft[widgetId] = span
+			}
+			this.widthDraft = draft
+		},
+		/**
+		 * Keeps the widths being edited for this user in this browser.
+		 */
+		saveWidths() {
+			if (this.widthDraft === null) {
+				return
+			}
+			this.widths = this.widthDraft
+			this.widthDraft = null
+			try {
+				saveContextLayout(this.context.id, this.page.id, this.widths)
+			} catch (error) {
+				console.error('The application layout could not be stored', error)
+				showError(t('tables', 'Your layout applies to this visit only, as this browser does not allow storing it.'))
 			}
 		},
 		/**

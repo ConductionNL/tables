@@ -37,6 +37,21 @@
 				</NcActionButton>
 			</NcActions>
 		</header>
+		<div v-if="widthOptions" class="grid-widget__width" data-cy="gridWidgetWidth">
+			<NcActions :menu-name="t('tables', 'Width')" :aria-label="t('tables', 'Width of {title}', { title: label }, undefined, { escape: false })">
+				<template #icon>
+					<TableColumnWidth :size="20" />
+				</template>
+				<NcActionRadio v-for="option in widthOptions"
+					:key="option.span"
+					:name="'grid-widget-width-' + widget.id"
+					:value="option.span"
+					:model-value="width"
+					@update:model-value="span => $emit('set-width', widget.id, span)">
+					{{ option.label }}
+				</NcActionRadio>
+			</NcActions>
+		</div>
 		<div class="grid-widget__body">
 			<component :is="widgetComponent" v-if="widgetComponent" v-bind="componentProps" />
 			<p v-else class="grid-widget__unknown">
@@ -48,7 +63,7 @@
 
 <script>
 import { computed } from 'vue'
-import { NcActionButton, NcActions, NcActionSeparator } from '@nextcloud/vue'
+import { NcActionButton, NcActionRadio, NcActions, NcActionSeparator } from '@nextcloud/vue'
 import ArrowCollapseHorizontal from 'vue-material-design-icons/ArrowCollapseHorizontal.vue'
 import ArrowCollapseVertical from 'vue-material-design-icons/ArrowCollapseVertical.vue'
 import ArrowDown from 'vue-material-design-icons/ArrowDown.vue'
@@ -58,6 +73,7 @@ import ArrowLeft from 'vue-material-design-icons/ArrowLeft.vue'
 import ArrowRight from 'vue-material-design-icons/ArrowRight.vue'
 import ArrowUp from 'vue-material-design-icons/ArrowUp.vue'
 import CogOutline from 'vue-material-design-icons/CogOutline.vue'
+import TableColumnWidth from 'vue-material-design-icons/TableColumnWidth.vue'
 import TrashCanOutline from 'vue-material-design-icons/TrashCanOutline.vue'
 import { mapActions, mapState } from 'pinia'
 import { useTablesStore } from '../../store/store.js'
@@ -72,6 +88,7 @@ export default {
 	name: 'GridWidget',
 	components: {
 		NcActionButton,
+		NcActionRadio,
 		NcActions,
 		NcActionSeparator,
 		ArrowCollapseHorizontal,
@@ -83,6 +100,7 @@ export default {
 		ArrowRight,
 		ArrowUp,
 		CogOutline,
+		TableColumnWidth,
 		TrashCanOutline,
 	},
 	provide() {
@@ -110,8 +128,18 @@ export default {
 			type: Boolean,
 			default: true,
 		},
+		// The widths the user can choose for the widget in their own layout; null when not choosing
+		widthOptions: {
+			type: Array,
+			default: null,
+		},
+		// The columns the widget spans now
+		width: {
+			type: Number,
+			default: null,
+		},
 	},
-	emits: ['configure', 'remove', 'move'],
+	emits: ['configure', 'remove', 'move', 'set-width'],
 	computed: {
 		...mapState(useTablesStore, ['widgetTypes']),
 		hasHeading() {
@@ -186,6 +214,13 @@ export default {
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
+	}
+
+	&__width {
+		display: flex;
+		justify-content: flex-end;
+		padding: var(--default-grid-baseline);
+		border-bottom: 1px solid var(--color-border);
 	}
 
 	&__body {

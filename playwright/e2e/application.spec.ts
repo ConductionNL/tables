@@ -197,6 +197,35 @@ test.describe('Applications', () => {
 		await expect(page.locator('[data-cy="context-title"]')).toContainText('listed application')
 	})
 
+	test('A width chosen for a table in an application opened on its own is kept after a reload', async ({ userPage: { page, user } }) => {
+		const tableResponse = await ocsRequest(page.request, user, { method: 'POST', url: '/index.php/apps/tables/api/1/tables', data: { title: 'Layout table' } })
+		const table = await tableResponse.json()
+		const contextResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: `${API}/contexts?format=json`,
+			data: { name: 'layout application', iconName: 'star', nodes: [{ id: table.id, type: 0, permissions: 1 }] },
+		})
+		const context = (await contextResponse.json()).ocs.data
+
+		await page.goto(`/index.php/apps/tables/app/${context.id}`)
+		const item = page.locator('[data-cy="gridItem"]')
+		await expect(item).toHaveCount(1, { timeout: 30000 })
+		await expect(item).toHaveAttribute('gs-w', '12')
+
+		await page.locator('[data-cy="context-layout-edit"]').click()
+		await item.locator('[data-cy="gridWidgetWidth"]').getByRole('button').first().click()
+		await page.getByRole('menuitemradio', { name: 'Half' }).or(page.getByRole('radio', { name: 'Half' })).first().click()
+		await page.locator('[data-cy="context-layout-save"]').click()
+		await expect(item).toHaveAttribute('gs-w', '6')
+
+		await page.reload()
+		await expect(page.locator('[data-cy="gridItem"]')).toHaveAttribute('gs-w', '6', { timeout: 30000 })
+		// The page as arranged for everyone keeps its width
+		const stored = await getApplication(page.request, user, context.id)
+		const startPage = Object.values(stored.pages as Record<string, { page_type: string, content: Record<string, { grid_width: number }> }>).find(entry => entry.page_type === 'startpage')
+		expect(Object.values(startPage!.content).map(entry => entry.grid_width)).toEqual([12])
+	})
+
 	test('A page with widgets added on the overview gets a menu entry and opens in edit mode', async ({ userPage: { page } }) => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, 'overview application')
