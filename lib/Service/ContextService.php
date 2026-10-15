@@ -25,6 +25,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Helper\PageContentHelper;
 use OCA\Tables\Model\ColumnSettings;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\FilterSet;
@@ -630,30 +631,89 @@ class ContextService {
 
 		// insert pages
 		$pageMap = [];
+		$technicalNames = [];
 		if (!empty($context['pages'])) {
 			foreach ($context['pages'] as $pageArr) {
 				$page = new Page();
 				$page->setContextId($newContext->getId());
 				$page->setPageType($pageArr['page_type'] ?? $pageArr['pageType'] ?? '');
+				$title = $pageArr['title'] ?? null;
+				$page->setTitle(is_string($title) ? mb_substr($title, 0, 200) : null);
+				$technicalName = $pageArr['technical_name'] ?? $pageArr['technicalName'] ?? null;
+				if (is_string($technicalName) && Page::isValidTechnicalName($technicalName) && !isset($technicalNames[$technicalName])) {
+					$page->setTechnicalName($technicalName);
+					$technicalNames[$technicalName] = true;
+				}
 				$page = $this->pageMapper->insert($page);
 				$pageMap[$pageArr['id'] ?? null] = $page;
 
-				// insert page conten
 				if (!empty($pageArr['content'])) {
-					foreach ($pageArr['content'] as $contentArr) {
-						$pageContent = new PageContent();
-						$pageContent->setPageId($page->getId());
-						$oldNodeRelId = $contentArr['node_rel_id'] ?? $contentArr['nodeRelId'] ?? null;
-						$newNodeRel = $nodeRelMap[$oldNodeRelId] ?? null;
-						$pageContent->setNodeRelId($newNodeRel ? $newNodeRel->getId() : null);
-						$pageContent->setOrder($contentArr['order'] ?? 100);
-						$this->pageContentMapper->insert($pageContent);
-					}
+					$this->importPageContent($page, $pageArr['content'], $nodeRelMap);
 				}
 			}
 		}
 
 		return $newContext;
+	}
+
+	/**
+	 * Inserts the content of an imported page. Content whose node is not part of
+	 * the import keeps its place without a node. When every entry has a grid
+	 * position, the order follows the positions.
+	 *
+	 * @param array<array-key, mixed> $contents
+	 * @param array<array-key, ContextNodeRelation> $nodeRelMap node relations by their exported id
+	 * @throws Exception
+	 */
+	protected function importPageContent(Page $page, array $contents, array $nodeRelMap): void {
+		$pageContents = [];
+		$positions = [];
+		foreach ($contents as $key => $contentArr) {
+			if (!is_array($contentArr)) {
+				continue;
+			}
+			$pageContent = new PageContent();
+			$pageContent->setPageId($page->getId());
+			$oldNodeRelId = $contentArr['node_rel_id'] ?? $contentArr['nodeRelId'] ?? null;
+			$newNodeRel = $nodeRelMap[$oldNodeRelId] ?? null;
+			$pageContent->setNodeRelId($newNodeRel ? $newNodeRel->getId() : null);
+			$pageContent->setOrder((int)($contentArr['order'] ?? 100));
+			if (is_string($contentArr['type'] ?? null) && $contentArr['type'] !== '') {
+				$pageContent->setType(mb_substr($contentArr['type'], 0, 32));
+			}
+			$configuration = $contentArr['configuration'] ?? null;
+			if (is_array($configuration)) {
+				$configuration = json_encode(['configuration' => $configuration, 'content' => $contentArr['content'] ?? []]);
+			}
+			if (is_string($configuration)) {
+				$pageContent->setConfiguration($configuration);
+			}
+
+			$position = [];
+			foreach (['grid_x' => 'gridX', 'grid_y' => 'gridY', 'grid_width' => 'gridWidth', 'grid_height' => 'gridHeight'] as $snake => $camel) {
+				$value = $contentArr[$snake] ?? $contentArr[$camel] ?? null;
+				if (is_int($value)) {
+					$position[$snake] = $value;
+				}
+			}
+			if (count($position) === 4) {
+				$pageContent->setGridX($position['grid_x']);
+				$pageContent->setGridY($position['grid_y']);
+				$pageContent->setGridWidth($position['grid_width']);
+				$pageContent->setGridHeight($position['grid_height']);
+				$positions[$key] = $position;
+			}
+			$pageContents[$key] = $pageContent;
+		}
+
+		if ($positions !== [] && count($positions) === count($pageContents)) {
+			foreach (PageContentHelper::orderFromPositions($positions) as $key => $order) {
+				$pageContents[$key]->setOrder($order);
+			}
+		}
+		foreach ($pageContents as $pageContent) {
+			$this->pageContentMapper->insert($pageContent);
+		}
 	}
 
 	/**

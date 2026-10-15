@@ -9,6 +9,7 @@ declare(strict_types=1);
 namespace OCA\Tables\Db;
 
 use JsonSerializable;
+use OCA\Tables\Helper\PageContentHelper;
 
 /**
  * @method getName(): string
@@ -63,7 +64,7 @@ class Context extends EntitySuper implements JsonSerializable {
 		if (is_array($this->sharing) || is_array($this->nodes) || is_array($this->pages)) {
 			$data['sharing'] = $this->getSharing();
 			$data['nodes'] = $this->getNodes();
-			$data['pages'] = $this->getPages();
+			$data['pages'] = is_array($this->pages) ? PageContentHelper::readPages($this->pages) : $this->pages;
 		}
 
 		return $data;
