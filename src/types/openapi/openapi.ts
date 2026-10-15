@@ -7679,6 +7679,27 @@ export interface operations {
                         readonly addTables: readonly components["schemas"]["Table"][];
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
+                    /**
+                     * @description Menu of the context, targets by uuid, parents by technical name; leave it out to keep the current menu
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url";
+                        readonly targetUuid?: string;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                        readonly parentTechnicalName?: string;
+                    }[] | null;
+                    /**
+                     * @description Views without a table that the menu points at
+                     * @default []
+                     */
+                    readonly gridViews?: readonly {
+                        readonly [key: string]: Record<string, never>;
+                    }[];
                 };
             };
         };
