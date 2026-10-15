@@ -11,6 +11,8 @@ import {
 	isFixedItem,
 	isValidMenuLink,
 	menuItemErrors,
+	menuItemRoute,
+	menuTree,
 	moveItem,
 	newDashboardItem,
 	outdentItem,
@@ -171,5 +173,27 @@ describe('menu items', () => {
 		expect(shape(moveItem(items, 0, 1))).to.deep.equal(['A', 'p'])
 		// without an id, only the fixed dashboard item is valid
 		expect(menuItemErrors({ ...page, targetId: null }).target).to.equal(true)
+	})
+
+	it('routes a page, view or table entry inside the app and leaves a link outside it', () => {
+		expect(menuItemRoute({ targetType: 'page', targetId: 12, technicalName: 'dashboard' }, 7)).to.equal('/application/7/menu/dashboard')
+		expect(menuItemRoute({ targetType: 'view', technicalName: 'home' }, 7)).to.equal('/application/7/menu/home')
+		expect(menuItemRoute({ targetType: 'table', technicalName: 'cases' }, 7)).to.equal('/application/7/menu/cases')
+		expect(menuItemRoute({ targetType: 'url', technicalName: 'docs' }, 7)).to.equal(null)
+	})
+
+	it('builds the stored menu into a tree in menu order', () => {
+		const stored = [
+			{ id: 3, order: 30, parentId: null, label: 'Docs' },
+			{ id: 2, order: 20, parentId: 1, label: 'Open cases' },
+			{ id: 1, order: 10, parentId: null, label: 'Cases' },
+		]
+
+		const tree = menuTree(stored)
+
+		expect(tree.map(branch => branch.item.label)).to.deep.equal(['Cases', 'Docs'])
+		expect(tree[0].children.map(child => child.label)).to.deep.equal(['Open cases'])
+		expect(tree[1].children).to.deep.equal([])
+		expect(menuTree(undefined)).to.deep.equal([])
 	})
 })

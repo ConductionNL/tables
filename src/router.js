@@ -29,6 +29,11 @@ export default createRouter({
 			name: 'contextPage',
 		},
 		{
+			path: '/application/:contextId/menu/:itemName',
+			component: Context,
+			name: 'contextMenuItem',
+		},
+		{
 			path: '/application/:contextId/row/:rowId',
 			component: Context,
 			name: 'contextRow',
