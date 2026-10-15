@@ -503,6 +503,53 @@ final class ContextServiceTest extends TestCase {
 		]));
 	}
 
+	public function testAStoredPageItemWhosePageIsGoneIsKept(): void {
+		$context = $this->contextWithMenu(7, [
+			['targetType' => 'page', 'targetId' => 302, 'url' => null, 'technicalName' => 'overview', 'broken' => true],
+		]);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->contextNodeRelMapper->expects($this->never())->method('insert');
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Overview', 'targetType' => 'page', 'targetId' => 302],
+			['label' => 'Docs', 'url' => 'https://example.org'],
+		]));
+
+		$this->assertSame([['Overview', 'page', 302, 'overview', null], ['Docs', 'url', null, 'docs', null]], self::describeMenu($inserted));
+	}
+
+	public static function newPageTargetsOutsideTheApplication(): array {
+		return [
+			'page of another application' => [302],
+			'page id that does not exist' => [9999],
+		];
+	}
+
+	/**
+	 * @dataProvider newPageTargetsOutsideTheApplication
+	 */
+	public function testANewPageTargetOutsideTheApplicationIsRefusedEvenWithABrokenStoredOne(int $pageId): void {
+		// the stored item points at a page that is gone; that does not let other pages in
+		$context = $this->contextWithMenu(7, [
+			['targetType' => 'page', 'targetId' => 303, 'url' => null, 'technicalName' => 'gone', 'broken' => true],
+		]);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->menuItemMapper->expects($this->never())->method('deleteAllByContextId');
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('a page of its own application');
+		$this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Gone', 'targetType' => 'page', 'targetId' => 303],
+			['label' => 'Elsewhere', 'targetType' => 'page', 'targetId' => $pageId],
+		]));
+	}
+
 	public function testUpdateRefusesAPageItemWithoutAnId(): void {
 		$context = $this->contextWithMenu(7, []);
 		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);

@@ -230,20 +230,27 @@ class ContextService {
 	 * Replaces the menu of an application and adds the views and tables it points at
 	 * as nodes, so everyone the application is shared with can open them. Removing an
 	 * item leaves its view or table in the application: it stays a resource until it is
-	 * removed as one. A page item must open a page of this application; it adds no node.
+	 * removed as one. A new page target must be a page of this
+	 * application; a stored one whose page is gone is kept, and the menu marks it broken. A page
+	 * item adds no node.
 	 *
 	 * @param list<MenuItemInput> $menuItems
 	 * @throws Exception|PermissionError|InvalidArgumentException
 	 */
 	protected function replaceMenu(Context $context, array $menuItems, ?string $userId): void {
+		$storedMenu = array_values(array_filter($context->getMenuItems() ?? [], is_array(...)));
 		$pageIds = array_map(intval(...), array_keys($context->getPages() ?? []));
+		foreach ($storedMenu as $storedItem) {
+			if (($storedItem['targetType'] ?? null) === MenuItem::TARGET_PAGE && is_int($storedItem['targetId'] ?? null)) {
+				$pageIds[] = $storedItem['targetId'];
+			}
+		}
 		foreach ($menuItems as $item) {
 			if ($item->getTargetType() === MenuItem::TARGET_PAGE && !in_array($item->getTargetId(), $pageIds, true)) {
 				throw new InvalidArgumentException('A menu item can only open a page of its own application.');
 			}
 		}
 
-		$storedMenu = array_values(array_filter($context->getMenuItems() ?? [], is_array(...)));
 		$this->addMenuTargetsAsNodes($context, $menuItems, $storedMenu, $userId);
 
 		$this->menuItemMapper->deleteAllByContextId($context->getId());
