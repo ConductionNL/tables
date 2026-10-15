@@ -13858,8 +13858,9 @@
                                     },
                                     "menuItems": {
                                         "type": "array",
-                                        "default": [],
-                                        "description": "Menu of the context, targets by uuid, parents by technical name",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Menu of the context, targets by uuid, parents by technical name; leave it out to keep the current menu",
                                         "items": {
                                             "type": "object",
                                             "required": [

@@ -33,11 +33,44 @@ final class ContextSchemeTest extends TestCase {
 		$this->assertSame(self::TABLES, $scheme->getTables());
 	}
 
-	public function testCreateFromInputWithoutAMenuHasAnEmptyOne(): void {
-		$scheme = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES]);
+	public function testCreateFromInputKeepsAnAbsentMenuApartFromAnEmptyOne(): void {
+		$withoutMenu = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES]);
+		$emptyMenu = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'menuItems' => []]);
 
-		$this->assertSame([], $scheme->getMenuItems());
-		$this->assertSame([], $scheme->getGridViews());
+		$this->assertNull($withoutMenu->getMenuItems());
+		$this->assertSame([], $emptyMenu->getMenuItems());
+		$this->assertSame([], $withoutMenu->getGridViews());
+	}
+
+	/**
+	 * @dataProvider provideInvalidGridViews
+	 */
+	public function testCreateFromInputRejectsAnInvalidGridView(array $gridView, string $message): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage($message);
+		ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'gridViews' => [$gridView]]);
+	}
+
+	/**
+	 * @return array<string, array{array<string, mixed>, string}>
+	 */
+	public static function provideInvalidGridViews(): array {
+		return [
+			'no uuid' => [['title' => 'Home'], '"uuid"'],
+			'a blank title' => [['uuid' => 'v1', 'title' => ' '], '"title"'],
+			'an emoji that is not text' => [['uuid' => 'v1', 'title' => 'Home', 'emoji' => 5], '"emoji" must be a string'],
+			'a date in another format' => [['uuid' => 'v1', 'title' => 'Home', 'createdAt' => '14-10-2026'], '"createdAt" must be a date'],
+			'a grid that is not an object' => [['uuid' => 'v1', 'title' => 'Home', 'grid' => 'widgets'], '"grid" must be an object'],
+		];
+	}
+
+	public function testCreateFromInputAcceptsACompleteGridView(): void {
+		$scheme = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'gridViews' => [[
+			'uuid' => 'v1', 'title' => 'Home', 'emoji' => '🏠', 'description' => null,
+			'createdAt' => '2026-10-14 12:00:00', 'lastEditAt' => '2026-10-14 12:00:00', 'grid' => ['widgets' => [], 'layout' => []],
+		]]]);
+
+		$this->assertCount(1, $scheme->getGridViews());
 	}
 
 	public function testCreateFromInputRejectsTablesWithoutBothLists(): void {

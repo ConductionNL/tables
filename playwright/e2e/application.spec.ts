@@ -4,9 +4,10 @@
  */
 
 import type { Page } from '@playwright/test'
+import { randomUUID } from 'node:crypto'
 import { test, expect } from '../support/fixtures'
 import { ocsRequest, type TestUser } from '../support/api'
-import { createContext, loadContext } from '../support/commands'
+import { createContext, ensureNavigationOpen, loadContext } from '../support/commands'
 
 /**
  * Creates a grid view and an application whose menu opens it, through the API.
@@ -128,4 +129,115 @@ test.describe('Applications', () => {
 		await expect(pages.nth(1)).toContainText('1.1')
 		await expect(pages.nth(1)).toContainText('Handbook')
 	})
+
+	test('A scheme imported through the dialog brings its menu and the page it opens', async ({ userPage: { page, user } }) => {
+		const fileContent = await exportedSchemeFile(page, user, 'exported application', 'Exported page')
+		const target = await createApplication(page, user, 'importing application', [])
+
+		const response = await importThroughDialog(page, 'importing application', fileContent, true)
+
+		expect(response.status()).toBe(200)
+		expect(response.request().postDataJSON().menuItems).toHaveLength(1)
+		expect(await menuLabels(page, user, target.id)).toEqual(['Exported page'])
+	})
+
+	test('A scheme imported through the dialog with its menu switched off keeps the current menu', async ({ userPage: { page, user } }) => {
+		const fileContent = await exportedSchemeFile(page, user, 'exported application', 'Exported page')
+		const target = await createApplication(page, user, 'importing application', [{ label: 'Handbook', targetType: 'url', url: 'https://docs.nextcloud.com' }])
+
+		const response = await importThroughDialog(page, 'importing application', fileContent, false)
+
+		expect(response.status()).toBe(200)
+		expect(response.request().postDataJSON()).not.toHaveProperty('menuItems')
+		expect(await menuLabels(page, user, target.id)).toEqual(['Handbook'])
+	})
 })
+
+/**
+ * Exports an application with a grid page in its menu, as the file an import dialog takes.
+ *
+ * @param page the page of the test user
+ * @param user the test user
+ * @param name name of the exported application
+ * @param pageTitle title of its grid page
+ */
+async function exportedSchemeFile(page: Page, user: TestUser, name: string, pageTitle: string): Promise<string> {
+	const source = await createApplicationWithGridPage(page, user, name, pageTitle)
+	const exportResponse = await ocsRequest(page.request, user, {
+		method: 'GET',
+		url: `/ocs/v2.php/apps/tables/api/2/contexts/${source.id}/scheme/export?format=json`,
+	})
+	const scheme = (await exportResponse.json()).ocs.data
+	// A grid view uuid this instance does not know, as for a scheme exported on another instance
+	return JSON.stringify(scheme).split(scheme.gridViews[0].uuid).join(randomUUID())
+}
+
+/**
+ * Creates an application with the given menu through the API.
+ *
+ * @param page the page of the test user
+ * @param user the test user
+ * @param name name of the application
+ * @param menuItems its menu
+ */
+async function createApplication(page: Page, user: TestUser, name: string, menuItems: object[]) {
+	const response = await ocsRequest(page.request, user, {
+		method: 'POST',
+		url: '/ocs/v2.php/apps/tables/api/2/contexts?format=json',
+		data: { name, iconName: 'star', menuItems },
+	})
+	return (await response.json()).ocs.data
+}
+
+/**
+ * Imports a scheme file into an application through its "Import scheme" dialog.
+ *
+ * @param page the page of the test user
+ * @param applicationName name of the application to import into
+ * @param fileContent the scheme file
+ * @param withMenu whether the Menu switch of the preview stays on
+ */
+async function importThroughDialog(page: Page, applicationName: string, fileContent: string, withMenu: boolean) {
+	await page.goto('/index.php/apps/tables')
+	await ensureNavigationOpen(page)
+	const contextItem = page.locator('[data-cy="navigationContextItem"]').filter({ hasText: applicationName }).first()
+	await contextItem.hover()
+	await contextItem.getByRole('button', { name: /Actions|Open menu/i }).first().click({ force: true })
+	// A forced click can land before the opening menu has settled and then misses the item
+	await page.getByRole('menuitem', { name: 'Import scheme' }).click()
+
+	const dialog = page.getByRole('dialog', { name: /application scheme/ })
+	await expect(dialog).toBeVisible()
+	await dialog.locator('input[type=file]').setInputFiles({
+		name: 'exported-application.json',
+		mimeType: 'application/json',
+		buffer: Buffer.from(fileContent),
+	})
+	await dialog.getByRole('button', { name: 'Preview' }).click()
+	const menuSection = dialog.locator('[data-cy="importSchemeMenu"]')
+	await expect(menuSection).toBeVisible()
+	if (!withMenu) {
+		await menuSection.getByText('Menu', { exact: true }).click()
+	}
+	const importResponse = page.waitForResponse(r => r.url().includes('/scheme/import') && r.request().method() === 'POST')
+	await dialog.getByRole('button', { name: 'Import' }).click()
+	const response = await importResponse
+	await expect(dialog).toContainText('Import completed successfully.')
+	return response
+}
+
+/**
+ * The labels of an application's menu, as the API returns it.
+ *
+ * @param page the page of the test user
+ * @param user the test user
+ * @param contextId id of the application
+ */
+async function menuLabels(page: Page, user: TestUser, contextId: number): Promise<string[]> {
+	const response = await ocsRequest(page.request, user, {
+		method: 'GET',
+		url: `/ocs/v2.php/apps/tables/api/2/contexts/${contextId}?format=json`,
+	})
+	const context = (await response.json()).ocs.data
+	return context.menuItems.map((item: { label: string }) => item.label)
+}

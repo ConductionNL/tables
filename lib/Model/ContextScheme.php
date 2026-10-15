@@ -7,6 +7,7 @@
 
 namespace OCA\Tables\Model;
 
+use DateTime;
 use InvalidArgumentException;
 use JsonSerializable;
 
@@ -19,7 +20,7 @@ class ContextScheme implements JsonSerializable {
 		protected ?array $nodes = [],
 		protected ?array $pages = [],
 		protected ?array $tables = [],
-		protected array $menuItems = [],
+		protected ?array $menuItems = [],
 		protected array $gridViews = [],
 	) {
 	}
@@ -48,6 +49,7 @@ class ContextScheme implements JsonSerializable {
 				throw new InvalidArgumentException('The scheme property "' . $optional . '" must be a string.');
 			}
 		}
+		self::assertGridViewsValid($data['gridViews'] ?? []);
 		return new self(
 			name: $data['name'],
 			icon: $data['icon'] ?? null,
@@ -55,9 +57,42 @@ class ContextScheme implements JsonSerializable {
 			nodes: array_values($data['nodes'] ?? []),
 			pages: [],
 			tables: $tables,
-			menuItems: array_values($data['menuItems'] ?? []),
+			// A scheme without a menu leaves the application's menu alone; an empty one clears it
+			menuItems: isset($data['menuItems']) ? array_values($data['menuItems']) : null,
 			gridViews: array_values($data['gridViews'] ?? []),
 		);
+	}
+
+	/**
+	 * Every view without a table in a scheme needs a uuid and a title; its other fields are text or absent,
+	 * and its dates are in the format the export writes.
+	 *
+	 * @throws InvalidArgumentException
+	 */
+	private static function assertGridViewsValid(array $gridViews): void {
+		foreach ($gridViews as $gridView) {
+			if (!is_array($gridView)) {
+				throw new InvalidArgumentException('Every entry of "gridViews" must be an object.');
+			}
+			foreach (['uuid', 'title'] as $required) {
+				if (!is_string($gridView[$required] ?? null) || trim($gridView[$required]) === '') {
+					throw new InvalidArgumentException('Every entry of "gridViews" needs a "' . $required . '".');
+				}
+			}
+			foreach (['emoji', 'description', 'createdAt', 'lastEditAt'] as $optional) {
+				if (isset($gridView[$optional]) && !is_string($gridView[$optional])) {
+					throw new InvalidArgumentException('The grid view property "' . $optional . '" must be a string.');
+				}
+			}
+			foreach (['createdAt', 'lastEditAt'] as $date) {
+				if (isset($gridView[$date]) && DateTime::createFromFormat('Y-m-d H:i:s', $gridView[$date]) === false) {
+					throw new InvalidArgumentException('The grid view property "' . $date . '" must be a date like 2026-10-14 12:00:00.');
+				}
+			}
+			if (isset($gridView['grid']) && !is_array($gridView['grid'])) {
+				throw new InvalidArgumentException('The grid view property "grid" must be an object.');
+			}
+		}
 	}
 
 	public function getName(): ?string {
@@ -86,8 +121,9 @@ class ContextScheme implements JsonSerializable {
 
 	/**
 	 * Menu items point at their target by uuid, so a scheme can be imported on another instance.
+	 * Null when the scheme has no menu, which leaves the application's menu as it is.
 	 */
-	public function getMenuItems(): array {
+	public function getMenuItems(): ?array {
 		return $this->menuItems;
 	}
 
