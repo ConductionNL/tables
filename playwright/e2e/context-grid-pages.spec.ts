@@ -144,8 +144,11 @@ test.describe('Application pages on the grid', () => {
 		await page.locator('[data-cy="contextPageCreate"]').click()
 		const pageForm = page.getByRole('dialog', { name: 'New page' })
 		await pageForm.getByRole('textbox', { name: 'Title' }).fill('Open cases')
+		const created = page.waitForResponse(r => r.url().includes('/pages') && r.request().method() === 'POST')
 		await page.locator('[data-cy="contextPageSubmit"]').click()
-		await expect(page).toHaveURL(/\/application\/\d+\/page\/\d+/)
+		const createdPage = (await (await created).json()).ocs.data
+		expect(createdPage.technical_name).toBe('open_cases')
+		await expect(page).toHaveURL(new RegExp(`/page/${createdPage.id}$`))
 
 		const pages = Object.values((await getApplication(page.request, user, contextId)).pages as Record<string, { page_type: string, technical_name: string }>)
 		expect(pages.map(entry => entry.technical_name).sort()).toEqual(['dashboard', 'open_cases'])
