@@ -11,13 +11,14 @@ namespace OCA\Tables\Model;
 
 use InvalidArgumentException;
 use OCA\Tables\Db\MenuItem;
+use OCA\Tables\Helper\TechnicalNameHelper;
 
 class MenuItemInput {
 	public const MAX_LABEL_LENGTH = 200;
 	public const MAX_ICON_LENGTH = 64;
 	public const MAX_URL_LENGTH = 2000;
-	public const MAX_TECHNICAL_NAME_LENGTH = 200;
-	public const TECHNICAL_NAME_PATTERN = '/^[a-z][a-z0-9_]*$/';
+	public const MAX_TECHNICAL_NAME_LENGTH = TechnicalNameHelper::MAX_LENGTH;
+	public const TECHNICAL_NAME_PATTERN = TechnicalNameHelper::PATTERN;
 	private const URL_SCHEMES = ['http', 'https'];
 
 	/**
@@ -152,7 +153,7 @@ class MenuItemInput {
 	 * @throws InvalidArgumentException
 	 */
 	public static function assertTechnicalNameValid(string $technicalName): void {
-		if (strlen($technicalName) > self::MAX_TECHNICAL_NAME_LENGTH || !preg_match(self::TECHNICAL_NAME_PATTERN, $technicalName)) {
+		if (!TechnicalNameHelper::isValid($technicalName, self::MAX_TECHNICAL_NAME_LENGTH)) {
 			throw new InvalidArgumentException('A technical name must start with a lowercase letter and contain only lowercase letters, numbers and underscores.');
 		}
 	}

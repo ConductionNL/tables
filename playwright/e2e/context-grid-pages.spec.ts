@@ -131,6 +131,33 @@ test.describe('Application pages on the grid', () => {
 		expect(startPageContent(application)).toHaveLength(1)
 	})
 
+	test('A page created without a technical name gets one from its title, and keeps one on rename', async ({ userPage: { page, user } }) => {
+		const table = await createTableViaApi(page.request, user, 'grid name table')
+		const contextId = await createApplicationViaApi(page.request, user, 'grid name app', [table])
+		await openApplication(page, contextId)
+
+		await page.locator('[data-cy="contextPageCreate"]').click()
+		const pageForm = page.getByRole('dialog', { name: 'New page' })
+		await pageForm.getByRole('textbox', { name: 'Title' }).fill('Open cases')
+		await page.locator('[data-cy="contextPageSubmit"]').click()
+		await expect(page).toHaveURL(/\/application\/\d+\/page\/\d+/)
+
+		const pages = Object.values((await getApplication(page.request, user, contextId)).pages as Record<string, { page_type: string, technical_name: string }>)
+		expect(pages.map(entry => entry.technical_name).sort()).toEqual(['dashboard', 'open_cases'])
+
+		await page.locator('[data-cy="contextPageActions"] button').first().click()
+		await page.locator('[data-cy="contextPageRename"]').click()
+		const renameForm = page.getByRole('dialog', { name: 'Rename page' })
+		const technicalName = renameForm.getByRole('textbox', { name: 'Technical name' })
+		await expect(technicalName).toHaveValue('open_cases')
+		await technicalName.fill('')
+		await expect(page.locator('[data-cy="contextPageSubmit"]')).toBeDisabled()
+		await technicalName.fill('dashboard')
+		const renamed = page.waitForResponse(r => r.url().includes('/pages/') && r.request().method() === 'PATCH')
+		await page.locator('[data-cy="contextPageSubmit"]').click()
+		expect((await renamed).status()).toBe(400)
+	})
+
 	test('A sharee who cannot manage the application sees its pages read-only', async ({ userPage: { page, user }, browser, baseURL, request }) => {
 		const sharee = await createRandomUser(request)
 		const table = await createTableViaApi(page.request, user, 'grid shared table')
