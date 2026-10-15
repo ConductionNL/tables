@@ -124,6 +124,48 @@ test.describe('Applications', () => {
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 30000 })
 	})
 
+	test('The overview lists the tables the application uses, its members and its counts', async ({ userPage: { page, user } }) => {
+		const tableResponse = await ocsRequest(page.request, user, { method: 'POST', url: '/index.php/apps/tables/api/1/tables', data: { title: 'Requests' } })
+		const table = await tableResponse.json()
+		const contextResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: `${API}/contexts?format=json`,
+			data: {
+				name: 'used tables application',
+				iconName: 'star',
+				menuItems: [
+					{ label: 'All requests', targetType: 'table', targetId: table.id },
+					{ label: 'Docs', targetType: 'url', url: 'https://docs.nextcloud.com' },
+				],
+			},
+		})
+		const context = (await contextResponse.json()).ocs.data
+
+		await page.goto(`/index.php/apps/tables/#/application/${context.id}`)
+
+		const stats = page.locator('[data-cy="context-stats"]')
+		await expect(stats).toContainText('1 page')
+		await expect(stats).toContainText('1 table')
+		await expect(stats).toContainText('1 member')
+		const row = page.locator('[data-cy="context-table-row"]').filter({ hasText: 'Requests' })
+		await expect(row).toContainText('All requests')
+		await expect(page.locator('[data-cy="context-members-list"]')).toContainText('Owner')
+	})
+
+	test('An application with many pages gets a filter for them', async ({ userPage: { page, user } }) => {
+		const contextId = await createEmptyApplication(page.request, user, 'many pages application')
+		for (const title of ['Intake', 'Planning', 'Reports', 'Archive', 'Invoices', 'Contacts', 'Settings']) {
+			await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts/${contextId}/pages?format=json`, data: { title } })
+		}
+
+		await page.goto(`/index.php/apps/tables/#/application/${contextId}`)
+		await expect(page.locator('[data-cy="page-card"]')).toHaveCount(8)
+		await page.getByRole('textbox', { name: 'Filter pages' }).fill('voic')
+
+		await expect(page.locator('[data-cy="page-card"]')).toHaveCount(1)
+		await expect(page.locator('[data-cy="page-card"]')).toContainText('Invoices')
+	})
+
 	test('A page with widgets added on the overview gets a menu entry and opens in edit mode', async ({ userPage: { page } }) => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, 'overview application')

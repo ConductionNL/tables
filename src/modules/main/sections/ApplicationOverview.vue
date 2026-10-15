@@ -72,11 +72,21 @@
 				</NcActions>
 			</div>
 		</header>
+		<p class="overview__stats" data-cy="context-stats">
+			<span v-for="stat in stats" :key="stat.key">
+				{{ stat.label }}
+			</span>
+		</p>
 
 		<section class="overview__section" data-cy="context-pages">
 			<div class="overview__section-header">
 				<h2>{{ t('tables', 'Pages') }}</h2>
 				<div class="overview__section-actions">
+					<NcTextField v-if="pageRows.length > 6"
+						v-model="pageFilter"
+						:label="t('tables', 'Filter pages')"
+						class="overview__filter"
+						data-cy="context-page-filter" />
 					<NcActions v-if="canManage" :menu-name="t('tables', 'Add page')" data-cy="context-add-page">
 						<template #icon>
 							<Plus :size="20" />
@@ -102,7 +112,10 @@
 					</NcActions>
 				</div>
 			</div>
-			<div class="overview__table-wrap">
+			<p v-if="filteredPageRows.length === 0" class="overview__hint">
+				{{ t('tables', 'No page matches the filter.') }}
+			</p>
+			<div v-else class="overview__table-wrap">
 				<table class="overview__table" data-cy="context-pages-table">
 					<thead>
 						<tr>
@@ -125,12 +138,12 @@
 						</tr>
 					</thead>
 					<tbody>
-						<tr v-for="(row, index) in pageRows"
+						<tr v-for="row in filteredPageRows"
 							:key="row.page.id"
 							class="page-row"
 							data-cy="page-card">
 							<td class="overview__col-position">
-								{{ index + 1 }}
+								{{ row.position }}
 							</td>
 							<td>
 								<div class="page-row__name">
@@ -213,6 +226,91 @@
 			</p>
 		</section>
 
+		<section class="overview__section" data-cy="context-tables">
+			<div class="overview__section-header">
+				<h2>{{ t('tables', 'Tables') }}</h2>
+			</div>
+			<p class="overview__section-help">
+				{{ t('tables', 'The data this application works on. A table is listed when the application, a page or a menu entry uses it.') }}
+			</p>
+			<p v-if="usedTables.length === 0" class="overview__hint">
+				{{ t('tables', 'No table is used yet. Add a table to a page or to the menu.') }}
+			</p>
+			<div v-else class="overview__table-wrap">
+				<table class="overview__table" data-cy="context-tables-table">
+					<thead>
+						<tr>
+							<th scope="col">
+								{{ t('tables', 'Table') }}
+							</th>
+							<th scope="col" class="overview__col-number">
+								{{ t('tables', 'Rows') }}
+							</th>
+							<th scope="col" class="overview__col-number">
+								{{ t('tables', 'Views') }}
+							</th>
+							<th scope="col">
+								{{ t('tables', 'Used by') }}
+							</th>
+							<th scope="col" class="overview__col-actions">
+								<span class="hidden-visually">{{ t('tables', 'Actions') }}</span>
+							</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr v-for="entry in usedTables" :key="entry.id" data-cy="context-table-row">
+							<td>
+								<div class="page-row__name">
+									<span class="page-row__icon page-row__emoji">{{ entry.table?.emoji || '' }}</span>
+									<router-link v-if="entry.table" :to="'/table/' + entry.id" class="page-row__link">
+										{{ entry.table.title }}
+									</router-link>
+									<span v-else>{{ t('tables', 'Table {id}, not accessible to you', { id: entry.id }) }}</span>
+								</div>
+							</td>
+							<td class="overview__col-number">
+								{{ entry.table ? entry.table.rowsCount : '' }}
+							</td>
+							<td class="overview__col-number">
+								{{ entry.viewCount }}
+							</td>
+							<td class="page-row__shows">
+								{{ entry.usedBy.join(', ') }}
+							</td>
+							<td class="overview__col-actions">
+								<NcButton v-if="entry.table" variant="tertiary" :href="routeHref('/table/' + entry.id)">
+									{{ t('tables', 'Open') }}
+								</NcButton>
+							</td>
+						</tr>
+					</tbody>
+				</table>
+			</div>
+		</section>
+
+		<section v-if="canManage" class="overview__section" data-cy="context-members">
+			<div class="overview__section-header">
+				<h2>{{ t('tables', 'Members') }}</h2>
+				<NcButton variant="secondary" data-cy="context-edit-members" @click="emitEvent('tables:context:edit', context.id)">
+					<template #icon>
+						<AccountMultipleOutline :size="20" />
+					</template>
+					{{ t('tables', 'Share with people or groups') }}
+				</NcButton>
+			</div>
+			<p class="overview__section-help">
+				{{ t('tables', 'Who can open the application. What each member may do with the data follows from the shares of the tables.') }}
+			</p>
+			<ul class="overview__members" data-cy="context-members-list">
+				<li v-for="member in members" :key="member.key" class="overview__member">
+					<NcAvatar v-if="member.type === 'user'" :user="member.id" :display-name="member.name" :size="32" />
+					<span v-else class="overview__member-group" aria-hidden="true"><AccountMultipleOutline :size="20" /></span>
+					<span>{{ member.name }}</span>
+					<span class="overview__member-role">{{ member.role }}</span>
+				</li>
+			</ul>
+		</section>
+
 		<ContextPageForm :show-modal="pageFormOpen"
 			:page="null"
 			@close="pageFormOpen = false"
@@ -221,11 +319,13 @@
 </template>
 
 <script>
-import { NcActionButton, NcActionSeparator, NcActions, NcButton, NcIconSvgWrapper } from '@nextcloud/vue'
+import { NcActionButton, NcActionSeparator, NcActions, NcAvatar, NcButton, NcIconSvgWrapper, NcTextField } from '@nextcloud/vue'
+import { getCurrentUser } from '@nextcloud/auth'
 import { emit } from '@nextcloud/event-bus'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { generateUrl } from '@nextcloud/router'
 import { mapActions, mapState } from 'pinia'
+import AccountMultipleOutline from 'vue-material-design-icons/AccountMultipleOutline.vue'
 import ContentCopy from 'vue-material-design-icons/ContentCopy.vue'
 import ContentSaveOutline from 'vue-material-design-icons/ContentSaveOutline.vue'
 import DeleteOutline from 'vue-material-design-icons/DeleteOutline.vue'
@@ -241,6 +341,7 @@ import ContextPageForm from '../../modals/ContextPageForm.vue'
 import MenuItemIcon from '../../../shared/components/MenuItemIcon.vue'
 import MenuItemsEditor from '../../../shared/components/ncContextResource/MenuItemsEditor.vue'
 import { areMenuItemsValid, menuTree, pageTitle, toEditableMenuItems, toMenuItemPayload } from '../../../shared/utils/menuItems.js'
+import { NODE_TYPE_TABLE, NODE_TYPE_VIEW } from '../../../shared/constants.ts'
 import { useTablesStore } from '../../../store/store.js'
 
 /**
@@ -252,8 +353,11 @@ export default {
 		NcActionButton,
 		NcActionSeparator,
 		NcActions,
+		NcAvatar,
 		NcButton,
 		NcIconSvgWrapper,
+		NcTextField,
+		AccountMultipleOutline,
 		ContentCopy,
 		ContentSaveOutline,
 		DeleteOutline,
@@ -294,6 +398,7 @@ export default {
 			menuDraft: null,
 			menuSaving: false,
 			pageFormOpen: false,
+			pageFilter: '',
 		}
 	},
 	computed: {
@@ -311,13 +416,110 @@ export default {
 		 */
 		pageRows() {
 			const ordered = [...this.pages].sort((a, b) => (a.page_type === 'startpage' ? 0 : 1) - (b.page_type === 'startpage' ? 0 : 1) || a.id - b.id)
-			return ordered.map(page => ({
+			return ordered.map((page, index) => ({
 				page,
+				position: index + 1,
 				title: pageTitle(page),
 				route: this.pageRoute(page),
 				typeLabel: page.page_type === 'startpage' ? t('tables', 'Dashboard') : t('tables', 'Page with widgets'),
 				description: n('tables', '%n widget', '%n widgets', page.content?.length ?? 0),
 			}))
+		},
+		filteredPageRows() {
+			const query = this.pageFilter.trim().toLowerCase()
+			if (query === '') {
+				return this.pageRows
+			}
+			return this.pageRows.filter(row => [row.title, row.typeLabel, row.description].some(text => (text ?? '').toLowerCase().includes(query)))
+		},
+		/**
+		 * Every table the application touches: through its own nodes, through a widget on one of
+		 * its pages, and through a menu entry that opens a table or a view. Keyed by table id, with
+		 * who uses it.
+		 *
+		 * @return {Array<object>}
+		 */
+		usedTables() {
+			const uses = new Map()
+			const add = (tableId, usedBy) => {
+				if (!tableId) {
+					return
+				}
+				const entry = uses.get(tableId) ?? { id: tableId, usedBy: [] }
+				if (!entry.usedBy.includes(usedBy)) {
+					entry.usedBy.push(usedBy)
+				}
+				uses.set(tableId, entry)
+			}
+			const tableOfNode = (nodeType, nodeId) => nodeType === NODE_TYPE_TABLE
+				? nodeId
+				: this.views.find(view => view.id === nodeId)?.tableId
+			const nodes = this.context.nodes ?? {}
+			const usedNodeIds = new Set()
+			for (const page of this.pages) {
+				for (const content of Object.values(page.content ?? {})) {
+					const node = content.node_rel_id ? nodes[content.node_rel_id] : null
+					if (node) {
+						usedNodeIds.add(String(node.id))
+						add(tableOfNode(parseInt(node.node_type), node.node_id), pageTitle(page))
+					}
+				}
+			}
+			for (const item of this.menuItems) {
+				if (item.targetType === 'table' || item.targetType === 'view') {
+					const nodeType = item.targetType === 'table' ? NODE_TYPE_TABLE : NODE_TYPE_VIEW
+					const node = Object.values(nodes).find(candidate => parseInt(candidate.node_type) === nodeType && candidate.node_id === item.targetId)
+					if (node) {
+						usedNodeIds.add(String(node.id))
+					}
+					add(tableOfNode(nodeType, item.targetId), item.label)
+				}
+			}
+			for (const node of Object.values(nodes)) {
+				if (!usedNodeIds.has(String(node.id))) {
+					add(tableOfNode(parseInt(node.node_type), node.node_id), t('tables', 'Application'))
+				}
+			}
+			return [...uses.values()].map(entry => ({
+				...entry,
+				table: this.tables.find(table => table.id === entry.id) ?? null,
+				viewCount: this.views.filter(view => view.tableId === entry.id).length,
+			})).sort((a, b) => (a.table?.title ?? '').localeCompare(b.table?.title ?? ''))
+		},
+		/**
+		 * The owner and everyone the application is shared with. Only the owner gets every share.
+		 *
+		 * @return {Array<object>}
+		 */
+		members() {
+			const owner = this.context.owner
+			const currentUser = getCurrentUser()
+			const ownerName = owner === currentUser?.uid ? currentUser.displayName : owner
+			const list = owner ? [{ key: 'owner', type: 'user', id: owner, name: ownerName, role: t('tables', 'Owner') }] : []
+			for (const share of Object.values(this.context.sharing ?? {})) {
+				if (share.receiver === owner && share.receiver_type === 'user') {
+					continue
+				}
+				list.push({
+					key: 'share-' + share.share_id,
+					type: share.receiver_type,
+					id: share.receiver,
+					name: share.receiver_display_name ?? share.receiver,
+					role: share.receiver_type === 'user' ? t('tables', 'Member') : t('tables', 'Group'),
+				})
+			}
+			return list
+		},
+		stats() {
+			const stats = [
+				{ key: 'pages', label: n('tables', '%n page', '%n pages', this.pages.length) },
+				{ key: 'tables', label: n('tables', '%n table', '%n tables', this.usedTables.length) },
+			]
+			// Only the owner sees every share; anyone else would see a partial count
+			if (this.canManage) {
+				stats.push({ key: 'members', label: n('tables', '%n member', '%n members', this.members.length) })
+			}
+			return stats
 		},
 		/**
 		 * The menu items in menu order, each with what it opens, for the menu preview.
@@ -524,6 +726,59 @@ export default {
 		gap: calc(2 * var(--default-grid-baseline));
 	}
 
+	&__stats {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(4 * var(--default-grid-baseline));
+		margin: 0;
+		padding-block: calc(2 * var(--default-grid-baseline));
+		padding-inline: calc(var(--default-clickable-area) + 4 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+		border-bottom: 1px solid var(--color-border);
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__filter {
+		max-width: 260px;
+	}
+
+	&__col-number {
+		width: 1%;
+		font-variant-numeric: tabular-nums;
+		text-align: end;
+		white-space: nowrap;
+	}
+
+	&__members {
+		display: flex;
+		flex-wrap: wrap;
+		gap: calc(2 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	&__member {
+		display: flex;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline));
+		min-width: 200px;
+	}
+
+	&__member-group {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 32px;
+		height: 32px;
+		border-radius: 50%;
+		background-color: var(--color-background-dark);
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__member-role {
+		color: var(--color-text-maxcontrast);
+	}
+
 	&__section {
 		max-width: 1100px;
 		padding-block: calc(5 * var(--default-grid-baseline)) calc(2 * var(--default-grid-baseline));
@@ -647,6 +902,11 @@ export default {
 		color: var(--color-primary-element);
 	}
 
+	&__emoji {
+		width: 20px;
+		text-align: center;
+	}
+
 	&__link {
 		color: inherit;
 		font-weight: bold;
@@ -668,6 +928,7 @@ export default {
 
 @media (max-width: 700px) {
 	// The header keeps clear of the navigation toggle that floats at the top left
+	.overview__stats,
 	.overview__section {
 		padding-inline-start: calc(4 * var(--default-grid-baseline));
 	}
