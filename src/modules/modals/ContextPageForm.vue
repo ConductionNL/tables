@@ -15,8 +15,9 @@
 				data-cy="contextPageTitle" />
 			<NcTextField v-model="technicalName"
 				:label="t('tables', 'Technical name')"
-				:helper-text="technicalNameIsValid ? t('tables', 'Optional. Lowercase letters, digits and underscores, starting with a letter.') : t('tables', 'Start with a lowercase letter and use only lowercase letters, digits and underscores.')"
+				:helper-text="technicalNameHelperText"
 				:error="!technicalNameIsValid"
+				:required="!!page"
 				:maxlength="200"
 				data-cy="contextPageTechnicalName" />
 		</form>
@@ -30,6 +31,7 @@
 
 <script>
 import { NcButton, NcDialog, NcTextField } from '@nextcloud/vue'
+import { translate as t } from '@nextcloud/l10n'
 
 const TECHNICAL_NAME = /^[a-z][a-z0-9_]*$/
 
@@ -63,7 +65,17 @@ export default {
 	},
 	computed: {
 		technicalNameIsValid() {
-			return this.technicalName === '' || TECHNICAL_NAME.test(this.technicalName)
+			return (this.technicalName === '' && !this.page) || TECHNICAL_NAME.test(this.technicalName)
+		},
+		technicalNameHelperText() {
+			if (!this.technicalNameIsValid) {
+				return this.technicalName === ''
+					? t('tables', 'Every page needs a technical name.')
+					: t('tables', 'Start with a lowercase letter and use only lowercase letters, digits and underscores.')
+			}
+			return this.page
+				? t('tables', 'Lowercase letters, digits and underscores, starting with a letter.')
+				: t('tables', 'Leave empty to make one from the title. Lowercase letters, digits and underscores, starting with a letter.')
 		},
 		canSubmit() {
 			return this.title.trim() !== '' && this.technicalNameIsValid

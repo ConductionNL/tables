@@ -285,6 +285,26 @@ test.describe('Applications', () => {
 		await expect(page.getByText('Welcome on the front page')).toBeVisible()
 	})
 
+	test('A scheme imported twice matches its pages by technical name and adds none again', async ({ userPage: { page, user } }) => {
+		const { contextId: sourceId } = await createApplicationWithMenu(page.request, user, 'exported application')
+		const scheme = await exportScheme(page.request, user, sourceId)
+		const targetId = await createEmptyApplication(page.request, user, 'importing application')
+
+		for (let run = 0; run < 2; run++) {
+			const response = await ocsRequest(page.request, user, {
+				method: 'POST',
+				url: `${API}/contexts/${targetId}/scheme/import?format=json`,
+				data: { name: 'importing application', iconName: 'star', description: '', nodes: [], tables: { addTables: [], modifyTables: [] }, menuItems: scheme.menuItems, pages: scheme.pages },
+			})
+			expect(response.status()).toBe(200)
+		}
+
+		const target = await getApplication(page.request, user, targetId)
+		const names = Object.values(target.pages as Record<string, { technical_name: string }>).map(entry => entry.technical_name).sort()
+		const sourceNames = Object.values((await getApplication(page.request, user, sourceId)).pages as Record<string, { technical_name: string }>).map(entry => entry.technical_name).sort()
+		expect(names).toEqual(sourceNames)
+	})
+
 	test('A scheme imported with its menu and pages switched off keeps the current menu', async ({ userPage: { page, user } }) => {
 		const { contextId: sourceId } = await createApplicationWithMenu(page.request, user, 'exported application')
 		const scheme = await exportScheme(page.request, user, sourceId)
@@ -337,6 +357,7 @@ test.describe('Applications', () => {
 		const intake = Object.values(target.pages as Record<string, { id: number, title: string | null, page_type: string, content: Record<string, { type: string, node_rel_id: number | null }> }>)
 			.find(entry => entry.title === 'Intake home')
 		expect(intake!.page_type).toBe('grid')
+		expect((intake as unknown as { technical_name: string }).technical_name).toBe('intake_home')
 		expect(Object.values(intake!.content).map(entry => entry.type).sort()).toEqual(['data', 'header'])
 		expect(target.menuItems).toHaveLength(1)
 		expect(target.menuItems[0]).toMatchObject({ label: 'Intake home', targetType: 'page', targetId: intake!.id, broken: false })

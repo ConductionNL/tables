@@ -113,7 +113,7 @@ final class ContextSchemeServiceTest extends TestCase {
 	}
 
 	private function startPage(int $id = 1): array {
-		return ['id' => $id, 'page_type' => 'startpage', 'title' => null, 'technical_name' => null, 'content' => []];
+		return ['id' => $id, 'page_type' => 'startpage', 'title' => null, 'technical_name' => 'dashboard', 'content' => []];
 	}
 
 	public function testExportNamesTablesAndViewsByUuidAndPagesByIdAndSkipsBrokenItems(): void {
@@ -200,10 +200,48 @@ final class ContextSchemeServiceTest extends TestCase {
 			['id' => 22, 'page_type' => 'grid', 'title' => '', 'technical_name' => 'Not valid', 'content' => []],
 		]), self::USER);
 
-		$this->assertSame([20 => 4, 21 => 101], $result['pages']);
-		$this->assertSame([['Intake', 'intake']], $created);
+		$this->assertSame([20 => 4, 21 => 101, 22 => 102], $result['pages']);
+		$this->assertSame([['Intake', 'intake'], ['not_valid', 'not_valid']], $created);
 		$this->assertSame([], $saved[4]);
 		$this->assertSame('Hello', $saved[101][0]['content']['text']);
+	}
+
+	public function testImportNamesPagesWithoutTechnicalNameAndMatchesThemByThatName(): void {
+		$saved = [];
+		$created = [];
+		$this->expectPages([$this->startPage(), ['id' => 4, 'page_type' => 'grid', 'title' => 'Old', 'technical_name' => 'open_cases', 'content' => []]], $saved, $created);
+		$this->pageService->expects($this->once())->method('update')->with(7, 4, 'Open cases', null, self::USER);
+
+		$result = $this->service->importPages($this->context(), new ContextScheme('App', '', '', [], [
+			['id' => 20, 'page_type' => 'grid', 'title' => 'Open cases', 'content' => []],
+			['id' => 21, 'page_type' => 'grid', 'title' => 'Open cases', 'content' => []],
+			['id' => 22, 'page_type' => 'grid', 'title' => 'Board', 'technical_name' => 'dashboard', 'content' => []],
+			['id' => 23, 'page_type' => 'grid', 'title' => 'Reports', 'technical_name' => 'reports', 'content' => []],
+			['id' => 24, 'page_type' => 'grid', 'title' => 'Reports again', 'technical_name' => 'reports', 'content' => []],
+		]), self::USER);
+
+		$this->assertSame([20 => 4, 21 => 101, 22 => 102, 23 => 103, 24 => 104], $result['pages']);
+		$this->assertSame([
+			['Open cases', 'open_cases_2'],
+			['Board', 'dashboard_2'],
+			['Reports', 'reports'],
+			['Reports again', 'reports_2'],
+		], $created);
+	}
+
+	public function testImportMatchesAGridViewOfAnOlderSchemeByItsTechnicalName(): void {
+		$saved = [];
+		$created = [];
+		$this->expectPages([$this->startPage(), ['id' => 4, 'page_type' => 'grid', 'title' => 'Intake', 'technical_name' => 'intake', 'content' => []]], $saved, $created);
+		$this->pageService->expects($this->once())->method('update')->with(7, 4, 'Intake home', null, self::USER);
+
+		$result = $this->service->importPages($this->context(), new ContextScheme('App', '', '', [], null, [], null, [
+			['uuid' => 'grid-1', 'title' => 'Intake home', 'technicalName' => 'intake'],
+			['uuid' => 'grid-2', 'title' => 'Archive'],
+		]), self::USER);
+
+		$this->assertSame(['grid-1' => 4, 'grid-2' => 101], $result['gridViews']);
+		$this->assertSame([['Archive', 'archive']], $created);
 	}
 
 	public function testImportLeavesOutDataWidgetsWhoseNodeIsNotHereOrCannotBeAdded(): void {
@@ -250,7 +288,7 @@ final class ContextSchemeServiceTest extends TestCase {
 		]]), self::USER);
 
 		$this->assertSame(['grid-1' => 101], $result['gridViews']);
-		$this->assertSame([['Intake home', null]], $created);
+		$this->assertSame([['Intake home', 'intake_home']], $created);
 		$this->assertSame(['header', 'data'], array_column($saved[101], 'type'));
 		$this->assertSame(['nodeType' => Application::NODE_TYPE_TABLE, 'nodeId' => 5], $saved[101][1]['node']);
 		$this->assertSame([], $saved[101][1]['content']);
