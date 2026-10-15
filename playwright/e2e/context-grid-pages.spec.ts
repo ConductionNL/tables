@@ -32,8 +32,13 @@ async function getApplication(request: APIRequestContext, user: TestUser, contex
 	return (await res.json()).ocs.data
 }
 
-async function openApplication(page: Page, contextId: number, path = '') {
-	await page.goto(`/index.php/apps/tables/#/application/${contextId}${path}`)
+/**
+ * Opens the start page of an application inside Tables; the application itself opens on its overview.
+ */
+async function openApplication(page: Page, user: TestUser, contextId: number) {
+	const application = await getApplication(page.request, user, contextId)
+	const startPage = Object.values(application.pages as Record<string, { id: number, page_type: string }>).find(entry => entry.page_type === 'startpage')
+	await page.goto(`/index.php/apps/tables/#/application/${contextId}/page/${startPage!.id}`)
 	await expect(page.locator('[data-cy="gridPage"]')).toBeVisible({ timeout: 30000 })
 }
 
@@ -48,7 +53,7 @@ test.describe('Application pages on the grid', () => {
 		const second = await createTableViaApi(page.request, user, 'grid second table')
 		const contextId = await createApplicationViaApi(page.request, user, 'grid existing app', [first, second])
 
-		await openApplication(page, contextId)
+		await openApplication(page, user, contextId)
 
 		const items = page.locator('[data-cy="gridItem"]')
 		await expect(items).toHaveCount(2)
@@ -67,7 +72,7 @@ test.describe('Application pages on the grid', () => {
 	test('A header added to the start page is saved with the order filled in', async ({ userPage: { page, user } }) => {
 		const table = await createTableViaApi(page.request, user, 'grid header table')
 		const contextId = await createApplicationViaApi(page.request, user, 'grid header app', [table])
-		await openApplication(page, contextId)
+		await openApplication(page, user, contextId)
 
 		await page.locator('[data-cy="gridPageEdit"]').click()
 		await page.locator('[data-cy="gridPageAddWidget"]').click()
@@ -96,7 +101,7 @@ test.describe('Application pages on the grid', () => {
 		const inApp = await createTableViaApi(page.request, user, 'grid table in app')
 		const notInApp = await createTableViaApi(page.request, user, 'grid table not in app')
 		const contextId = await createApplicationViaApi(page.request, user, 'grid new page app', [inApp])
-		await openApplication(page, contextId)
+		await openApplication(page, user, contextId)
 
 		await page.locator('[data-cy="contextPageCreate"]').click()
 		const pageForm = page.getByRole('dialog', { name: 'New page' })
@@ -149,7 +154,7 @@ test.describe('Application pages on the grid', () => {
 		const shareeContext = await browser.newContext({ baseURL, viewport: { width: 1600, height: 1000 } })
 		const shareePage = await shareeContext.newPage()
 		await login(shareePage, sharee)
-		await openApplication(shareePage, contextId)
+		await openApplication(shareePage, sharee, contextId)
 
 		await expect(shareePage.locator('h1', { hasText: 'grid shared table' })).toBeVisible()
 		await expect(shareePage.locator('[data-cy="contextPageLink"]', { hasText: 'Shared overview' })).toBeVisible()

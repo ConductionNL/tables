@@ -158,8 +158,11 @@ test.describe('Test column relation', () => {
 
 		await page.locator('[data-cy="editContextSubmitBtn"]').click()
 
-		// load the context and verify the relation label is rendered without crashing
+		// the tables of an application render in the application itself, opened on its own
 		await loadContext(page, contextTitle)
+		const contextId = page.url().match(/\/application\/(\d+)/)?.[1]
+		await page.goto(`/index.php/apps/tables/app/${contextId}`)
+		// verify the relation label is rendered without crashing
 		await expect(
 			page.locator('[data-cy="ncTable"] [data-cy="customTableRow"]').filter({ hasText: 'Bob' }),
 		).toBeVisible()

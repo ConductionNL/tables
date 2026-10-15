@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { translate as t } from '@nextcloud/l10n'
+
 /*
  * The menu of an application as the editor holds it: a flat, ordered list where a child carries
  * the key of its parent. A parent always precedes its children, there is one level of nesting,
@@ -45,6 +47,25 @@ export function newDashboardItem(label) {
  */
 export function isFixedItem(item) {
 	return item?.fixed === true
+}
+
+/**
+ * Menu items as the API stores them, as items for the editor, with a stable key for list rendering.
+ *
+ * @param {Array|undefined|null} menuItems items from the application
+ * @return {Array<object>} the items for the editor
+ */
+export function toEditableMenuItems(menuItems) {
+	return (menuItems ?? []).map((item, index) => ({
+		key: 'item-' + (item.id ?? index),
+		label: item.label ?? '',
+		icon: item.icon ?? null,
+		targetType: item.targetType ?? 'url',
+		targetId: item.targetId ?? null,
+		url: item.url ?? '',
+		technicalName: item.technicalName ?? null,
+		parentKey: item.parentId != null ? 'item-' + item.parentId : null,
+	}))
 }
 
 /**
@@ -365,4 +386,14 @@ export function menuTree(menuItems) {
 	const sorted = [...(menuItems ?? [])].sort((a, b) => a.order - b.order)
 	const roots = sorted.filter(item => item.parentId == null)
 	return roots.map(item => ({ item, children: sorted.filter(child => child.parentId === item.id) }))
+}
+
+/**
+ * The name of a page of an application: its title, or "Dashboard" for an untitled start page.
+ *
+ * @param {object} page a page as the page API returns it
+ * @return {string}
+ */
+export function pageTitle(page) {
+	return page.title || (page.page_type === 'startpage' ? t('tables', 'Dashboard') : t('tables', 'Untitled page'))
 }
