@@ -203,7 +203,7 @@ final class ContextServiceTest extends TestCase {
 
 		self::assertSame('overview', $insertedPages[1]->getTechnicalName());
 		self::assertSame('Overview', $insertedPages[1]->getTitle());
-		self::assertNull($insertedPages[0]->getTechnicalName());
+		self::assertSame('dashboard', $insertedPages[0]->getTechnicalName());
 
 		self::assertSame(70, $inserted[0]->getNodeRelId());
 		self::assertSame(10, $inserted[0]->getOrder());
@@ -219,7 +219,7 @@ final class ContextServiceTest extends TestCase {
 		self::assertSame(['configuration' => ['title' => ''], 'content' => ['title' => 'Hi']], json_decode($inserted[2]->getConfiguration(), true));
 	}
 
-	public function testImportContextDropsInvalidOrDuplicateTechnicalNames(): void {
+	public function testImportContextMakesInvalidOrDuplicateTechnicalNamesUnique(): void {
 		$table = new Table();
 		$table->id = 40;
 		$table->setOwnership('user-1');
@@ -240,7 +240,56 @@ final class ContextServiceTest extends TestCase {
 			],
 		], 33);
 
-		self::assertSame([null, 'sales', null], array_map(static fn (Page $page): ?string => $page->getTechnicalName(), $insertedPages));
+		self::assertSame(['not_valid', 'sales', 'sales_2'], array_map(static fn (Page $page): ?string => $page->getTechnicalName(), $insertedPages));
+	}
+
+	public function testImportContextNamesPagesWithoutTechnicalName(): void {
+		$table = new Table();
+		$table->id = 40;
+		$table->setOwnership('user-1');
+		$this->contextMapper->method('insert')->willReturnArgument(0);
+		$insertedPages = [];
+		$this->pageMapper->method('insert')
+			->willReturnCallback(static function (Page $page) use (&$insertedPages): Page {
+				$insertedPages[] = $page;
+				return $page;
+			});
+
+		$this->service->importContext($table, [
+			'nodes' => [['id' => 5, 'node_id' => 33, 'node_type' => 0]],
+			'pages' => [
+				['page_type' => Page::TYPE_GRID, 'title' => 'Open cases'],
+				['page_type' => Page::TYPE_STARTPAGE],
+				['page_type' => Page::TYPE_GRID, 'title' => 'Open cases'],
+				['page_type' => Page::TYPE_GRID, 'technical_name' => 'open_cases'],
+				['page_type' => Page::TYPE_GRID],
+			],
+		], 33);
+
+		self::assertSame(
+			['open_cases_2', 'dashboard', 'open_cases_3', 'open_cases', 'page'],
+			array_map(static fn (Page $page): ?string => $page->getTechnicalName(), $insertedPages),
+		);
+	}
+
+	public function testCreateNamesTheStartPageDashboard(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->id = 9;
+			return $context;
+		});
+		$insertedPages = [];
+		$this->pageMapper->expects($this->once())->method('insert')
+			->willReturnCallback(static function (Page $page) use (&$insertedPages): Page {
+				$page->id = 21;
+				$insertedPages[] = $page;
+				return $page;
+			});
+
+		$context = $this->service->create('Sales', 'icon', '', [], 'user-1', 0);
+
+		self::assertSame(Page::TYPE_STARTPAGE, $insertedPages[0]->getPageType());
+		self::assertSame('dashboard', $insertedPages[0]->getTechnicalName());
+		self::assertSame('dashboard', $context->getPages()[21]['technicalName']);
 	}
 
 	public function testAddNodeRelToPageAddsToTheStartPageWithoutPosition(): void {

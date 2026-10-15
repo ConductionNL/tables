@@ -24,6 +24,7 @@ use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\GridWidgetTypes;
 use OCA\Tables\Service\PageService;
 use OCA\Tables\Service\PermissionsService;
+use OCP\DB\Exception as DbException;
 use OCP\IDBConnection;
 use OCP\IL10N;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -67,7 +68,7 @@ class PageServiceTest extends TestCase {
 			20 => ['id' => 20, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE, 'permissions' => 1],
 		]);
 		$this->context->setPages([
-			1 => ['id' => 1, 'page_type' => Page::TYPE_STARTPAGE, 'title' => null, 'technical_name' => null, 'content' => [
+			1 => ['id' => 1, 'page_type' => Page::TYPE_STARTPAGE, 'title' => null, 'technical_name' => 'dashboard', 'content' => [
 				11 => ['id' => 11, 'order' => 10, 'node_rel_id' => 20, 'type' => 'data', 'configuration' => null, 'grid_x' => null, 'grid_y' => null, 'grid_width' => null, 'grid_height' => null],
 			]],
 			2 => ['id' => 2, 'page_type' => Page::TYPE_GRID, 'title' => 'Sales', 'technical_name' => 'sales', 'content' => []],
@@ -129,6 +130,9 @@ class PageServiceTest extends TestCase {
 			'technical name with capitals' => ['Ok', 'Overview'],
 			'technical name starting with a digit' => ['Ok', '1st'],
 			'technical name taken' => ['Ok', 'sales'],
+			'technical name of the start page' => ['Ok', 'dashboard'],
+			'empty technical name' => ['Ok', ''],
+			'technical name too long' => ['Ok', str_repeat('a', 201)],
 		];
 	}
 
@@ -179,19 +183,92 @@ class PageServiceTest extends TestCase {
 		$this->assertSame('sales', $stored->getTechnicalName());
 	}
 
-	public function testUpdateClearsTheTechnicalNameWithAnEmptyString(): void {
+	public static function invalidTechnicalNameChange(): array {
+		return [
+			'empty' => [''],
+			'invalid' => ['Sales report'],
+			'taken by another page' => ['dashboard'],
+		];
+	}
+
+	/**
+	 * @dataProvider invalidTechnicalNameChange
+	 */
+	public function testUpdateRejectsAnInvalidTechnicalName(string $technicalName): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$stored = new Page();
+		$stored->id = 2;
+		$stored->setTechnicalName('sales');
+		$this->pageMapper->method('findById')->willReturn($stored);
+		$this->pageMapper->expects($this->never())->method('update');
+
+		try {
+			$this->service->update(7, 2, null, $technicalName, self::USER);
+			$this->fail('The technical name was accepted');
+		} catch (BadRequestError) {
+		}
+		$this->assertSame('sales', $stored->getTechnicalName());
+	}
+
+	public function testUpdateChangesTheTechnicalName(): void {
 		$this->permissionsService->method('canManageContextById')->willReturn(true);
 		$stored = new Page();
 		$stored->id = 2;
 		$stored->setTitle('Sales');
 		$stored->setTechnicalName('sales');
 		$this->pageMapper->method('findById')->willReturn($stored);
-		$this->pageMapper->method('update')->willReturnArgument(0);
+		$this->pageMapper->expects($this->once())->method('update')->with($stored)->willReturnArgument(0);
 
-		$this->service->update(7, 2, null, '', self::USER);
+		$this->service->update(7, 2, null, 'revenue', self::USER);
 
 		$this->assertSame('Sales', $stored->getTitle());
-		$this->assertNull($stored->getTechnicalName());
+		$this->assertSame('revenue', $stored->getTechnicalName());
+	}
+
+	public function testUpdateLosingARaceForATechnicalNameIsABadRequest(): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$stored = new Page();
+		$stored->id = 2;
+		$stored->setTechnicalName('sales');
+		$this->pageMapper->method('findById')->willReturn($stored);
+		$this->pageMapper->method('update')->willThrowException(new class('duplicate') extends DbException {
+			public function getReason(): ?int {
+				return self::REASON_UNIQUE_CONSTRAINT_VIOLATION;
+			}
+		});
+
+		$this->expectException(BadRequestError::class);
+		$this->service->update(7, 2, null, 'revenue', self::USER);
+	}
+
+	public static function generatedTechnicalNames(): array {
+		return [
+			'from the title' => ['Team overview', 'team_overview'],
+			'made unique' => ['Sales', 'sales_2'],
+			'start page name taken' => ['Dashboard', 'dashboard_2'],
+			'title without letters' => ['2026', 'page_2026'],
+		];
+	}
+
+	/**
+	 * @dataProvider generatedTechnicalNames
+	 */
+	public function testCreateWithoutTechnicalNameMakesOneFromTheTitle(string $title, string $expected): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$inserted = null;
+		$this->pageMapper->expects($this->once())->method('insert')->willReturnCallback(function (Page $page) use (&$inserted): Page {
+			$inserted = $page;
+			$page->id = 3;
+			$pages = $this->context->getPages();
+			$pages[3] = ['id' => 3, 'page_type' => Page::TYPE_GRID, 'title' => $page->getTitle(), 'technical_name' => $page->getTechnicalName(), 'content' => []];
+			$this->context->setPages($pages);
+			return $page;
+		});
+
+		$page = $this->service->create(7, $title, null, self::USER);
+
+		$this->assertSame($expected, $inserted->getTechnicalName());
+		$this->assertSame($expected, $page['technical_name']);
 	}
 
 	public function testStartPageCannotBeDeleted(): void {
