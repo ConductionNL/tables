@@ -40,7 +40,7 @@ class ContextPageControllerTest extends TestCase {
 		$context->id = 7;
 		$context->setNodes([20 => ['id' => 20, 'node_id' => 3, 'node_type' => 0, 'permissions' => 1]]);
 		$context->setPages([
-			1 => ['id' => 1, 'page_type' => Page::TYPE_STARTPAGE, 'title' => null, 'technical_name' => null, 'content' => []],
+			1 => ['id' => 1, 'page_type' => Page::TYPE_STARTPAGE, 'title' => null, 'technical_name' => 'dashboard', 'content' => []],
 			2 => ['id' => 2, 'page_type' => Page::TYPE_GRID, 'title' => 'Sales', 'technical_name' => 'sales', 'content' => []],
 		]);
 		$contextMapper = $this->createMock(ContextMapper::class);
@@ -118,6 +118,15 @@ class ContextPageControllerTest extends TestCase {
 		]);
 
 		$this->assertSame(Http::STATUS_FORBIDDEN, $response->getStatus());
+	}
+
+	public function testAnInvalidOrDuplicateTechnicalNameIsABadRequest(): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->create(7, 'Overview', 'Not valid')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->create(7, 'Overview', 'sales')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->update(7, 2, null, 'dashboard')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->update(7, 2, null, '')->getStatus());
 	}
 
 	public function testDeletingTheStartPageIsABadRequest(): void {

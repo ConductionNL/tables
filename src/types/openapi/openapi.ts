@@ -1297,7 +1297,7 @@ export type components = {
             readonly id: number;
             readonly page_type: string;
             readonly title: string | null;
-            readonly technical_name: string | null;
+            readonly technical_name: string;
             readonly content: readonly components["schemas"]["PageContent"][];
         };
         readonly PageContent: {
@@ -8205,7 +8205,7 @@ export interface operations {
                      */
                     readonly title?: string | null;
                     /**
-                     * @description New technical name, null keeps it and an empty string removes it
+                     * @description New technical name, unique within the application; null keeps it
                      * @default null
                      */
                     readonly technicalName?: string | null;
@@ -8401,7 +8401,7 @@ export interface operations {
                     /** @description Title of the page */
                     readonly title: string;
                     /**
-                     * @description Name to address the page by, unique within the application
+                     * @description Name to address the page by, unique within the application; null makes one from the title
                      * @default null
                      */
                     readonly technicalName?: string | null;

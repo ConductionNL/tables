@@ -93,7 +93,7 @@ class ContextPageController extends AOCSController {
 	 *
 	 * @param int $contextId ID of the application
 	 * @param string $title Title of the page
-	 * @param string|null $technicalName Name to address the page by, unique within the application
+	 * @param string|null $technicalName Name to address the page by, unique within the application; null makes one from the title
 	 * @return DataResponse<Http::STATUS_OK, TablesPage, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Page created
@@ -124,7 +124,7 @@ class ContextPageController extends AOCSController {
 	 * @param int $contextId ID of the application
 	 * @param int $pageId ID of the page
 	 * @param string|null $title New title, null keeps it
-	 * @param string|null $technicalName New technical name, null keeps it and an empty string removes it
+	 * @param string|null $technicalName New technical name, unique within the application; null keeps it
 	 * @return DataResponse<Http::STATUS_OK, TablesPage, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Page updated
