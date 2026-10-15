@@ -304,9 +304,11 @@ final class ContextServiceTest extends TestCase {
 			['label' => 'Docs', 'url' => 'https://example.org/a'],
 			['label' => 'Docs', 'url' => 'https://example.org/b'],
 			['label' => 'Other', 'url' => 'https://example.org/c', 'technicalName' => 'docs_2'],
+			['label' => '2026 plan', 'url' => 'https://example.org/d'],
+			['label' => '!!', 'url' => 'https://example.org/e'],
 		]));
 
-		$this->assertSame(['docs', 'docs_3', 'docs_2'], array_map(static fn (MenuItem $item) => $item->getTechnicalName(), $inserted));
+		$this->assertSame(['docs', 'docs_3', 'docs_2', 'item_2026_plan', 'item'], array_map(static fn (MenuItem $item) => $item->getTechnicalName(), $inserted));
 	}
 
 	public function testTwoMenuItemsWithTheSameTechnicalNameAreRefused(): void {

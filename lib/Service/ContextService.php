@@ -200,7 +200,7 @@ class ContextService {
 			targetType: MenuItem::TARGET_PAGE,
 			targetId: $startPageId,
 			url: null,
-			technicalName: self::uniqueTechnicalName('dashboard', $taken),
+			technicalName: TechnicalNameHelper::unique(TechnicalNameHelper::START_PAGE_NAME, $taken),
 		);
 		return [$dashboard, ...array_map(static fn (MenuItemInput $item): MenuItemInput => $item->shiftedBy(1), $menuItems)];
 	}
@@ -215,17 +215,6 @@ class ContextService {
 			}
 		}
 		return null;
-	}
-
-	/**
-	 * @param array<string, true> $taken
-	 */
-	private static function uniqueTechnicalName(string $base, array $taken): string {
-		$technicalName = $base;
-		for ($suffix = 2; isset($taken[$technicalName]); $suffix++) {
-			$technicalName = substr($base, 0, MenuItemInput::MAX_TECHNICAL_NAME_LENGTH - 10) . '_' . $suffix;
-		}
-		return $technicalName;
 	}
 
 	/**
@@ -332,7 +321,7 @@ class ContextService {
 			if (isset($names[$position])) {
 				continue;
 			}
-			$technicalName = self::uniqueTechnicalName($this->technicalNameFromLabel($item->getLabel()), $taken);
+			$technicalName = TechnicalNameHelper::unique($this->technicalNameFromLabel($item->getLabel()), $taken);
 			$names[$position] = $technicalName;
 			$taken[$technicalName] = true;
 		}
@@ -453,9 +442,7 @@ class ContextService {
 	}
 
 	protected function technicalNameFromLabel(string $label): string {
-		$name = strtolower(trim(preg_replace('/[^a-z0-9]+/i', '_', $label) ?? '', '_'));
-		$name = preg_replace('/^[^a-z]+/', '', $name) ?? '';
-		return substr($name === '' ? 'item' : $name, 0, MenuItemInput::MAX_TECHNICAL_NAME_LENGTH);
+		return TechnicalNameHelper::fromText($label, 'item', MenuItemInput::MAX_TECHNICAL_NAME_LENGTH);
 	}
 
 	/**
