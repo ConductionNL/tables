@@ -400,6 +400,9 @@ class ContextController extends AOCSController {
 		} catch (DoesNotExistException $e) {
 			$this->db->rollBack();
 			return $this->handleNotFoundError(new NotFoundError($e->getMessage(), $e->getCode(), $e));
+		} catch (NotFoundError $e) {
+			$this->db->rollBack();
+			return $this->handleNotFoundError($e);
 		}
 	}
 

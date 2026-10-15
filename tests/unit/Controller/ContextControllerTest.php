@@ -10,8 +10,11 @@ declare(strict_types=1);
 namespace OCA\Tables\Tests\Unit\Controller;
 
 use OCA\Tables\Controller\ContextController;
+use OCA\Tables\Db\Context;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
+use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Service\ColumnService;
 use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\TableService;
@@ -75,5 +78,30 @@ final class ContextControllerTest extends TestCase {
 		$response = $this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
 
 		$this->assertSame(Http::STATUS_INTERNAL_SERVER_ERROR, $response->getStatus());
+	}
+
+	public function testImportOfATableThatIsGoneRollsBackWithA404(): void {
+		$this->contextService->method('importScheme')->willThrowException(new NotFoundError('table not found'));
+		$this->db->expects($this->once())->method('rollBack');
+
+		$response = $this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
+
+		$this->assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+	}
+
+	public function testImportWithoutAMenuPassesNoMenuToTheService(): void {
+		$this->contextService->expects($this->once())->method('importScheme')
+			->with(7, $this->callback(static fn (ContextScheme $scheme): bool => $scheme->getMenuItems() === null), 'alice')
+			->willReturn(new Context());
+
+		$this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
+	}
+
+	public function testImportWithAnEmptyMenuPassesTheEmptyMenuToTheService(): void {
+		$this->contextService->expects($this->once())->method('importScheme')
+			->with(7, $this->callback(static fn (ContextScheme $scheme): bool => $scheme->getMenuItems() === []), 'alice')
+			->willReturn(new Context());
+
+		$this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES, []);
 	}
 }

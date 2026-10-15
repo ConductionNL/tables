@@ -179,6 +179,33 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- Menu Section -->
+		<div v-if="menuItems" class="preview-section preview-section--option" data-cy="importSchemeMenu">
+			<div class="preview-option">
+				<NcCheckboxRadioSwitch v-model="importMenu" class="preview-option__label" type="switch">
+					{{ t('tables', 'Menu') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="importMenu" class="preview-card__meta preview-card__meta--compare">
+					<ul class="preview-card__meta--before">
+						<li class="preview-card__meta-title">
+							{{ t('tables', 'From') }}:
+						</li>
+						<li v-for="(item, index) in currentMenuItems" :key="index">
+							{{ item.label }}
+						</li>
+					</ul>
+					<ul class="preview-card__meta--after">
+						<li class="preview-card__meta-title">
+							{{ t('tables', 'To') }}:
+						</li>
+						<li v-for="(item, index) in menuItems" :key="index">
+							{{ item.label }}
+						</li>
+					</ul>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
@@ -226,6 +253,16 @@ export default {
 				}
 			},
 		},
+		// The menu of the uploaded scheme; null when the file has none, which keeps the current menu
+		menuItems: {
+			type: Array,
+			default: null,
+		},
+		// The menu the application has now
+		currentMenuItems: {
+			type: Array,
+			default: () => [],
+		},
 	},
 
 	emits: ['update'],
@@ -236,6 +273,7 @@ export default {
 			importIcon: true,
 			importDescription: true,
 			importNodes: true,
+			importMenu: true,
 			addTablesConfig: [],
 			removeColumnsConfig: [],
 			modifyTablesConfig: [],
@@ -272,6 +310,11 @@ export default {
 			handler() {
 				this.emitPayload()
 			}
+		},
+		importMenu: {
+			handler() {
+				this.emitPayload()
+			},
 		},
 		addTablesConfig: {
 			handler() {
@@ -332,6 +375,10 @@ export default {
 							.map(item => ({uuid: item.uuid, ...item.tableSubmitPayload})),
 				},
 				nodes: this.importNodes ? this.previewData.nodes.to : this.previewData.nodes.from,
+			}
+			// Left out, the import keeps the current menu
+			if (this.menuItems && this.importMenu) {
+				payload.menuItems = this.menuItems
 			}
 
 			this.$emit('update', payload)

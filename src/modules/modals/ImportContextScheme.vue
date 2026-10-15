@@ -41,7 +41,11 @@
 
 			<!-- show preview -->
 			<div v-if="showPreview">
-				<ImportContextSchemePreview :preview-data="preview" :table="table" @update="onUpdateScheme" />
+				<ImportContextSchemePreview :preview-data="preview"
+					:table="table"
+					:menu-items="uploadedScheme?.menuItems ?? null"
+					:current-menu-items="getContext(contextId)?.menuItems ?? []"
+					@update="onUpdateScheme" />
 			</div>
 
 			<!-- show results -->
@@ -104,6 +108,7 @@ import { useTablesStore } from '../../store/store.js'
 import { mapState, mapActions } from 'pinia'
 import NcIconTimerSand from '../../shared/components/ncIconTimerSand/NcIconTimerSand.vue'
 import ImportContextSchemePreview from './ImportContextSchemePreview.vue'
+import { NODE_TYPE_VIEW } from '../../shared/constants.ts'
 import { translate as t } from '@nextcloud/l10n'
 import { useDataStore } from '../../store/data.js'
 
@@ -244,20 +249,31 @@ export default {
 			}
 		},
 		/**
-		 * Takes the scheme as chosen in the preview, with the menu and grid views of the file. A file
-		 * without a menu leaves menuItems out, so the import keeps the current menu.
+		 * Takes the scheme as chosen in the preview, with the grid views of the file that its menu or
+		 * its nodes point at; the preview only brings the menu along when the person chose to.
 		 *
 		 * @param {object} newScheme the scheme the preview built
 		 */
 		onUpdateScheme(newScheme) {
-			const scheme = { ...newScheme }
-			if (Array.isArray(this.uploadedScheme?.menuItems)) {
-				scheme.menuItems = this.uploadedScheme.menuItems
+			const gridViews = this.usedGridViews(newScheme)
+			this.schemeData = gridViews.length > 0 ? { ...newScheme, gridViews } : newScheme
+		},
+		/**
+		 * The grid views of the uploaded file that a menu item or a node of the given scheme opens.
+		 *
+		 * @param {object} scheme the scheme the preview built
+		 * @return {Array<object>}
+		 */
+		usedGridViews(scheme) {
+			const gridViews = this.uploadedScheme?.gridViews
+			if (!Array.isArray(gridViews)) {
+				return []
 			}
-			if (Array.isArray(this.uploadedScheme?.gridViews)) {
-				scheme.gridViews = this.uploadedScheme.gridViews
-			}
-			this.schemeData = scheme
+			const usedUuids = new Set([
+				...(scheme.menuItems ?? []).filter(item => item.targetType === 'view').map(item => item.targetUuid),
+				...(scheme.nodes ?? []).filter(node => Number(node.node_type) === NODE_TYPE_VIEW).map(node => node.node_uuid),
+			])
+			return gridViews.filter(view => usedUuids.has(view.uuid))
 		},
 		async actionImport() {
 			if (!this.schemeData) {

@@ -29,6 +29,7 @@ use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\MenuItemInput;
+use OCA\Tables\Vendor\Symfony\Component\Uid\Uuid;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
@@ -432,9 +433,13 @@ final class ContextServiceTest extends TestCase {
 		return $gridView;
 	}
 
-	private function expectUuidLookups(bool $usable = true): void {
-		$this->permissionsService->method('canManageNodeById')->willReturn($usable);
-		$this->permissionsService->method('canReadRowsByElementId')->willReturn($usable);
+	/**
+	 * @param bool $canManage whether the importer can manage the targets, as a menu target needs
+	 * @param bool|null $canRead whether the importer can read their rows, as a widget target needs; the same as $canManage when left out
+	 */
+	private function expectUuidLookups(bool $canManage = true, ?bool $canRead = null): void {
+		$this->permissionsService->method('canManageNodeById')->willReturn($canManage);
+		$this->permissionsService->method('canReadRowsByElementId')->willReturn($canRead ?? $canManage);
 		$table = new Table();
 		$table->setId(4);
 		$this->tableMapper->method('findByUuid')->willReturnCallback(static function (string $uuid) use ($table): Table {
@@ -548,8 +553,8 @@ final class ContextServiceTest extends TestCase {
 		$this->assertSame(['w-1', 'w-3'], array_column($grid['layout'], 'widgetId'));
 	}
 
-	public function testImportSkipsAMenuTargetTheImporterCannotManage(): void {
-		$this->expectUuidLookups(false);
+	public function testImportSkipsAMenuTargetTheImporterCanReadButCannotManage(): void {
+		$this->expectUuidLookups(canManage: false, canRead: true);
 
 		/** @var list<MenuItemInput> $resolved */
 		$resolved = $this->callPrivate('resolveMenuItems', [[
@@ -560,8 +565,8 @@ final class ContextServiceTest extends TestCase {
 		$this->assertSame(['Docs'], array_map(static fn (MenuItemInput $item) => $item->getLabel(), $resolved));
 	}
 
-	public function testImportDropsAGridWidgetWhoseRowsTheImporterCannotRead(): void {
-		$this->expectUuidLookups(false);
+	public function testImportDropsAGridWidgetWhoseRowsTheImporterCannotReadEvenWhenItCanManageThem(): void {
+		$this->expectUuidLookups(canManage: true, canRead: false);
 
 		$grid = $this->callPrivate('resolveGridTargets', [[
 			'widgets' => [
@@ -627,7 +632,7 @@ final class ContextServiceTest extends TestCase {
 		$service = $this->serviceWith(['viewService']);
 		$service->method('viewService')->willReturn($viewService);
 
-		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 'user-1']);
+		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 7, 'user-1']);
 
 		$this->assertSame(['view-uuid' => 6], $ids);
 	}
@@ -637,16 +642,50 @@ final class ContextServiceTest extends TestCase {
 		$existing->setId(6);
 		$copy = new View();
 		$copy->setId(66);
-		$this->viewMapper->method('findByUuid')->with('view-uuid')->willReturn($existing);
+		$this->viewMapper->method('findByUuid')->willReturnCallback(static fn (string $uuid): ?View => $uuid === 'view-uuid' ? $existing : null);
 		$this->permissionsService->method('canManageNodeById')->willReturn(false);
+		$copyUuid = $this->copyUuid(7, 'view-uuid');
 		$viewService = $this->createMock(ViewService::class);
-		$viewService->expects($this->once())->method('importView')->with(null, $this->callback(static fn (array $view): bool => $view['uuid'] === 'view-uuid' && $view['type'] === View::TYPE_GRID), 'user-1')->willReturn($copy);
+		$viewService->expects($this->once())->method('importView')->with(null, $this->callback(static fn (array $view): bool => $view['uuid'] === $copyUuid && $view['type'] === View::TYPE_GRID), 'user-1')->willReturn($copy);
 		$service = $this->serviceWith(['viewService']);
 		$service->method('viewService')->willReturn($viewService);
 
-		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 'user-1']);
+		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 7, 'user-1']);
 
 		$this->assertSame(['view-uuid' => 66], $ids);
+	}
+
+	public function testImportingAgainIntoTheApplicationReusesItsEarlierCopy(): void {
+		$existing = new View();
+		$existing->setId(6);
+		$copy = new View();
+		$copy->setId(66);
+		$copyUuid = $this->copyUuid(7, 'view-uuid');
+		$this->viewMapper->method('findByUuid')->willReturnCallback(static fn (string $uuid): ?View => match ($uuid) {
+			'view-uuid' => $existing,
+			$copyUuid => $copy,
+			default => null,
+		});
+		$this->permissionsService->method('canManageNodeById')->willReturnCallback(static fn (int $nodeType, int $id): bool => $id === 66);
+		$viewService = $this->createMock(ViewService::class);
+		$viewService->expects($this->never())->method('importView');
+		$service = $this->serviceWith(['viewService']);
+		$service->method('viewService')->willReturn($viewService);
+
+		$ids = $this->callPrivateOn($service, 'importGridViews', [[['uuid' => 'view-uuid', 'title' => 'Home']], 7, 'user-1']);
+
+		$this->assertSame(['view-uuid' => 66], $ids);
+	}
+
+	public function testACopyIntoAnotherApplicationGetsAnotherUuid(): void {
+		$this->assertNotSame($this->copyUuid(7, 'view-uuid'), $this->copyUuid(8, 'view-uuid'));
+	}
+
+	/**
+	 * The uuid importGridViews gives the copy of a grid view the importer cannot manage.
+	 */
+	private function copyUuid(int $contextId, string $uuid): string {
+		return Uuid::v5(Uuid::fromString(Uuid::NAMESPACE_URL), 'tables-context-' . $contextId . '/' . $uuid)->toRfc4122();
 	}
 
 	/**

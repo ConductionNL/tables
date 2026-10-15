@@ -34,6 +34,7 @@ use OCA\Tables\Model\FilterSet;
 use OCA\Tables\Model\MenuItemInput;
 use OCA\Tables\Model\SortRuleSet;
 use OCA\Tables\Model\ViewSettings;
+use OCA\Tables\Vendor\Symfony\Component\Uid\Uuid;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\TTransactional;
@@ -1121,25 +1122,32 @@ class ContextService {
 
 	/**
 	 * Brings the views without a table of a scheme in. One that exists here already and that the
-	 * importer can manage is reused; otherwise the view is imported, as a copy with its own uuid
-	 * when its uuid is taken.
+	 * importer can manage is reused; otherwise the view is imported. When its uuid belongs to a view
+	 * the importer cannot manage, the view is imported as a copy whose uuid is derived from that uuid
+	 * and the application, so importing the scheme into the application again reuses that copy
+	 * instead of leaving the previous one behind.
 	 *
 	 * @param list<array<string, mixed>> $gridViews
 	 * @return array<string, int> the local id of every grid view, by its uuid in the scheme
-	 * @throws InternalError|BadRequestError
+	 * @throws InternalError|BadRequestError|Exception|MultipleObjectsReturnedException
 	 */
-	private function importGridViews(array $gridViews, string $userId): array {
+	private function importGridViews(array $gridViews, int $contextId, string $userId): array {
 		$localIds = [];
 		foreach ($gridViews as $viewData) {
 			$uuid = $viewData['uuid'];
+			$importUuid = $uuid;
 			$existing = $this->viewMapper->findByUuid($uuid);
-			if ($existing !== null && $this->permissionsService->canManageNodeById(Application::NODE_TYPE_VIEW, $existing->getId(), $userId)) {
+			if ($existing !== null && !$this->canManageView($existing, $userId)) {
+				$importUuid = Uuid::v5(Uuid::fromString(Uuid::NAMESPACE_URL), 'tables-context-' . $contextId . '/' . $uuid)->toRfc4122();
+				$existing = $this->viewMapper->findByUuid($importUuid);
+			}
+			if ($existing !== null && $this->canManageView($existing, $userId)) {
 				$localIds[$uuid] = $existing->getId();
 				continue;
 			}
 			$now = (new \DateTime())->format('Y-m-d H:i:s');
 			$localIds[$uuid] = $this->viewService()->importView(null, [
-				'uuid' => $uuid,
+				'uuid' => $importUuid,
 				'title' => $viewData['title'],
 				'emoji' => $viewData['emoji'] ?? null,
 				'description' => $viewData['description'] ?? '',
@@ -1153,6 +1161,10 @@ class ContextService {
 			], $userId)->getId();
 		}
 		return $localIds;
+	}
+
+	private function canManageView(View $view, string $userId): bool {
+		return $this->permissionsService->canManageNodeById(Application::NODE_TYPE_VIEW, $view->getId(), $userId);
 	}
 
 	/**
@@ -1364,7 +1376,7 @@ class ContextService {
 		}
 
 		// Grid views first, as nodes and menu items may point at them
-		$gridViewIds = $this->importGridViews($scheme->getGridViews(), $userId);
+		$gridViewIds = $this->importGridViews($scheme->getGridViews(), $contextId, $userId);
 
 		// Resolve node ids for the new tables and views
 		$resolvedNodes = [];
