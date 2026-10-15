@@ -14,6 +14,8 @@ use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextMapper;
 use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
+use OCA\Tables\Db\MenuItem;
+use OCA\Tables\Db\MenuItemMapper;
 use OCA\Tables\Db\Page;
 use OCA\Tables\Db\PageContent;
 use OCA\Tables\Db\PageContentMapper;
@@ -30,6 +32,7 @@ class ContextMapperTest extends DatabaseTestCase {
 	private ContextNodeRelationMapper $nodeRelMapper;
 	private PageMapper $pageMapper;
 	private PageContentMapper $pageContentMapper;
+	private MenuItemMapper $menuItemMapper;
 	/** @var int[] */
 	private array $contextIds = [];
 
@@ -37,7 +40,8 @@ class ContextMapperTest extends DatabaseTestCase {
 		parent::setUp();
 		$userHelper = $this->createMock(UserHelper::class);
 		$userHelper->method('getGroupIdsForUser')->willReturn([]);
-		$this->mapper = new ContextMapper($this->connectionAdapter, $userHelper, $this->createMock(GroupHelper::class));
+		$this->menuItemMapper = new MenuItemMapper($this->connectionAdapter);
+		$this->mapper = new ContextMapper($this->connectionAdapter, $userHelper, $this->createMock(GroupHelper::class), $this->menuItemMapper);
 		$this->nodeRelMapper = new ContextNodeRelationMapper($this->connectionAdapter);
 		$this->pageMapper = new PageMapper($this->connectionAdapter);
 		$this->pageContentMapper = new PageContentMapper($this->connectionAdapter);
@@ -50,6 +54,7 @@ class ContextMapperTest extends DatabaseTestCase {
 				$this->pageMapper->deleteByPageId($pageId);
 			}
 			$this->nodeRelMapper->deleteAllByContextId($contextId);
+			$this->menuItemMapper->deleteAllByContextId($contextId);
 			$qb = $this->connection->getQueryBuilder();
 			$qb->delete('tables_contexts_context')
 				->where($qb->expr()->eq('id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)))
@@ -175,6 +180,30 @@ class ContextMapperTest extends DatabaseTestCase {
 		$this->assertSame([], $this->mapper->findAllContainingNode(Application::NODE_TYPE_TABLE, 62, self::OWNER));
 	}
 
+	public function testMenuItemsComeWithTheNodesOfTheirOwnContext(): void {
+		$context = $this->createContext();
+		$other = $this->createContext();
+		$node = $this->addNode($context, Application::NODE_TYPE_TABLE, 71);
+		$this->addNode($other, Application::NODE_TYPE_TABLE, 71);
+		$page = $this->addPage($context, Page::TYPE_STARTPAGE);
+		$this->addMenuItem($context, 'dashboard', MenuItem::TARGET_PAGE, $page->getId(), 0);
+		$this->addMenuItem($context, 'intake', MenuItem::TARGET_TABLE, 71, 1);
+		$this->addMenuItem($other, 'elsewhere', MenuItem::TARGET_TABLE, 71, 0);
+
+		$found = $this->mapper->findById($context->getId(), self::OWNER);
+		$containing = array_values(array_filter(
+			$this->mapper->findAllContainingNode(Application::NODE_TYPE_TABLE, 71, self::OWNER),
+			fn (Context $candidate): bool => $candidate->getId() === $context->getId(),
+		));
+
+		$this->assertSame([$node->getId()], array_keys($found->getNodes()));
+		$this->assertSame(['dashboard', 'intake'], array_column($found->getMenuItems(), 'technicalName'));
+		$this->assertFalse($found->getMenuItems()[0]['broken']);
+		$this->assertCount(1, $containing);
+		$this->assertSame([$node->getId()], array_keys($containing[0]->getNodes()));
+		$this->assertSame(['dashboard', 'intake'], array_column($containing[0]->getMenuItems(), 'technicalName'));
+	}
+
 	public function testPageMapperFindsAPageById(): void {
 		$context = $this->createContext();
 		$page = $this->addPage($context, Page::TYPE_GRID, 'Overview', 'overview');
@@ -227,5 +256,16 @@ class ContextMapperTest extends DatabaseTestCase {
 		$content->setGridWidth($width);
 		$content->setGridHeight($height);
 		return $this->pageContentMapper->insert($content);
+	}
+
+	private function addMenuItem(Context $context, string $technicalName, string $targetType, int $targetId, int $order): void {
+		$menuItem = new MenuItem();
+		$menuItem->setContextId($context->getId());
+		$menuItem->setLabel($technicalName);
+		$menuItem->setTargetType($targetType);
+		$menuItem->setTargetId($targetId);
+		$menuItem->setTechnicalName($technicalName);
+		$menuItem->setOrder($order);
+		$this->menuItemMapper->insert($menuItem);
 	}
 }

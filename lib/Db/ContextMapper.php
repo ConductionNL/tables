@@ -27,6 +27,7 @@ class ContextMapper extends QBMapper {
 		IDBConnection $db,
 		protected UserHelper $userHelper,
 		protected GroupHelper $groupHelper,
+		protected MenuItemMapper $menuItemMapper,
 	) {
 		parent::__construct($db, $this->table, Context::class);
 	}
@@ -112,28 +113,33 @@ class ContextMapper extends QBMapper {
 
 	/**
 	 * Groups the rows of the base query by context and formats each context.
+	 * The node relations and, unless left out, the menus of all contexts are
+	 * loaded in one query each.
 	 *
 	 * @return Context[]
 	 * @throws Exception
 	 */
-	protected function formatContexts(array $rows, ?string $userId, ?int $nodeType = null, ?int $nodeId = null): array {
+	protected function formatContexts(array $rows, ?string $userId, ?int $nodeType = null, ?int $nodeId = null, bool $withMenuItems = true): array {
 		$rowsByContext = [];
 		foreach ($rows as $row) {
 			$rowsByContext[(int)$row['id']][] = $row;
 		}
-		$nodes = $this->findNodesForContexts(array_keys($rowsByContext), $nodeType, $nodeId);
+		$contextIds = array_keys($rowsByContext);
+		$nodes = $this->findNodesForContexts($contextIds, $nodeType, $nodeId);
+		$menuItemsByContext = $withMenuItems ? $this->menuItemMapper->findByContextIds($contextIds) : [];
 
 		$resultEntities = [];
 		foreach ($rowsByContext as $contextId => $contextRows) {
-			$resultEntities[] = $this->formatResultRows($contextRows, $userId, $nodes[$contextId] ?? []);
+			$resultEntities[] = $this->formatResultRows($contextRows, $userId, $nodes[$contextId] ?? [], $menuItemsByContext[$contextId] ?? []);
 		}
 		return $resultEntities;
 	}
 
 	/**
 	 * @param array<int, array{id: int, node_id: int, node_type: int, permissions: int}> $nodes
+	 * @param list<MenuItem> $menuItems
 	 */
-	protected function formatResultRows(array $rows, ?string $userId, array $nodes) {
+	protected function formatResultRows(array $rows, ?string $userId, array $nodes, array $menuItems = []) {
 		$formatted = [
 			'id' => $rows[0]['id'],
 			'name' => $rows[0]['name'],
@@ -195,6 +201,11 @@ class ContextMapper extends QBMapper {
 			return $carry;
 		}, []);
 
+		$formatted['menu_items'] = array_map(
+			static fn (MenuItem $menuItem): array => $menuItem->jsonSerialize(),
+			$menuItems,
+		);
+
 		return $this->mapRowToEntity($formatted);
 	}
 
@@ -210,6 +221,7 @@ class ContextMapper extends QBMapper {
 
 		return $this->formatContexts($r, $userId);
 	}
+
 	public function findForNavBar(string $userId): array {
 		$qb = $this->getFindContextBaseQuery($userId);
 		$groupIDs = $this->userHelper->getGroupIdsForUser($userId);
@@ -240,7 +252,8 @@ class ContextMapper extends QBMapper {
 		$result = $qb->executeQuery();
 		$r = $result->fetchAllAssociative();
 
-		return $this->formatContexts($r, $userId);
+		// the navigation bar shows the applications only, not their menus
+		return $this->formatContexts($r, $userId, withMenuItems: false);
 	}
 
 	/**
