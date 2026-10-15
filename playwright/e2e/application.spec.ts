@@ -51,6 +51,35 @@ test.describe('Applications', () => {
 		expect(await page.evaluate(() => document.activeElement?.id ?? '')).not.toBe('app-content-vue')
 	})
 
+	test('The overview lists the tables the application uses and counts its pages', async ({ userPage: { page, user } }) => {
+		const tableResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: '/ocs/v2.php/apps/tables/api/2/tables?format=json',
+			data: { title: 'Requests', template: 'custom' },
+		})
+		const table = (await tableResponse.json()).ocs.data
+		const contextResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: '/ocs/v2.php/apps/tables/api/2/contexts?format=json',
+			data: {
+				name: 'used tables application',
+				iconName: 'star',
+				menuItems: [
+					{ label: 'All requests', targetType: 'table', targetId: table.id },
+					{ label: 'Docs', targetType: 'url', url: 'https://docs.nextcloud.com' },
+				],
+			},
+		})
+		const context = (await contextResponse.json()).ocs.data
+
+		await page.goto(`/index.php/apps/tables/#/application/${context.id}`)
+
+		await expect(page.locator('[data-cy="context-stats"]')).toContainText('2 pages')
+		await expect(page.locator('[data-cy="context-stats"]')).toContainText('1 table')
+		const row = page.locator('[data-cy="context-table-row"]').filter({ hasText: 'Requests' })
+		await expect(row).toContainText('All requests')
+	})
+
 	test('A page with widgets added on the overview gets a menu entry and opens', async ({ userPage: { page } }) => {
 		await page.goto('/index.php/apps/tables')
 		await createContext(page, 'overview application')
