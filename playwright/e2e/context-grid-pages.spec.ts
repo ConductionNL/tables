@@ -139,7 +139,7 @@ test.describe('Application pages on the grid', () => {
 	test('A page created without a technical name gets one from its title, and keeps one on rename', async ({ userPage: { page, user } }) => {
 		const table = await createTableViaApi(page.request, user, 'grid name table')
 		const contextId = await createApplicationViaApi(page.request, user, 'grid name app', [table])
-		await openApplication(page, contextId)
+		await openApplication(page, user, contextId)
 
 		await page.locator('[data-cy="contextPageCreate"]').click()
 		const pageForm = page.getByRole('dialog', { name: 'New page' })
