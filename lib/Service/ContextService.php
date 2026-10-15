@@ -28,6 +28,7 @@ use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Helper\PageContentHelper;
+use OCA\Tables\Helper\TechnicalNameHelper;
 use OCA\Tables\Model\ColumnSettings;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\FilterSet;
@@ -865,6 +866,7 @@ class ContextService {
 		$page = new Page();
 		$page->setContextId($context->getId());
 		$page->setPageType(Page::TYPE_STARTPAGE);
+		$page->setTechnicalName(TechnicalNameHelper::START_PAGE_NAME);
 		$this->pageMapper->insert($page);
 
 		$addedPage = $page->jsonSerialize();
@@ -970,19 +972,23 @@ class ContextService {
 
 		// insert pages
 		$pageMap = [];
-		$technicalNames = [];
 		if (!empty($context['pages'])) {
-			foreach ($context['pages'] as $pageArr) {
+			$technicalNames = TechnicalNameHelper::assign(array_map(static function ($pageArr): array {
+				$technicalName = $pageArr['technical_name'] ?? $pageArr['technicalName'] ?? null;
+				$title = $pageArr['title'] ?? null;
+				$pageType = $pageArr['page_type'] ?? $pageArr['pageType'] ?? null;
+				return [
+					'name' => is_string($technicalName) ? $technicalName : null,
+					'fallback' => TechnicalNameHelper::pageFallback($pageType === Page::TYPE_STARTPAGE, is_string($title) ? $title : null),
+				];
+			}, $context['pages']));
+			foreach ($context['pages'] as $key => $pageArr) {
 				$page = new Page();
 				$page->setContextId($newContext->getId());
 				$page->setPageType($pageArr['page_type'] ?? $pageArr['pageType'] ?? '');
 				$title = $pageArr['title'] ?? null;
 				$page->setTitle(is_string($title) ? mb_substr($title, 0, 200) : null);
-				$technicalName = $pageArr['technical_name'] ?? $pageArr['technicalName'] ?? null;
-				if (is_string($technicalName) && Page::isValidTechnicalName($technicalName) && !isset($technicalNames[$technicalName])) {
-					$page->setTechnicalName($technicalName);
-					$technicalNames[$technicalName] = true;
-				}
+				$page->setTechnicalName($technicalNames[$key]);
 				$page = $this->pageMapper->insert($page);
 				$pageMap[$pageArr['id'] ?? null] = $page;
 
