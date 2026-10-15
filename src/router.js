@@ -8,6 +8,7 @@ import MainViewWrapper from './pages/View.vue'
 import MainDashboardWrapper from './pages/Table.vue'
 import Startpage from './pages/Startpage.vue'
 import Context from './pages/Context.vue'
+import Applications from './pages/Applications.vue'
 import PublicTableView from './pages/PublicTableView.vue'
 
 export default createRouter({
@@ -17,6 +18,11 @@ export default createRouter({
 		{
 			path: '/',
 			component: Startpage,
+		},
+		{
+			path: '/applications',
+			component: Applications,
+			name: 'applications',
 		},
 		{
 			path: '/application/:contextId',
