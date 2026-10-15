@@ -6920,14 +6920,14 @@ export interface operations {
                         readonly permissions?: number;
                     }[];
                     /**
-                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context
+                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page, and an item opening the start page is put first unless the menu has one
                      * @default null
                      */
                     readonly menuItems?: readonly {
                         readonly label: string;
                         readonly icon?: string;
                         /** @enum {string} */
-                        readonly targetType: "view" | "table" | "url";
+                        readonly targetType: "view" | "table" | "url" | "page";
                         /** Format: int64 */
                         readonly targetId?: number;
                         readonly url?: string;
@@ -7131,7 +7131,7 @@ export interface operations {
                         readonly label: string;
                         readonly icon?: string;
                         /** @enum {string} */
-                        readonly targetType: "view" | "table" | "url";
+                        readonly targetType: "view" | "table" | "url" | "page";
                         /** Format: int64 */
                         readonly targetId?: number;
                         readonly url?: string;

@@ -30,6 +30,7 @@ class MenuItemInput {
 		private readonly ?int $targetId,
 		private readonly ?string $url,
 		private readonly ?string $technicalName,
+		private readonly bool $allowNewStartPage = false,
 	) {
 		if (trim($this->label) === '' || mb_strlen($this->label) > self::MAX_LABEL_LENGTH) {
 			throw new InvalidArgumentException('A menu item needs a label of at most ' . self::MAX_LABEL_LENGTH . ' characters.');
@@ -42,7 +43,7 @@ class MenuItemInput {
 		}
 		if ($this->targetType === MenuItem::TARGET_URL) {
 			self::assertUrlValid($this->url);
-		} elseif ($this->targetId === null || $this->targetId <= 0) {
+		} elseif (!$this->pointsAtNewStartPage() && ($this->targetId === null || $this->targetId <= 0)) {
 			throw new InvalidArgumentException('A menu item pointing at a ' . $this->targetType . ' needs its id.');
 		}
 		if ($this->technicalName !== null) {
@@ -51,9 +52,11 @@ class MenuItemInput {
 	}
 
 	/**
+	 * @param bool $allowNewStartPage accept a page item without an id, meaning the start page of
+	 *                                an application that is being created
 	 * @throws InvalidArgumentException
 	 */
-	public static function createFromInputArray(mixed $data): self {
+	public static function createFromInputArray(mixed $data, bool $allowNewStartPage = false): self {
 		if (!is_array($data)) {
 			throw new InvalidArgumentException('A menu item must be an object.');
 		}
@@ -66,7 +69,8 @@ class MenuItemInput {
 		}
 		$isUrl = $targetType === MenuItem::TARGET_URL;
 		$targetId = $data['targetId'] ?? null;
-		if (!$isUrl && !is_int($targetId)) {
+		$isNewStartPage = $allowNewStartPage && $targetType === MenuItem::TARGET_PAGE && $targetId === null;
+		if (!$isUrl && !$isNewStartPage && !is_int($targetId)) {
 			throw new InvalidArgumentException('A menu item pointing at a ' . $targetType . ' needs its id.');
 		}
 		foreach (['icon', 'url', 'technicalName'] as $optional) {
@@ -82,18 +86,36 @@ class MenuItemInput {
 			targetId: $isUrl ? null : $targetId,
 			url: $isUrl ? trim((string)($data['url'] ?? '')) : null,
 			technicalName: self::emptyToNull($data['technicalName'] ?? null),
+			allowNewStartPage: $allowNewStartPage,
 		);
 	}
 
 	/**
+	 * @param bool $allowNewStartPage see createFromInputArray()
 	 * @return list<self>
 	 * @throws InvalidArgumentException
 	 */
-	public static function createListFromInputArray(mixed $data): array {
+	public static function createListFromInputArray(mixed $data, bool $allowNewStartPage = false): array {
 		if (!is_array($data) || !array_is_list($data)) {
 			throw new InvalidArgumentException('The menu items must be a list.');
 		}
-		return array_map(self::createFromInputArray(...), $data);
+		return array_map(static fn (mixed $item): self => self::createFromInputArray($item, $allowNewStartPage), $data);
+	}
+
+	/**
+	 * True for a page item without an id on a menu of an application that is being created.
+	 */
+	public function pointsAtNewStartPage(): bool {
+		return $this->allowNewStartPage && $this->targetType === MenuItem::TARGET_PAGE && $this->targetId === null;
+	}
+
+	/**
+	 * This item pointing at the given page.
+	 *
+	 * @throws InvalidArgumentException
+	 */
+	public function withPageId(int $pageId): self {
+		return new self($this->label, $this->icon, MenuItem::TARGET_PAGE, $pageId, null, $this->technicalName);
 	}
 
 	/**
