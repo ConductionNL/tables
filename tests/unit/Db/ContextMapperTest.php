@@ -186,6 +186,15 @@ class ContextMapperTest extends DatabaseTestCase {
 		$this->assertSame([], $this->mapper->findAllContainingNode(Application::NODE_TYPE_TABLE, 62, self::OWNER));
 	}
 
+	public function testPageMapperFindsAPageById(): void {
+		$context = $this->createContext();
+		$page = $this->addPage($context, Page::TYPE_GRID, 'Overview', 'overview');
+
+		$found = $this->pageMapper->findById($page->getId());
+
+		$this->assertSame([$context->getId(), Page::TYPE_GRID, 'Overview', 'overview'], [$found->getContextId(), $found->getPageType(), $found->getTitle(), $found->getTechnicalName()]);
+	}
+
 	private function createContext(): Context {
 		$context = new Context();
 		$context->setName('Mapper test');

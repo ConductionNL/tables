@@ -34,6 +34,7 @@ class Page extends Entity implements \JsonSerializable {
 
 	public function __construct() {
 		$this->addType('id', 'integer');
+		$this->addType('context_id', 'integer');
 	}
 
 	public static function isValidTechnicalName(string $technicalName): bool {
