@@ -403,8 +403,18 @@ export default {
 	},
 	computed: {
 		...mapState(useTablesStore, ['tables', 'views']),
+		/**
+		 * The address of the application opened on its own. Technical names are unique per owner
+		 * only, so an application of someone else is addressed by id.
+		 *
+		 * @return {string}
+		 */
 		applicationUrl() {
-			return window.location.origin + generateUrl('/apps/tables/app/' + this.context.id)
+			const technicalName = this.isOwner ? this.context.technicalName : null
+			return window.location.origin + generateUrl('/apps/tables/app/' + (technicalName || this.context.id))
+		},
+		isOwner() {
+			return this.context.owner === getCurrentUser()?.uid
 		},
 		menuItems() {
 			return [...(this.context.menuItems ?? [])].sort((a, b) => a.order - b.order)

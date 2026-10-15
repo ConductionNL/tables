@@ -38,6 +38,13 @@
 			</div>
 			<div class="col-4 row space-T">
 				<div class="col-4">
+					{{ t('tables', 'Technical name') }}
+				</div>
+				<input v-model="technicalName" type="text" data-cy="createContextTechnicalName"
+					:placeholder="t('tables', 'Optional, for example intake. Lowercase letters, numbers and underscores.')">
+			</div>
+			<div class="col-4 row space-T">
+				<div class="col-4">
 					{{ t('tables', 'Resources') }}
 				</div>
 				<NcContextResource v-model:resources="resources" v-model:receivers="receivers" />
@@ -118,6 +125,7 @@ export default {
 			customTitleChosen: false,
 			errorTitle: false,
 			description: '',
+			technicalName: '',
 			menuItems: [newDashboardItem(t('tables', 'Dashboard'))],
 			resources: [],
 			receivers: [],
@@ -197,6 +205,7 @@ export default {
 				iconName: this.icon.name,
 				description: this.description,
 				nodes: dataResources,
+				technicalName: this.technicalName.trim() || null,
 				menuItems: this.menuItems.map(item => toMenuItemPayload(item, this.menuItems)),
 			}
 			// adding share to oneself to have navigation display control
@@ -221,6 +230,7 @@ export default {
 		},
 		reset() {
 			this.title = ''
+			this.technicalName = ''
 			this.menuItems = [newDashboardItem(t('tables', 'Dashboard'))]
 			this.errorTitle = false
 			this.setIcon(this.randomIcon())

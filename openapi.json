@@ -280,6 +280,7 @@
                     "description",
                     "owner",
                     "ownerType",
+                    "technicalName",
                     "menuItems"
                 ],
                 "properties": {
@@ -302,6 +303,10 @@
                     "ownerType": {
                         "type": "integer",
                         "format": "int64"
+                    },
+                    "technicalName": {
+                        "type": "string",
+                        "nullable": true
                     },
                     "menuItems": {
                         "type": "array",
@@ -12327,6 +12332,12 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "names the context in its address, lowercase letters, numbers and underscores; unique per owner"
                                     }
                                 }
                             }
@@ -12803,6 +12814,12 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "provide this parameter to set a new technical name; an empty one removes it"
                                     }
                                 }
                             }
@@ -13901,6 +13918,12 @@
                                                 "type": "object"
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "technical name of the context; leave it out to keep the current one"
                                     }
                                 }
                             }

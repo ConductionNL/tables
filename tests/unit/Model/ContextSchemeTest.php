@@ -35,6 +35,21 @@ final class ContextSchemeTest extends TestCase {
 		$this->assertSame(self::TABLES, $scheme->getTables());
 	}
 
+	public function testCreateFromInputCarriesTheTechnicalNameAndTreatsABlankOneAsNone(): void {
+		$named = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'technicalName' => 'intake']);
+		$blank = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'technicalName' => '']);
+
+		$this->assertSame('intake', $named->getTechnicalName());
+		$this->assertSame('intake', $named->jsonSerialize()['technicalName']);
+		$this->assertNull($blank->getTechnicalName());
+	}
+
+	public function testCreateFromInputRejectsATechnicalNameThatIsNotAString(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('"technicalName" must be a string');
+		ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'technicalName' => ['intake']]);
+	}
+
 	public function testCreateFromInputKeepsAnAbsentMenuOrPagesApartFromEmptyOnes(): void {
 		$without = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES]);
 		$empty = ContextScheme::createFromInputArray(['name' => 'Intake', 'tables' => self::TABLES, 'menuItems' => [], 'pages' => []]);
