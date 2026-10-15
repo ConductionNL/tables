@@ -60,6 +60,30 @@ class MenuItemMapperTest extends DatabaseTestCase {
 		], $broken);
 	}
 
+	public function testItemsWhosePageIsGoneOrForeignAreBroken(): void {
+		$contextId = $this->createContext('Intake');
+		$otherContextId = $this->createContext('Reports');
+		$pageId = $this->createPage($contextId);
+		$foreignPageId = $this->createPage($otherContextId);
+		$this->createMenuItem($contextId, 'live_page', MenuItem::TARGET_PAGE, $pageId);
+		$this->createMenuItem($contextId, 'gone_page', MenuItem::TARGET_PAGE, $foreignPageId + 100);
+		$this->createMenuItem($contextId, 'foreign_page', MenuItem::TARGET_PAGE, $foreignPageId);
+		// A view with the id of a live page is still judged by the views table
+		$this->createMenuItem($contextId, 'view_with_page_id', MenuItem::TARGET_VIEW, $pageId);
+
+		$broken = [];
+		foreach ($this->menuItemMapper->findByContextId($contextId) as $menuItem) {
+			$broken[$menuItem->getTechnicalName()] = $menuItem->isBroken();
+		}
+
+		$this->assertSame([
+			'live_page' => false,
+			'gone_page' => true,
+			'foreign_page' => true,
+			'view_with_page_id' => true,
+		], $broken);
+	}
+
 	public function testItemsAreOrderedAndGroupedPerApplication(): void {
 		$intakeId = $this->createContext('Intake');
 		$reportsId = $this->createContext('Reports');
@@ -117,6 +141,17 @@ class MenuItemMapperTest extends DatabaseTestCase {
 				'description' => $qb->createNamedParameter(''),
 				'owner_id' => $qb->createNamedParameter('user1'),
 				'owner_type' => $qb->createNamedParameter(0),
+			])
+			->executeStatement();
+		return (int)$this->connection->lastInsertId();
+	}
+
+	private function createPage(int $contextId): int {
+		$qb = $this->connection->getQueryBuilder();
+		$qb->insert('tables_contexts_page')
+			->values([
+				'context_id' => $qb->createNamedParameter($contextId),
+				'page_type' => $qb->createNamedParameter('startpage'),
 			])
 			->executeStatement();
 		return (int)$this->connection->lastInsertId();

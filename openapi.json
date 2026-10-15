@@ -450,7 +450,8 @@
                         "enum": [
                             "view",
                             "table",
-                            "url"
+                            "url",
+                            "page"
                         ]
                     },
                     "targetId": {
