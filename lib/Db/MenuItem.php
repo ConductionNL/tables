@@ -37,7 +37,8 @@ class MenuItem extends EntitySuper implements JsonSerializable {
 	public const TARGET_VIEW = 'view';
 	public const TARGET_TABLE = 'table';
 	public const TARGET_URL = 'url';
-	public const TARGET_TYPES = [self::TARGET_VIEW, self::TARGET_TABLE, self::TARGET_URL];
+	public const TARGET_PAGE = 'page';
+	public const TARGET_TYPES = [self::TARGET_VIEW, self::TARGET_TABLE, self::TARGET_URL, self::TARGET_PAGE];
 
 	protected ?int $contextId = null;
 	protected ?string $label = null;
@@ -49,7 +50,7 @@ class MenuItem extends EntitySuper implements JsonSerializable {
 	protected ?int $order = null;
 	protected ?int $parentId = null;
 
-	// virtual: true when the view or table the item points at no longer exists
+	// virtual: true when the view, table or page the item points at no longer exists
 	protected bool $broken = false;
 
 	protected const VIRTUAL_PROPERTIES = ['broken'];
@@ -64,7 +65,7 @@ class MenuItem extends EntitySuper implements JsonSerializable {
 	}
 
 	/**
-	 * @return array{id: int, contextId: int, label: string, icon: string|null, targetType: 'view'|'table'|'url', targetId: int|null, url: string|null, technicalName: string, order: int, parentId: int|null, broken: bool}
+	 * @return array{id: int, contextId: int, label: string, icon: string|null, targetType: 'view'|'table'|'url'|'page', targetId: int|null, url: string|null, technicalName: string, order: int, parentId: int|null, broken: bool}
 	 */
 	public function jsonSerialize(): array {
 		return [
@@ -75,6 +76,7 @@ class MenuItem extends EntitySuper implements JsonSerializable {
 			'targetType' => match ($this->targetType) {
 				self::TARGET_VIEW => self::TARGET_VIEW,
 				self::TARGET_TABLE => self::TARGET_TABLE,
+				self::TARGET_PAGE => self::TARGET_PAGE,
 				default => self::TARGET_URL,
 			},
 			'targetId' => $this->getTargetId(),

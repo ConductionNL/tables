@@ -34,7 +34,8 @@ class MenuItemMapper extends QBMapper {
 
 	/**
 	 * The menu items of the given contexts, each list ordered by position. An item whose
-	 * view or table no longer exists is marked broken.
+	 * view or table no longer exists, or whose page is gone or belongs to another context,
+	 * is marked broken.
 	 *
 	 * @param int[] $contextIds
 	 * @return array<int, list<MenuItem>> keyed by context id
@@ -47,9 +48,10 @@ class MenuItemMapper extends QBMapper {
 
 		$qb = $this->db->getQueryBuilder();
 		$brokenExpression = sprintf(
-			'CASE WHEN (m.target_type = %s AND v.id IS NULL) OR (m.target_type = %s AND t.id IS NULL) THEN 1 ELSE 0 END',
+			'CASE WHEN (m.target_type = %s AND v.id IS NULL) OR (m.target_type = %s AND t.id IS NULL) OR (m.target_type = %s AND p.id IS NULL) THEN 1 ELSE 0 END',
 			$qb->createNamedParameter(MenuItem::TARGET_VIEW),
 			$qb->createNamedParameter(MenuItem::TARGET_TABLE),
+			$qb->createNamedParameter(MenuItem::TARGET_PAGE),
 		);
 		$qb->select('m.*')
 			->selectAlias($qb->createFunction($brokenExpression), 'broken')
@@ -61,6 +63,11 @@ class MenuItemMapper extends QBMapper {
 			->leftJoin('m', 'tables_tables', 't', $qb->expr()->andX(
 				$qb->expr()->eq('t.id', 'm.target_id'),
 				$qb->expr()->eq('m.target_type', $qb->createNamedParameter(MenuItem::TARGET_TABLE)),
+			))
+			->leftJoin('m', 'tables_contexts_page', 'p', $qb->expr()->andX(
+				$qb->expr()->eq('p.id', 'm.target_id'),
+				$qb->expr()->eq('m.target_type', $qb->createNamedParameter(MenuItem::TARGET_PAGE)),
+				$qb->expr()->eq('p.context_id', 'm.context_id'),
 			))
 			->where($qb->expr()->in('m.context_id', $qb->createParameter('contextIds')))
 			->orderBy('m.context_id', 'ASC')

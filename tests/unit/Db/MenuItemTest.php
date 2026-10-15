@@ -60,6 +60,7 @@ class MenuItemTest extends TestCase {
 			'view' => [MenuItem::TARGET_VIEW],
 			'table' => [MenuItem::TARGET_TABLE],
 			'url' => [MenuItem::TARGET_URL],
+			'page' => [MenuItem::TARGET_PAGE],
 		];
 	}
 
@@ -81,7 +82,7 @@ class MenuItemTest extends TestCase {
 		$this->assertArrayNotHasKey('broken', $item->getUpdatedFields());
 	}
 
-	public function testTargetTypesAreTheThreeKnownOnes(): void {
-		$this->assertSame(['view', 'table', 'url'], MenuItem::TARGET_TYPES);
+	public function testTargetTypesAreTheFourKnownOnes(): void {
+		$this->assertSame(['view', 'table', 'url', 'page'], MenuItem::TARGET_TYPES);
 	}
 }
