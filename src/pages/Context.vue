@@ -6,7 +6,7 @@
 	<div class="row main-context-view">
 		<div v-if="loading" class="icon-loading" />
 
-		<div v-else-if="activeContext">
+		<div v-else-if="activeContext && context">
 			<div class="content context">
 				<div class="row first-row">
 					<h1 class="context__title" data-cy="context-title">
@@ -17,25 +17,53 @@
 				<div class="row space-L context__description">
 					{{ activeContext.description }}
 				</div>
+				<nav v-if="pages.length > 1 || canManage" class="context__pages" :aria-label="t('tables', 'Pages')" data-cy="contextPages">
+					<NcButton v-for="page in pages"
+						:key="page.id"
+						:variant="activePage && page.id === activePage.id ? 'primary' : 'tertiary'"
+						:to="pageRoute(page)"
+						:aria-current="activePage && page.id === activePage.id ? 'page' : undefined"
+						data-cy="contextPageLink">
+						{{ pageTitle(page) }}
+					</NcButton>
+					<NcButton v-if="canManage" variant="tertiary" data-cy="contextPageCreate" @click="openPageForm(null)">
+						<template #icon>
+							<Plus :size="20" />
+						</template>
+						{{ t('tables', 'New page') }}
+					</NcButton>
+					<NcActions v-if="canManage && activePage && activePage.page_type !== 'startpage'"
+						:aria-label="t('tables', 'Page actions')"
+						data-cy="contextPageActions">
+						<NcActionButton :close-after-click="true" data-cy="contextPageRename" @click="openPageForm(activePage)">
+							<template #icon>
+								<PencilOutline :size="20" />
+							</template>
+							{{ t('tables', 'Rename page') }}
+						</NcActionButton>
+						<NcActionButton :close-after-click="true" data-cy="contextPageDelete" @click="deletePage(activePage)">
+							<template #icon>
+								<TrashCanOutline :size="20" />
+							</template>
+							{{ t('tables', 'Delete page') }}
+						</NcActionButton>
+					</NcActions>
+				</nav>
 			</div>
 
-			<div class="resources">
-				<div v-for="resource in contextResources" :key="resource.key">
-					<div v-if="!resource.isView" class="resource">
-						<TableWrapper v-model:view-setting="resourceViewSettings[resource.key]" :table="resource" :columns="columns[resource.key]"
-							:rows="rows[resource.key]" @create-column="createColumn(false, resource)"
-							@import-scheme="openImportSchemeModal(resource)"
-							@import="openImportModal(resource, false)" @download-csv="downloadCSV(resource, false)"
-							@download-filtered-csv="rows => downloadFilteredCSV(rows, resource, false)" />
-					</div>
-					<div v-else-if="resource.isView" class="resource">
-						<CustomView v-model:view-setting="resourceViewSettings[resource.key]" :view="resource" :columns="columns[resource.key]"
-							:rows="rows[resource.key]" @create-column="createColumn(true, resource)"
-							@import="openImportModal(resource, true)" @download-csv="downloadCSV(resource, true)"
-							@download-filtered-csv="rows => downloadFilteredCSV(rows, resource, true)" />
-					</div>
-				</div>
-			</div>
+			<GridPage v-if="activePage"
+				:key="activePage.id"
+				:context="context"
+				:page="activePage"
+				:can-edit="canManage"
+				:start-in-edit-mode="$route.query.edit === '1'"
+				@saved="onPageSaved" />
+			<ErrorMessage v-else :message="t('tables', 'This page could not be found')" />
+
+			<ContextPageForm :show-modal="pageFormOpen"
+				:page="pageBeingRenamed"
+				@close="closePageForm"
+				@submit="submitPageForm" />
 		</div>
 
 		<ErrorMessage v-else-if="errorMessage" :message="errorMessage" />
@@ -46,88 +74,71 @@
 
 <script>
 import MainModals from '../modules/modals/Modals.vue'
-import { mapState, mapActions, storeToRefs } from 'pinia'
-import { NcIconSvgWrapper } from '@nextcloud/vue'
-import TableWrapper from '../modules/main/sections/TableWrapper.vue'
-import CustomView from '../modules/main/sections/View.vue'
+import { mapState, mapActions } from 'pinia'
+import { NcActionButton, NcActions, NcButton, NcIconSvgWrapper } from '@nextcloud/vue'
+import { showConfirmation } from '@nextcloud/dialogs'
+import PencilOutline from 'vue-material-design-icons/PencilOutline.vue'
+import Plus from 'vue-material-design-icons/Plus.vue'
+import TrashCanOutline from 'vue-material-design-icons/TrashCanOutline.vue'
 import { emit } from '@nextcloud/event-bus'
-import { NODE_TYPE_TABLE, NODE_TYPE_VIEW } from '../shared/constants.ts'
-import exportTableMixin from '../shared/components/ncTable/mixins/exportTableMixin.js'
 import svgHelper from '../shared/components/ncIconPicker/mixins/svgHelper.js'
+import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMixin.js'
 import { useTablesStore } from '../store/store.js'
-import { useDataStore } from '../store/data.js'
 import ErrorMessage from '../modules/main/partials/ErrorMessage.vue'
+import GridPage from '../modules/grid/GridPage.vue'
+import ContextPageForm from '../modules/modals/ContextPageForm.vue'
 import displayError, { getNotFoundError, getGenericLoadError } from '../shared/utils/displayError.js'
-import { showError } from '@nextcloud/dialogs'
 
+/**
+ * An application: its title and description, and its pages. The start page is the
+ * dashboard; every page shows its widgets on a grid.
+ */
 export default {
 	components: {
 		MainModals,
+		NcActionButton,
+		NcActions,
+		NcButton,
 		NcIconSvgWrapper,
+		PencilOutline,
+		Plus,
+		TrashCanOutline,
 		ErrorMessage,
-		TableWrapper,
-		CustomView,
+		GridPage,
+		ContextPageForm,
 	},
 
-	mixins: [exportTableMixin, svgHelper],
-	setup() {
-		const store = useDataStore()
-		const { getColumns, getRows } = storeToRefs(store)
-		return { getColumns, getRows }
-	},
+	mixins: [svgHelper, permissionsMixin],
 
 	data() {
 		return {
 			loading: true,
 			icon: null,
-			resourceViewSettings: {},
 			context: null,
-			contextResources: [],
+			pages: [],
 			errorMessage: null,
 			loadedSignature: null,
 			isReloading: false,
+			pageFormOpen: false,
+			pageBeingRenamed: null,
 		}
 	},
 
 	computed: {
-		...mapState(useTablesStore, ['tables', 'contexts', 'activeContextId', 'views', 'activeContext']),
-		rows() {
-			const rows = {}
-			if (this.context && this.context.nodes) {
-				for (const [, node] of Object.entries(this.context.nodes)) {
-					if (parseInt(node.node_type) === NODE_TYPE_TABLE) {
-						const rowId = this.getKey(false, node.node_id)
-						rows[rowId] = this.getRows(false, node.node_id)
-					} else if (parseInt(node.node_type) === NODE_TYPE_VIEW) {
-						const rowId = this.getKey(true, node.node_id)
-						rows[rowId] = this.getRows(true, node.node_id)
-					}
-				}
-			}
-			return rows
-
+		...mapState(useTablesStore, ['contexts', 'activeContextId', 'activeContext']),
+		canManage() {
+			return this.ownsContext(this.context)
 		},
-
-		columns() {
-			const columns = {}
-			if (this.context && this.context.nodes) {
-				for (const [, node] of Object.entries(this.context.nodes)) {
-					if (parseInt(node.node_type) === NODE_TYPE_TABLE) {
-						const columnId = this.getKey(false, node.node_id)
-						columns[columnId] = this.getColumns(false, node.node_id)
-					} else if (parseInt(node.node_type) === NODE_TYPE_VIEW) {
-						const columnId = this.getKey(true, node.node_id)
-						columns[columnId] = this.getColumns(true, node.node_id)
-					}
-
-				}
+		activePage() {
+			const pageId = this.$route.params.pageId
+			if (pageId === undefined) {
+				return this.pages.find(page => page.page_type === 'startpage') ?? null
 			}
-			return columns
+			return this.pages.find(page => page.id === parseInt(pageId)) ?? null
 		},
 	},
 
 	watch: {
-
 		activeContext: {
 			handler() {
 				if (this.errorMessage) {
@@ -158,29 +169,21 @@ export default {
 	},
 
 	methods: {
-		...mapActions(useTablesStore, ['loadContext', 'validateExportAccess', 'loadContextTable', 'loadContextView']),
-		...mapActions(useDataStore, ['loadColumnsFromBE', 'loadRowsFromBE', 'loadRelationsFromBE']),
+		...mapActions(useTablesStore, ['loadContext', 'loadContextPages', 'createContextPage', 'updateContextPage', 'deleteContextPage']),
 		contextSignature() {
 			const ctx = this.activeContext
 			return ctx ? `${ctx.id}:${Object.keys(ctx.nodes || {}).sort().join(',')}` : null
 		},
 		async reload() {
-			if (!this.activeContextId) {
-				return
-			}
-
-			if (this.isReloading) {
+			if (!this.activeContextId || this.isReloading) {
 				return
 			}
 			this.isReloading = true
 			this.loading = true
-			this.contextResources = []
-			this.resourceViewSettings = {}
 
 			try {
 				await this.loadContext({ id: this.activeContextId })
-				const index = this.contexts.findIndex(c => parseInt(c.id) === parseInt(this.activeContextId))
-				this.context = this.contexts[index]
+				this.context = this.contexts.find(c => parseInt(c.id) === parseInt(this.activeContextId)) ?? null
 
 				if (!this.context) {
 					this.errorMessage = t('tables', 'This application could not be found')
@@ -188,75 +191,8 @@ export default {
 				}
 
 				this.loadedSignature = this.contextSignature()
-
 				this.icon = await this.getContextIcon(this.activeContext.iconName)
-
-				if (this.context && this.context.pages) {
-					const pages = Object.values(this.context.pages)
-					const startPage = pages.find(p => p.page_type === 'startpage')
-
-					if (startPage && startPage.content) {
-						const sortedContent = Object.values(startPage.content).sort((a, b) => a.order - b.order)
-
-						for (const content of sortedContent) {
-							const node = this.context.nodes[content.node_rel_id]
-							if (!node) continue
-
-							try {
-								const nodeType = parseInt(node.node_type)
-								if (nodeType === NODE_TYPE_TABLE) {
-
-									await this.loadContextTable({ id: node.node_id })
-									const table = this.tables.find(table => table.id === node.node_id)
-									if (table) {
-										await this.loadColumnsFromBE({
-											view: null,
-											tableId: table.id,
-										})
-										await this.loadRowsFromBE({
-											viewId: null,
-											tableId: table.id,
-										})
-										await this.loadRelationsFromBE({
-											tableId: table.id,
-										})
-										table.key = (table.id).toString()
-										table.isView = false
-										this.resourceViewSettings[table.key] = this.createViewSetting(table)
-										this.contextResources.push(table)
-									}
-
-								} else if (nodeType === NODE_TYPE_VIEW) {
-									await this.loadContextView({ id: node.node_id })
-									const view = this.views.find(view => view.id === node.node_id)
-									if (view) {
-										await this.loadColumnsFromBE({
-											view,
-										})
-										await this.loadRowsFromBE({
-											viewId: view.id,
-											tableId: view.tableId,
-										})
-										await this.loadRelationsFromBE({
-											viewId: view.id,
-										})
-										view.key = 'view-' + (view.id).toString()
-										view.isView = true
-										this.resourceViewSettings[view.key] = this.createViewSetting(view)
-										this.contextResources.push(view)
-									}
-								}
-							} catch (err) {
-								console.error(`Failed to load resource ${node.node_id}:`, err)
-								this.errorMessage = t('tables', 'Some resources in this application could not be loaded')
-							}
-						}
-					}
-					// TODO: check this
-					// Fallback if no startpage or content (though unexpected for valid contexts with nodes)
-					// If nodes exist but not in startpage content, they won't be shown.
-					// This matches backend logic where nodes are added to startpage.
-				}
+				this.pages = await this.loadContextPages({ contextId: this.context.id }) ?? []
 			} catch (e) {
 				if (e.message === 'NOT_FOUND') {
 					this.errorMessage = getNotFoundError('application')
@@ -269,59 +205,88 @@ export default {
 				this.isReloading = false
 			}
 		},
-		createColumn(isView, element) {
-			emit('tables:column:create', { isView, element })
+		/**
+		 * @param {object} page a page of the application
+		 * @return {string} the route of the page; the start page is the application itself
+		 */
+		pageRoute(page) {
+			return page.page_type === 'startpage'
+				? '/application/' + this.context.id
+				: '/application/' + this.context.id + '/page/' + page.id
 		},
-		createViewSetting(element) {
-			const viewSetting = {}
-
-			if (element?.sort?.length) {
-				viewSetting.presetSorting = [...element.sort]
-			}
-
-			return viewSetting
+		/**
+		 * @param {object} page a page of the application
+		 * @return {string} its title; the start page is the dashboard unless it was named
+		 */
+		pageTitle(page) {
+			return page.title || (page.page_type === 'startpage' ? t('tables', 'Dashboard') : t('tables', 'Untitled page'))
 		},
-		async downloadCSV(element, isView) {
-			const access = await this.validateExportAccess({
-				id: element.id,
-				isView,
-			})
-
-			if (!access?.ok) {
-				if (access?.reason === 'NO_ACCESS') {
-					showError(t('tables', 'Your access was revoked. Reload the page to update your permissions.'))
+		/**
+		 * Takes over a saved page. Saving can add tables or views to the application, which the
+		 * store loaded again; the signature is updated so that does not reload the whole page.
+		 *
+		 * @param {object} saved the page as saved
+		 */
+		onPageSaved(saved) {
+			this.context = this.contexts.find(c => parseInt(c.id) === parseInt(this.activeContextId)) ?? this.context
+			this.loadedSignature = this.contextSignature()
+			this.pages = this.pages.map(page => page.id === saved.id ? saved : page)
+		},
+		openPageForm(page) {
+			this.pageBeingRenamed = page
+			this.pageFormOpen = true
+		},
+		closePageForm() {
+			this.pageFormOpen = false
+			this.pageBeingRenamed = null
+		},
+		/**
+		 * Creates a page and opens it, or renames the page the form was opened for.
+		 *
+		 * @param {{title: string, technicalName: string}} data what the form collected
+		 */
+		async submitPageForm({ title, technicalName }) {
+			if (this.pageBeingRenamed) {
+				const page = await this.updateContextPage({
+					contextId: this.context.id,
+					pageId: this.pageBeingRenamed.id,
+					data: { title, technicalName },
+				})
+				if (page) {
+					this.pages = this.pages.map(item => item.id === page.id ? page : item)
+					this.closePageForm()
 				}
 				return
 			}
-
-			const rowId = this.getKey(isView, element.id)
-			const colId = this.getKey(isView, element.id)
-			this.downloadCsv(this.rows[rowId], this.columns[colId], element.title)
+			const page = await this.createContextPage({ contextId: this.context.id, title, technicalName: technicalName || null })
+			if (page) {
+				this.pages = [...this.pages, page]
+				this.closePageForm()
+				await this.$router.push(this.pageRoute(page))
+			}
 		},
-		async downloadFilteredCSV(rows, element, isView) {
-			const access = await this.validateExportAccess({
-				id: element.id,
-				isView,
-			})
-
-			if (!access?.ok) {
-				if (access?.reason === 'NO_ACCESS') {
-					showError(t('tables', 'Your access was revoked. Reload the page to update your permissions.'))
-				}
+		/**
+		 * Deletes a grid page after asking, and goes back to the start page.
+		 *
+		 * @param {object} page the page to delete
+		 */
+		async deletePage(page) {
+			let confirmed = false
+			try {
+				confirmed = await showConfirmation({
+					name: t('tables', 'Delete page?'),
+					text: t('tables', 'The page "{title}" and its widgets are deleted. The tables and views stay in the application.', { title: this.pageTitle(page) }),
+					labelConfirm: t('tables', 'Delete page'),
+					labelReject: t('tables', 'Cancel'),
+				})
+			} catch {
+				// Closing the dialog keeps the page
+			}
+			if (!confirmed || !await this.deleteContextPage({ contextId: this.context.id, pageId: page.id })) {
 				return
 			}
-
-			const colId = this.getKey(isView, element.id)
-			this.downloadCsv(rows, this.columns[colId], element.title)
-		},
-		getKey(isView, id) {
-			return isView ? 'view-' + id : id
-		},
-		openImportModal(element, isView) {
-			emit('tables:modal:import', { element, isView })
-		},
-		openImportSchemeModal(table) {
-			emit('tables:modal:table-scheme-import', { table })
+			this.pages = this.pages.filter(item => item.id !== page.id)
+			await this.$router.push('/application/' + this.context.id)
 		},
 	},
 }
@@ -349,6 +314,14 @@ export default {
 		margin-inline-start: 32px;
 	}
 
+	&__pages {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: var(--default-grid-baseline);
+		margin-inline-start: calc(8 * var(--default-grid-baseline));
+	}
+
 	&:deep(.icon-vue) {
 		min-width: 32px;
 		min-height: 32px;
@@ -356,23 +329,6 @@ export default {
 }
 
 .main-context-view {
-	width: max-content;
-	min-width: var(--app-content-width, 100%);
-}
-
-.resource {
-	margin: 40px 0;
-	width: max-content;
-	min-width: var(--app-content-width, 100%);
-
-	&:deep(.row.first-row) {
-		margin-inline-start: 0;
-		padding-inline-start: 20px;
-	}
-}
-
-:deep(h1) {
-	font-size: unset;
-	font-size: revert;
+	width: 100%;
 }
 </style>

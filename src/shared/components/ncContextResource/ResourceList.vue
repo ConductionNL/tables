@@ -6,11 +6,11 @@
 	<div>
 		<div v-if="loading" class="icon-loading" />
 		<ul v-if="mutableResources && mutableResources.length > 0" class="resource-list">
-			<li v-for="(resource, index) in mutableResources" :key="resource.key" class="row" draggable="true"
-				@dragstart="dragStart(index)" @dragover.prevent="dragOver(index)" @dragend="dragEnd(index)">
+			<li v-for="(resource, index) in mutableResources" :key="resource.key" class="row" :draggable="sortable ? 'true' : 'false'"
+				@dragstart="sortable && dragStart(index)" @dragover.prevent="sortable && dragOver(index)" @dragend="sortable && dragEnd(index)">
 				<div class="fix-col-2">
 					<div style="display:flex; align-items: center; width: 100%;">
-						<NcButton :aria-label="t('tables', 'Move')" type="tertiary-no-background" class="move-button">
+						<NcButton v-if="sortable" :aria-label="t('tables', 'Move')" type="tertiary-no-background" class="move-button">
 							<template #icon>
 								<DragHorizontalVariant :size="20" />
 							</template>
@@ -46,6 +46,11 @@ export default {
 		resources: {
 			type: Array,
 			default: () => ([]),
+		},
+		// Without sorting the list only adds and removes; the grid editor arranges the start page
+		sortable: {
+			type: Boolean,
+			default: true,
 		},
 	},
 
