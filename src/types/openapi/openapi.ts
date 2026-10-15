@@ -1195,7 +1195,7 @@ export type components = {
             readonly label: string;
             readonly icon: string | null;
             /** @enum {string} */
-            readonly targetType: "view" | "table" | "url";
+            readonly targetType: "view" | "table" | "url" | "page";
             /** Format: int64 */
             readonly targetId: number | null;
             readonly url: string | null;
