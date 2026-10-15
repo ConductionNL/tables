@@ -21,6 +21,7 @@ class ContextScheme implements JsonSerializable {
 		protected ?array $tables = [],
 		protected ?array $menuItems = [],
 		protected array $gridViews = [],
+		protected ?string $technicalName = null,
 	) {
 	}
 
@@ -43,7 +44,7 @@ class ContextScheme implements JsonSerializable {
 		if (!is_string($data['name'] ?? null) || trim($data['name']) === '') {
 			throw new InvalidArgumentException('A scheme needs a name.');
 		}
-		foreach (['icon', 'description'] as $optional) {
+		foreach (['icon', 'description', 'technicalName'] as $optional) {
 			if (isset($data[$optional]) && !is_string($data[$optional])) {
 				throw new InvalidArgumentException('The scheme property "' . $optional . '" must be a string.');
 			}
@@ -64,6 +65,7 @@ class ContextScheme implements JsonSerializable {
 			tables: $tables,
 			menuItems: isset($data['menuItems']) ? array_values($data['menuItems']) : null,
 			gridViews: array_values($data['gridViews'] ?? []),
+			technicalName: isset($data['technicalName']) && $data['technicalName'] !== '' ? $data['technicalName'] : null,
 		);
 	}
 
@@ -87,6 +89,13 @@ class ContextScheme implements JsonSerializable {
 				throw new InvalidArgumentException('The grid view property "grid" must be an object.');
 			}
 		}
+	}
+
+	/**
+	 * Null when the scheme gives none, which leaves the technical name of the application alone.
+	 */
+	public function getTechnicalName(): ?string {
+		return $this->technicalName;
 	}
 
 	public function getName(): ?string {
@@ -142,6 +151,7 @@ class ContextScheme implements JsonSerializable {
 			'pages' => $this->pages,
 			'tables' => $this->tables,
 			'menuItems' => $this->menuItems,
+			'technicalName' => $this->technicalName,
 		];
 	}
 }

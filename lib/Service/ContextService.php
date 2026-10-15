@@ -106,7 +106,9 @@ class ContextService {
 				$iconUrl = $this->urlGenerator->imagePath('core', 'places/default-app-icon.svg');
 			}
 
-			$contextUrl = $this->urlGenerator->linkToRoute('tables.page.context', ['contextId' => $context->getId()]);
+			// Technical names are unique per owner only, so applications of others are linked by id
+			$isOwner = $context->getOwnerType() === Application::OWNER_TYPE_USER && $context->getOwnerId() === $userId;
+			$contextUrl = $this->urlGenerator->linkToRoute('tables.page.context', ['contextId' => ($isOwner ? $context->getTechnicalName() : null) ?: $context->getId()]);
 
 			$this->navigationManager->add([
 				'id' => Application::APP_ID . '_application_' . $context->getId(),
@@ -142,13 +144,14 @@ class ContextService {
 	 * @param list<MenuItemInput>|null $menuItems
 	 * @throws Exception|PermissionError|InvalidArgumentException
 	 */
-	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?array $menuItems = null): Context {
+	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?array $menuItems = null, ?string $technicalName = null): Context {
 		$context = new Context();
 		$context->setName(trim($name));
 		$context->setIcon(trim($iconName));
 		$context->setDescription(trim($description));
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType($ownerType);
+		$context->setTechnicalName($this->normalizeTechnicalName($technicalName, $ownerId, null));
 
 		$this->atomic(function () use ($context, $nodes, $menuItems, $ownerId): void {
 			$this->contextMapper->insert($context);
@@ -441,6 +444,27 @@ class ContextService {
 		$context->setPages($pages);
 	}
 
+	/**
+	 * The technical name of an application as it is stored: trimmed, and null when blank.
+	 *
+	 * @throws InvalidArgumentException when the name is malformed or the owner already uses it
+	 * @throws Exception
+	 */
+	protected function normalizeTechnicalName(?string $technicalName, string $ownerId, ?int $contextId): ?string {
+		if ($technicalName === null) {
+			return null;
+		}
+		$technicalName = trim($technicalName);
+		if ($technicalName === '') {
+			return null;
+		}
+		MenuItemInput::assertTechnicalNameValid($technicalName);
+		if ($this->contextMapper->isTechnicalNameTaken($technicalName, $ownerId, $contextId)) {
+			throw new InvalidArgumentException('An application with the technical name "' . $technicalName . '" already exists.');
+		}
+		return $technicalName;
+	}
+
 	protected function technicalNameFromLabel(string $label): string {
 		return TechnicalNameHelper::fromText($label, 'item', MenuItemInput::MAX_TECHNICAL_NAME_LENGTH);
 	}
@@ -452,11 +476,11 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws PermissionError|MultipleObjectsReturnedException|InvalidArgumentException
 	 */
-	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?array $menuItems = null): Context {
+	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?array $menuItems = null, ?string $technicalName = null): Context {
 		// A transaction that reads before it writes can lose a write lock to a concurrent request
 		// (SQLite answers "database is locked" at once); running it again then succeeds
 		return $this->atomicRetry(
-			fn (): Context => $this->applyUpdate($contextId, $userId, $name, $iconName, $description, $nodes, $menuItems),
+			fn (): Context => $this->applyUpdate($contextId, $userId, $name, $iconName, $description, $nodes, $menuItems, $technicalName),
 			$this->dbc,
 		);
 	}
@@ -468,11 +492,14 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws PermissionError|MultipleObjectsReturnedException|InvalidArgumentException
 	 */
-	private function applyUpdate(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?array $menuItems): Context {
+	private function applyUpdate(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?array $menuItems, ?string $technicalName): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
 
 		if ($name !== null) {
 			$context->setName(trim($name));
+		}
+		if ($technicalName !== null) {
+			$context->setTechnicalName($this->normalizeTechnicalName($technicalName, $context->getOwnerId(), $contextId));
 		}
 		if ($iconName !== null) {
 			$context->setIcon(trim($iconName));
@@ -1101,6 +1128,8 @@ class ContextService {
 			$schemeService->exportPages($contextId, $userId),
 			array_values($tables),
 			$schemeService->exportMenuItems($context),
+			[],
+			$context->getTechnicalName(),
 		);
 	}
 
@@ -1259,7 +1288,7 @@ class ContextService {
 			}
 		}
 
-		$context = $this->update($contextId, $userId, $scheme->getName(), $scheme->getIcon() ?? '', $scheme->getDescription() ?? '', $resolvedNodes);
+		$context = $this->update($contextId, $userId, $scheme->getName(), $scheme->getIcon() ?? '', $scheme->getDescription() ?? '', $resolvedNodes, null, $scheme->getTechnicalName());
 
 		// Pages come after the nodes their data widgets show, the menu after the pages it opens
 		$schemeService = $this->contextSchemeService();

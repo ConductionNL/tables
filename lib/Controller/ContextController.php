@@ -103,6 +103,7 @@ class ContextController extends AOCSController {
 	 * @param string $description Descriptive text of the context
 	 * @psalm-param list<array{id: int, type: int, permissions?: int}> $nodes optional nodes to be connected to this context
 	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url'|'page', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page, and an item opening the start page is put first unless the menu has one
+	 * @param ?string $technicalName names the context in its address, lowercase letters, numbers and underscores; unique per owner
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN, array{message: string}, array{}>
 	 *
@@ -111,7 +112,7 @@ class ContextController extends AOCSController {
 	 * 403: lacking permissions on a resource
 	 */
 	#[NoAdminRequired]
-	public function create(string $name, string $iconName, string $description = '', array $nodes = [], ?array $menuItems = null): DataResponse {
+	public function create(string $name, string $iconName, string $description = '', array $nodes = [], ?array $menuItems = null, ?string $technicalName = null): DataResponse {
 		try {
 			if (!$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -124,6 +125,7 @@ class ContextController extends AOCSController {
 				$this->userId,
 				0,
 				$menuItems !== null ? MenuItemInput::createListFromInputArray($menuItems, allowNewStartPage: true) : null,
+				$technicalName,
 			)->jsonSerialize());
 		} catch (Exception $e) {
 			return $this->handleError($e);
@@ -143,6 +145,7 @@ class ContextController extends AOCSController {
 	 * @param ?string $description provide this parameter to set a new description
 	 * @param ?array{id: int, type: int, permissions: int, order: int} $nodes provide this parameter to set a new list of nodes.
 	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url'|'page', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems provide this parameter to replace the menu; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context, and an item without a technicalName keeps the one stored for the same target
+	 * @param ?string $technicalName provide this parameter to set a new technical name; an empty one removes it
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -154,7 +157,7 @@ class ContextController extends AOCSController {
 	 * @CanManageContext
 	 */
 	#[NoAdminRequired]
-	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?array $menuItems = null): DataResponse {
+	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?array $menuItems = null, ?string $technicalName = null): DataResponse {
 		try {
 			if ($iconName !== null && !$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -168,6 +171,7 @@ class ContextController extends AOCSController {
 				$description,
 				$nodes,
 				$menuItems !== null ? MenuItemInput::createListFromInputArray($menuItems) : null,
+				$technicalName,
 			)->jsonSerialize());
 		} catch (Exception|MultipleObjectsReturnedException $e) {
 			return $this->handleError($e);
@@ -365,6 +369,7 @@ class ContextController extends AOCSController {
 	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url'|'page', targetUuid?: string, targetPageId?: int, url?: string, technicalName?: string, parentTechnicalName?: string}> $menuItems Menu of the context: tables and views by uuid, pages by their id in the scheme, parents by technical name; leave it out to keep the current menu
 	 * @psalm-param ?list<array<string, mixed>> $pages Pages of the context with their widgets (a scheme of an older version keys them by id); data widgets name their node by its id in the nodes; leave it out to keep the current pages
 	 * @psalm-param list<array<string, mixed>> $gridViews Views without a table from a scheme of an older version; each becomes a page
+	 * @param ?string $technicalName technical name of the context; leave it out to keep the current one
 	 *
 	 * @return DataResponse<Http::STATUS_OK, array<string, mixed>, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -375,9 +380,9 @@ class ContextController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?array $menuItems = null, ?array $pages = null, array $gridViews = []): DataResponse {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?array $menuItems = null, ?array $pages = null, array $gridViews = [], ?string $technicalName = null): DataResponse {
 		try {
-			$scheme = ContextScheme::createFromInputArray(['name' => $name, 'icon' => $iconName, 'description' => $description, 'nodes' => $nodes, 'tables' => $tables, 'menuItems' => $menuItems, 'pages' => $pages, 'gridViews' => $gridViews]);
+			$scheme = ContextScheme::createFromInputArray(['name' => $name, 'icon' => $iconName, 'description' => $description, 'nodes' => $nodes, 'tables' => $tables, 'menuItems' => $menuItems, 'pages' => $pages, 'gridViews' => $gridViews, 'technicalName' => $technicalName]);
 		} catch (InvalidArgumentException $e) {
 			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
 		}

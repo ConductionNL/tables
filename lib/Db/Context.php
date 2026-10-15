@@ -22,6 +22,8 @@ use OCA\Tables\Helper\PageContentHelper;
  * @method setOwnerId(string $value): void
  * @method getOwnerType(): int
  * @method setOwnerType(int $value): void
+ * @method getTechnicalName(): ?string
+ * @method setTechnicalName(?string $value): void
  *
  * @method getSharing(): array
  * @method setSharing(array $value): void
@@ -38,6 +40,7 @@ class Context extends EntitySuper implements JsonSerializable {
 	protected ?string $description = null;
 	protected ?string $ownerId = null;
 	protected ?int $ownerType = null;
+	protected ?string $technicalName = null;
 
 	// virtual properties
 	protected ?array $sharing = null;
@@ -61,6 +64,7 @@ class Context extends EntitySuper implements JsonSerializable {
 			'description' => $this->getDescription(),
 			'owner' => $this->getOwnerId(),
 			'ownerType' => $this->getOwnerType(),
+			'technicalName' => $this->getTechnicalName(),
 			'menuItems' => array_values($this->menuItems ?? []),
 		];
 
