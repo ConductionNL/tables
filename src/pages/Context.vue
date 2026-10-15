@@ -6,8 +6,30 @@
 	<div class="row main-context-view">
 		<div v-if="loading" class="icon-loading" />
 
-		<div v-else-if="activeContext && context">
-			<div class="content context">
+		<div v-else-if="activeContext && context" :class="{ 'context--standalone': isStandalone }">
+			<div v-if="isMenuRoute && !isStandalone" class="context__breadcrumb" data-cy="context-breadcrumb">
+				<NcButton variant="tertiary" data-cy="context-menu-overview" @click="openRoute('/application/' + context.id)">
+					<template #icon>
+						<ChevronLeft :size="20" />
+					</template>
+					{{ activeContext.name }}
+				</NcButton>
+				<span class="context__breadcrumb-separator" aria-hidden="true">/</span>
+				<span class="context__breadcrumb-current">{{ selectedMenuItem ? selectedMenuItem.label : $route.params.itemName }}</span>
+				<NcButton variant="secondary"
+					:href="applicationUrl"
+					target="_blank"
+					rel="noopener"
+					class="context__breadcrumb-open"
+					data-cy="context-open-application">
+					<template #icon>
+						<OpenInNew :size="20" />
+					</template>
+					{{ t('tables', 'Open application') }}
+				</NcButton>
+			</div>
+
+			<div v-if="!isMenuRoute && !isStandalone" class="content context">
 				<div class="row first-row">
 					<h1 class="context__title" data-cy="context-title">
 						<NcIconSvgWrapper :svg="icon" :size="32" style="display: inline-block;" />&nbsp; {{
@@ -51,14 +73,29 @@
 				</nav>
 			</div>
 
-			<GridPage v-if="activePage"
-				:key="activePage.id"
-				:context="context"
-				:page="activePage"
-				:can-edit="canManage"
-				:start-in-edit-mode="$route.query.edit === '1'"
-				@saved="onPageSaved" />
-			<ErrorMessage v-else :message="t('tables', 'This page could not be found')" />
+			<div v-if="isMenuRoute" class="context__menu-target" data-cy="context-menu-target">
+				<NcEmptyContent v-if="!menuTarget"
+					:name="t('tables', 'This menu item points at nothing')"
+					:description="t('tables', 'The page, view or table it opened no longer exists, or you have no access to it.')"
+					data-cy="context-menu-target-missing" />
+				<GridPage v-else-if="menuTarget.page"
+					:key="'page-' + menuTarget.page.id"
+					:context="context"
+					:page="menuTarget.page"
+					:can-edit="canManage"
+					@saved="onPageSaved" />
+				<DataWidget v-else :key="menuTarget.data.type + '-' + menuTarget.data.id" :target="menuTarget.data" />
+			</div>
+			<template v-else>
+				<GridPage v-if="activePage"
+					:key="activePage.id"
+					:context="context"
+					:page="activePage"
+					:can-edit="canManage"
+					:start-in-edit-mode="$route.query.edit === '1'"
+					@saved="onPageSaved" />
+				<ErrorMessage v-else :message="t('tables', 'This page could not be found')" />
+			</template>
 
 			<ContextPageForm :show-modal="pageFormOpen"
 				:page="pageBeingRenamed"
@@ -75,8 +112,12 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions } from 'pinia'
-import { NcActionButton, NcActions, NcButton, NcIconSvgWrapper } from '@nextcloud/vue'
+import { NcActionButton, NcActions, NcButton, NcEmptyContent, NcIconSvgWrapper } from '@nextcloud/vue'
 import { showConfirmation } from '@nextcloud/dialogs'
+import { loadState } from '@nextcloud/initial-state'
+import { generateUrl } from '@nextcloud/router'
+import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import PencilOutline from 'vue-material-design-icons/PencilOutline.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import TrashCanOutline from 'vue-material-design-icons/TrashCanOutline.vue'
@@ -86,12 +127,16 @@ import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMix
 import { useTablesStore } from '../store/store.js'
 import ErrorMessage from '../modules/main/partials/ErrorMessage.vue'
 import GridPage from '../modules/grid/GridPage.vue'
+import DataWidget from '../modules/grid/widgets/DataWidget.vue'
 import ContextPageForm from '../modules/modals/ContextPageForm.vue'
 import displayError, { getNotFoundError, getGenericLoadError } from '../shared/utils/displayError.js'
+import { menuItemRoute } from '../shared/utils/menuItems.js'
 
 /**
  * An application: its title and description, and its pages. The start page is the
- * dashboard; every page shows its widgets on a grid.
+ * dashboard; every page shows its widgets on a grid. A menu item route opens what the
+ * item points at. Opened on its own, at /apps/tables/app/{id}, the application's menu
+ * is the navigation and it starts on its first menu item.
  */
 export default {
 	components: {
@@ -99,12 +144,16 @@ export default {
 		NcActionButton,
 		NcActions,
 		NcButton,
+		NcEmptyContent,
 		NcIconSvgWrapper,
+		ChevronLeft,
+		OpenInNew,
 		PencilOutline,
 		Plus,
 		TrashCanOutline,
 		ErrorMessage,
 		GridPage,
+		DataWidget,
 		ContextPageForm,
 	},
 
@@ -121,6 +170,8 @@ export default {
 			isReloading: false,
 			pageFormOpen: false,
 			pageBeingRenamed: null,
+			standaloneContextId: loadState('tables', 'contextId', null),
+			openedFirstPage: false,
 		}
 	},
 
@@ -128,6 +179,58 @@ export default {
 		...mapState(useTablesStore, ['contexts', 'activeContextId', 'activeContext']),
 		canManage() {
 			return this.ownsContext(this.context)
+		},
+		menuItems() {
+			return [...(this.activeContext?.menuItems ?? [])].sort((a, b) => a.order - b.order)
+		},
+		/**
+		 * Whether the application was opened on its own, at /apps/tables/app/{id}, with its own menu.
+		 *
+		 * @return {boolean}
+		 */
+		isStandalone() {
+			return this.standaloneContextId !== null
+		},
+		applicationUrl() {
+			return window.location.origin + generateUrl('/apps/tables/app/' + this.activeContext?.id)
+		},
+		isMenuRoute() {
+			return !!this.$route.params.itemName
+		},
+		selectedMenuItem() {
+			const technicalName = this.$route.params.itemName
+			if (!technicalName) {
+				return null
+			}
+			return this.menuItems.find(item => item.technicalName === technicalName) ?? null
+		},
+		/**
+		 * What the selected menu item opens: a page of the application, or a table or view.
+		 * Null when the item is unknown, broken or a link.
+		 *
+		 * @return {{page: object}|{data: {type: string, id: number}}|null}
+		 */
+		menuTarget() {
+			const item = this.selectedMenuItem
+			if (!item || item.broken || item.targetType === 'url') {
+				return null
+			}
+			if (item.targetType === 'page') {
+				const page = this.pages.find(page => page.id === item.targetId)
+				return page ? { page } : null
+			}
+			return { data: { type: item.targetType, id: item.targetId } }
+		},
+		/**
+		 * The menu item an application opened on its own starts on: its first entry that is not a link.
+		 *
+		 * @return {object|null}
+		 */
+		firstStandalonePage() {
+			if (!this.isStandalone || this.openedFirstPage) {
+				return null
+			}
+			return this.menuItems.find(item => item.targetType !== 'url') ?? null
 		},
 		activePage() {
 			const pageId = this.$route.params.pageId
@@ -139,6 +242,9 @@ export default {
 	},
 
 	watch: {
+		menuItems() {
+			this.openFirstPageWhenStandalone()
+		},
 		activeContext: {
 			handler() {
 				if (this.errorMessage) {
@@ -162,14 +268,41 @@ export default {
 	},
 
 	async mounted() {
-		emit('toggle-navigation', {
-			open: false,
-		})
+		// An application opened on its own shows its menu in the navigation, which must stay open
+		if (!this.isStandalone) {
+			emit('toggle-navigation', {
+				open: false,
+			})
+		}
 		await this.reload()
+		this.openFirstPageWhenStandalone()
 	},
 
 	methods: {
 		...mapActions(useTablesStore, ['loadContext', 'loadContextPages', 'createContextPage', 'updateContextPage', 'deleteContextPage']),
+		/**
+		 * Navigates inside the app. NcButton cannot take a route itself: @nextcloud/vue brings its own
+		 * vue-router, whose router key the app's router does not provide, so its "to" renders a plain button.
+		 *
+		 * @param {string} route the route to open
+		 */
+		openRoute(route) {
+			this.$router.push(route).catch(err => err)
+		},
+		/**
+		 * An application opened on its own starts on its first menu item. Only once: the start
+		 * page stays reachable from the navigation afterwards.
+		 */
+		openFirstPageWhenStandalone() {
+			if (this.$route.params.itemName || this.$route.params.pageId) {
+				return
+			}
+			const first = this.firstStandalonePage
+			if (first) {
+				this.openedFirstPage = true
+				this.$router.replace(menuItemRoute(first, this.activeContext.id)).catch(err => err)
+			}
+		},
 		contextSignature() {
 			const ctx = this.activeContext
 			return ctx ? `${ctx.id}:${Object.keys(ctx.nodes || {}).sort().join(',')}` : null
@@ -314,6 +447,37 @@ export default {
 		margin-inline-start: 32px;
 	}
 
+	&__breadcrumb {
+		position: sticky;
+		top: 0;
+		z-index: 15;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline));
+		padding-block: calc(2 * var(--default-grid-baseline));
+		padding-inline: calc(var(--default-clickable-area) + 4 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+		border-bottom: 1px solid var(--color-border);
+		background-color: var(--color-main-background);
+	}
+
+	&__breadcrumb-separator {
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__breadcrumb-current {
+		font-weight: bold;
+	}
+
+	&__breadcrumb-open {
+		margin-inline-start: auto;
+	}
+
+	&__menu-target {
+		width: 100%;
+		padding-block: calc(2 * var(--default-grid-baseline));
+	}
+
 	&__pages {
 		display: flex;
 		flex-wrap: wrap;
@@ -330,5 +494,11 @@ export default {
 
 .main-context-view {
 	width: 100%;
+}
+
+.context--standalone {
+	width: 100%;
+	// Leave room for the navigation toggle that floats over the top left corner of the content
+	padding-inline-start: var(--default-clickable-area);
 }
 </style>

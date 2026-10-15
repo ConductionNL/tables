@@ -340,3 +340,29 @@ export function dragItemOver(items, draggedIndex, overIndex) {
 	}
 	return { items: rest, draggedIndex: rest.indexOf(placed[0]) }
 }
+
+/**
+ * Where a menu item leads inside the app, or null for an external link.
+ *
+ * @param {object} item a menu item
+ * @param {number|string} contextId the application the item belongs to
+ * @return {string|null}
+ */
+export function menuItemRoute(item, contextId) {
+	if (item.targetType === 'url') {
+		return null
+	}
+	return '/application/' + contextId + '/menu/' + item.technicalName
+}
+
+/**
+ * The menu as a tree: top-level items with their children, in menu order.
+ *
+ * @param {Array} menuItems stored items with id, order and parentId
+ * @return {Array<{item: object, children: Array<object>}>}
+ */
+export function menuTree(menuItems) {
+	const sorted = [...(menuItems ?? [])].sort((a, b) => a.order - b.order)
+	const roots = sorted.filter(item => item.parentId == null)
+	return roots.map(item => ({ item, children: sorted.filter(child => child.parentId === item.id) }))
+}
