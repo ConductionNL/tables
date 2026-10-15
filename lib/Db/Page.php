@@ -8,6 +8,7 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Db;
 
+use OCA\Tables\Helper\TechnicalNameHelper;
 use OCP\AppFramework\Db\Entity;
 
 /**
@@ -23,8 +24,8 @@ use OCP\AppFramework\Db\Entity;
 class Page extends Entity implements \JsonSerializable {
 	public const TYPE_STARTPAGE = 'startpage';
 	public const TYPE_GRID = 'grid';
-	public const TECHNICAL_NAME_PATTERN = '/^[a-z][a-z0-9_]*$/';
-	public const TECHNICAL_NAME_MAX_LENGTH = 200;
+	public const TECHNICAL_NAME_PATTERN = TechnicalNameHelper::PATTERN;
+	public const TECHNICAL_NAME_MAX_LENGTH = TechnicalNameHelper::MAX_LENGTH;
 
 	protected ?int $contextId = null;
 	protected ?string $pageType = null;
@@ -36,8 +37,7 @@ class Page extends Entity implements \JsonSerializable {
 	}
 
 	public static function isValidTechnicalName(string $technicalName): bool {
-		return strlen($technicalName) <= self::TECHNICAL_NAME_MAX_LENGTH
-			&& preg_match(self::TECHNICAL_NAME_PATTERN, $technicalName) === 1;
+		return TechnicalNameHelper::isValid($technicalName);
 	}
 
 	public function jsonSerialize(): array {
