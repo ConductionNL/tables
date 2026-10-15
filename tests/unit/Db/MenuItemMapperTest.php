@@ -152,6 +152,7 @@ class MenuItemMapperTest extends DatabaseTestCase {
 			->values([
 				'context_id' => $qb->createNamedParameter($contextId),
 				'page_type' => $qb->createNamedParameter('startpage'),
+				'technical_name' => $qb->createNamedParameter('dashboard'),
 			])
 			->executeStatement();
 		return (int)$this->connection->lastInsertId();
