@@ -16,6 +16,7 @@ use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
+use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\MenuItemInput;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\ColumnService;
@@ -361,6 +362,9 @@ class ContextController extends AOCSController {
 	 * @param string $description Description of the context
 	 * @param list<array{node_type: int, node_uuid: string, permissions: int}> $nodes Ordered meta data of the related nodes
 	 * @psalm-param array{addTables: list<TablesTable>, modifyTables: list<TablesTable>} $tables Tables to be added or modified
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url'|'page', targetUuid?: string, targetPageId?: int, url?: string, technicalName?: string, parentTechnicalName?: string}> $menuItems Menu of the context: tables and views by uuid, pages by their id in the scheme, parents by technical name; leave it out to keep the current menu
+	 * @psalm-param ?list<array<string, mixed>> $pages Pages of the context with their widgets (a scheme of an older version keys them by id); data widgets name their node by its id in the nodes; leave it out to keep the current pages
+	 * @psalm-param list<array<string, mixed>> $gridViews Views without a table from a scheme of an older version; each becomes a page
 	 *
 	 * @return DataResponse<Http::STATUS_OK, array<string, mixed>, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -371,16 +375,24 @@ class ContextController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables): DataResponse {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?array $menuItems = null, ?array $pages = null, array $gridViews = []): DataResponse {
+		try {
+			$scheme = ContextScheme::createFromInputArray(['name' => $name, 'icon' => $iconName, 'description' => $description, 'nodes' => $nodes, 'tables' => $tables, 'menuItems' => $menuItems, 'pages' => $pages, 'gridViews' => $gridViews]);
+		} catch (InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
+		}
 		try {
 			$this->db->beginTransaction();
-			$context = $this->contextService->importScheme($contextId, $name, $iconName, $description, $nodes, $tables, $this->userId);
+			$context = $this->contextService->importScheme($contextId, $scheme, $this->userId);
 			$this->db->commit();
 			return new DataResponse($context->jsonSerialize());
 		} catch (\InvalidArgumentException $e) {
 			$this->db->rollBack();
 			return $this->handleBadRequestError(new BadRequestError($e->getMessage(), $e->getCode(), $e));
-		} catch (Exception|MultipleObjectsReturnedException $e) {
+		} catch (BadRequestError $e) {
+			$this->db->rollBack();
+			return $this->handleBadRequestError($e);
+		} catch (Exception|MultipleObjectsReturnedException|InternalError $e) {
 			$this->db->rollBack();
 			return $this->handleError($e);
 		} catch (PermissionError $e) {
@@ -389,6 +401,9 @@ class ContextController extends AOCSController {
 		} catch (DoesNotExistException $e) {
 			$this->db->rollBack();
 			return $this->handleNotFoundError(new NotFoundError($e->getMessage(), $e->getCode(), $e));
+		} catch (NotFoundError $e) {
+			$this->db->rollBack();
+			return $this->handleNotFoundError($e);
 		}
 	}
 

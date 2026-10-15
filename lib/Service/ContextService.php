@@ -1067,8 +1067,8 @@ class ContextService {
 	 */
 	public function getScheme(int $contextId, string $userId): ContextScheme {
 		$context = $this->contextMapper->findById($contextId);
-		$tableService = \OCP\Server::get(TableService::class);
-		$viewService = \OCP\Server::get(ViewService::class);
+		$tableService = $this->tableService();
+		$viewService = $this->viewService();
 		$nodes = $context->getNodes();
 		$tables = [];
 
@@ -1099,13 +1099,15 @@ class ContextService {
 			}
 		}
 
+		$schemeService = $this->contextSchemeService();
 		return new ContextScheme(
 			$context->getName(),
 			$context->getIcon(),
 			$context->getDescription(),
 			array_values($nodes),
-			$context->getPages(),
+			$schemeService->exportPages($contextId, $userId),
 			array_values($tables),
+			$schemeService->exportMenuItems($context),
 		);
 	}
 
@@ -1199,16 +1201,15 @@ class ContextService {
 	 * @throws NotFoundExceptionInterface
 	 * @throws PermissionError
 	 */
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId): Context {
-		// Validate the structure of the columns and views arrays
-		if (!isset($tables['addTables']) || !is_array($tables['addTables'])
-			|| !isset($tables['modifyTables']) || !is_array($tables['modifyTables'])) {
-			throw new BadRequestError('Invalid tables structure provided.');
-		}
+	public function importScheme(int $contextId, ContextScheme $scheme, string $userId): Context {
+		$tables = $scheme->getTables() ?? ['addTables' => [], 'modifyTables' => []];
+		$nodes = $scheme->getNodes() ?? [];
+		// Grid views of an older scheme become pages, not nodes
+		$gridViewUuids = array_column($scheme->getGridViews(), 'uuid');
 
-		$tableService = \OCP\Server::get(TableService::class);
-		$viewService = \OCP\Server::get(ViewService::class);
-		$columnService = \OCP\Server::get(ColumnService::class);
+		$tableService = $this->tableService();
+		$viewService = $this->viewService();
+		$columnService = $this->columnService();
 
 		foreach ($tables['addTables'] as $tableScheme) {
 			$tableService->validateTableScheme($tableScheme);
@@ -1250,7 +1251,13 @@ class ContextService {
 					'permissions' => $node['permissions'],
 				];
 			} elseif ($node['node_type'] === Application::NODE_TYPE_VIEW) {
+				if (in_array($node['node_uuid'], $gridViewUuids, true)) {
+					continue;
+				}
 				$view = $this->viewMapper->findByUuid($node['node_uuid']);
+				if ($view === null) {
+					throw new DoesNotExistException('View ' . $node['node_uuid'] . ' does not exist');
+				}
 				$resolvedNodes[] = [
 					'id' => $view->getId(),
 					'type' => $node['node_type'],
@@ -1259,8 +1266,39 @@ class ContextService {
 			}
 		}
 
-		$context = $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes);
+		$context = $this->update($contextId, $userId, $scheme->getName(), $scheme->getIcon() ?? '', $scheme->getDescription() ?? '', $resolvedNodes);
 
-		return $context;
+		// Pages come after the nodes their data widgets show, the menu after the pages it opens
+		$schemeService = $this->contextSchemeService();
+		$pageIds = ['pages' => [], 'gridViews' => []];
+		if ($scheme->getPages() !== null || $scheme->getGridViews() !== []) {
+			$pageIds = $schemeService->importPages($this->contextMapper->findById($contextId, $userId), $scheme, $userId);
+		}
+		if ($scheme->getMenuItems() !== null) {
+			$menuItems = $schemeService->resolveMenuItems($scheme->getMenuItems(), $userId, $pageIds['pages'], $pageIds['gridViews']);
+			$this->update($contextId, $userId, null, null, null, null, $menuItems);
+		}
+
+		return $this->contextMapper->findById($contextId, $userId);
+	}
+
+	/**
+	 * The services the scheme export and import use. They come from the server container because they
+	 * depend on this service themselves; a test can replace them here.
+	 */
+	protected function tableService(): TableService {
+		return \OCP\Server::get(TableService::class);
+	}
+
+	protected function viewService(): ViewService {
+		return \OCP\Server::get(ViewService::class);
+	}
+
+	protected function columnService(): ColumnService {
+		return \OCP\Server::get(ColumnService::class);
+	}
+
+	protected function contextSchemeService(): ContextSchemeService {
+		return \OCP\Server::get(ContextSchemeService::class);
 	}
 }

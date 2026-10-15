@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { APIRequestContext } from '@playwright/test'
+import type { APIRequestContext, Page } from '@playwright/test'
 import { test, expect } from '../support/fixtures'
 import { ocsRequest, type TestUser } from '../support/api'
 import { createContext, loadContext } from '../support/commands'
@@ -204,4 +204,136 @@ test.describe('Applications', () => {
 		await expect(page).toHaveURL(/\/menu\/reports$/)
 		await expect(page.locator('[data-cy="gridPage"]')).toBeVisible()
 	})
+
+	test('A scheme imported through the dialog brings its menu and its pages', async ({ userPage: { page, user } }) => {
+		const { contextId: sourceId } = await createApplicationWithMenu(page.request, user, 'exported application')
+		const scheme = await exportScheme(page.request, user, sourceId)
+		const targetId = await createEmptyApplication(page.request, user, 'importing application')
+
+		const response = await importThroughDialog(page, targetId, JSON.stringify(scheme), true)
+
+		expect(response.status()).toBe(200)
+		const target = await getApplication(page.request, user, targetId)
+		expect(target.menuItems.map((item: { label: string }) => item.label)).toEqual(['Dashboard', 'Front page', 'Cases', 'Handbook'])
+		const frontPageItem = target.menuItems.find((item: { label: string }) => item.label === 'Front page')
+		const frontPage = Object.values(target.pages as Record<string, { id: number, title: string | null }>).find(entry => entry.title === 'Front page')
+		expect(frontPageItem.targetId).toBe(frontPage!.id)
+		expect(frontPageItem.broken).toBe(false)
+
+		await page.goto(`/index.php/apps/tables/app/${targetId}`)
+		await page.locator('[data-cy="application-nav-item"]').filter({ hasText: 'Front page' }).getByRole('link').click()
+		await expect(page.getByText('Welcome on the front page')).toBeVisible()
+	})
+
+	test('A scheme imported with its menu and pages switched off keeps the current menu', async ({ userPage: { page, user } }) => {
+		const { contextId: sourceId } = await createApplicationWithMenu(page.request, user, 'exported application')
+		const scheme = await exportScheme(page.request, user, sourceId)
+		const targetId = await createEmptyApplication(page.request, user, 'importing application')
+
+		const response = await importThroughDialog(page, targetId, JSON.stringify(scheme), false)
+
+		expect(response.status()).toBe(200)
+		expect(response.request().postDataJSON()).not.toHaveProperty('menuItems')
+		expect(response.request().postDataJSON()).not.toHaveProperty('pages')
+		const target = await getApplication(page.request, user, targetId)
+		expect(target.menuItems.map((item: { label: string }) => item.label)).toEqual(['Dashboard'])
+		expect(Object.keys(target.pages)).toHaveLength(1)
+	})
+
+	test('A scheme of an older version turns its grid views into pages', async ({ userPage: { page, user } }) => {
+		const tableResponse = await ocsRequest(page.request, user, { method: 'POST', url: '/index.php/apps/tables/api/1/tables', data: { title: 'old scheme cases' } })
+		const table = await tableResponse.json()
+		const targetId = await createEmptyApplication(page.request, user, 'old scheme application')
+
+		const response = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: `${API}/contexts/${targetId}/scheme/import?format=json`,
+			data: {
+				name: 'old scheme application',
+				iconName: 'star',
+				description: '',
+				nodes: [],
+				tables: { addTables: [], modifyTables: [] },
+				menuItems: [{ label: 'Intake home', targetType: 'view', targetUuid: 'aaaaaaaa-0000-4000-8000-000000000001', technicalName: 'intake_home' }],
+				gridViews: [{
+					uuid: 'aaaaaaaa-0000-4000-8000-000000000001',
+					title: 'Intake home',
+					grid: {
+						widgets: [
+							{ id: 'w1', type: 'header', configuration: { title: '', showTitle: false }, content: { title: 'Welcome from an older scheme' } },
+							{ id: 'w2', type: 'data', configuration: { title: '', showTitle: false }, content: { target: { type: 'table', id: 1, uuid: table.uuid } } },
+						],
+						layout: [
+							{ widgetId: 'w1', gridX: 0, gridY: 0, gridWidth: 12, gridHeight: 2 },
+							{ widgetId: 'w2', gridX: 0, gridY: 2, gridWidth: 12, gridHeight: 5 },
+						],
+					},
+				}],
+			},
+		})
+
+		expect(response.status()).toBe(200)
+		const target = await getApplication(page.request, user, targetId)
+		const intake = Object.values(target.pages as Record<string, { id: number, title: string | null, page_type: string, content: Record<string, { type: string, node_rel_id: number | null }> }>)
+			.find(entry => entry.title === 'Intake home')
+		expect(intake!.page_type).toBe('grid')
+		expect(Object.values(intake!.content).map(entry => entry.type).sort()).toEqual(['data', 'header'])
+		expect(target.menuItems).toHaveLength(1)
+		expect(target.menuItems[0]).toMatchObject({ label: 'Intake home', targetType: 'page', targetId: intake!.id, broken: false })
+		const nodeIds = Object.values(target.nodes as Record<string, { node_id: number, node_type: number }>).map(node => node.node_id)
+		expect(nodeIds).toContain(table.id)
+
+		await page.goto(`/index.php/apps/tables/app/${targetId}`)
+		await expect(page).toHaveURL(/\/menu\/intake_home$/)
+		await expect(page.getByText('Welcome from an older scheme')).toBeVisible()
+		await expect(page.locator('h1', { hasText: 'old scheme cases' })).toBeVisible()
+	})
 })
+
+async function getApplication(request: APIRequestContext, user: TestUser, contextId: number) {
+	const response = await ocsRequest(request, user, { method: 'GET', url: `${API}/contexts/${contextId}?format=json` })
+	return (await response.json()).ocs.data
+}
+
+async function exportScheme(request: APIRequestContext, user: TestUser, contextId: number) {
+	const response = await ocsRequest(request, user, { method: 'GET', url: `${API}/contexts/${contextId}/scheme/export?format=json` })
+	return (await response.json()).ocs.data
+}
+
+async function createEmptyApplication(request: APIRequestContext, user: TestUser, name: string): Promise<number> {
+	const response = await ocsRequest(request, user, { method: 'POST', url: `${API}/contexts?format=json`, data: { name, iconName: 'star' } })
+	return (await response.json()).ocs.data.id
+}
+
+/**
+ * Imports a scheme file into an application through the "Import a scheme" action of its overview.
+ *
+ * @param page the page of the test user
+ * @param contextId the application to import into
+ * @param fileContent the scheme file
+ * @param withMenuAndPages whether the "Menu and pages" switch of the preview stays on
+ */
+async function importThroughDialog(page: Page, contextId: number, fileContent: string, withMenuAndPages: boolean) {
+	await page.goto(`/index.php/apps/tables/#/application/${contextId}`)
+	await page.locator('[data-cy="context-actions"]').getByRole('button').first().click()
+	await page.locator('[data-cy="context-import-scheme"]').click()
+
+	const dialog = page.getByRole('dialog', { name: /application scheme/ })
+	await expect(dialog).toBeVisible()
+	await dialog.locator('input[type=file]').setInputFiles({
+		name: 'exported-application.json',
+		mimeType: 'application/json',
+		buffer: Buffer.from(fileContent),
+	})
+	await dialog.getByRole('button', { name: 'Preview' }).click()
+	const menuSection = dialog.locator('[data-cy="importSchemeMenu"]')
+	await expect(menuSection).toBeVisible()
+	if (!withMenuAndPages) {
+		await menuSection.getByText('Menu and pages', { exact: true }).click()
+	}
+	const importResponse = page.waitForResponse(r => r.url().includes('/scheme/import') && r.request().method() === 'POST')
+	await dialog.getByRole('button', { name: 'Import' }).click()
+	const response = await importResponse
+	await expect(dialog).toContainText('Import completed successfully.')
+	return response
+}
