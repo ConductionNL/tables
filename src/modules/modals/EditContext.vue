@@ -287,8 +287,10 @@ export default {
 		 */
 		async arrangeStartPage() {
 			const contextId = this.contextId
+			const startPage = Object.values(this.getContext(contextId)?.pages ?? {}).find(page => page.page_type === 'startpage')
 			this.actionCancel()
-			await this.$router.push({ path: '/application/' + contextId, query: { edit: '1' } }).catch(err => err)
+			const path = '/application/' + contextId + (startPage ? '/page/' + startPage.id : '')
+			await this.$router.push({ path, query: { edit: '1' } }).catch(err => err)
 		},
 		async actionDeleteContext() {
 			this.prepareDeleteContext = false

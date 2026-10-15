@@ -7,7 +7,14 @@
 		<div v-if="loading" class="icon-loading" />
 
 		<div v-else-if="activeContext && context" :class="{ 'context--standalone': isStandalone }">
-			<div v-if="isMenuRoute && !isStandalone" class="context__breadcrumb" data-cy="context-breadcrumb">
+			<ApplicationOverview v-if="isOverview"
+				:context="activeContext"
+				:pages="pages"
+				:icon="icon"
+				:can-manage="canManage"
+				@page-created="onPageCreated" />
+
+			<div v-if="!isOverview && !isStandalone" class="context__breadcrumb" data-cy="context-breadcrumb">
 				<NcButton variant="tertiary" data-cy="context-menu-overview" @click="openRoute('/application/' + context.id)">
 					<template #icon>
 						<ChevronLeft :size="20" />
@@ -15,7 +22,7 @@
 					{{ activeContext.name }}
 				</NcButton>
 				<span class="context__breadcrumb-separator" aria-hidden="true">/</span>
-				<span class="context__breadcrumb-current">{{ selectedMenuItem ? selectedMenuItem.label : $route.params.itemName }}</span>
+				<span class="context__breadcrumb-current">{{ breadcrumbLabel }}</span>
 				<NcButton variant="secondary"
 					:href="applicationUrl"
 					target="_blank"
@@ -29,49 +36,41 @@
 				</NcButton>
 			</div>
 
-			<div v-if="!isMenuRoute && !isStandalone" class="content context">
-				<div class="row first-row">
-					<h1 class="context__title" data-cy="context-title">
-						<NcIconSvgWrapper :svg="icon" :size="32" style="display: inline-block;" />&nbsp; {{
-							activeContext.name }}
-					</h1>
-				</div>
-				<div class="row space-L context__description">
-					{{ activeContext.description }}
-				</div>
-				<nav v-if="pages.length > 1 || canManage" class="context__pages" :aria-label="t('tables', 'Pages')" data-cy="contextPages">
-					<NcButton v-for="page in pages"
-						:key="page.id"
-						:variant="activePage && page.id === activePage.id ? 'primary' : 'tertiary'"
-						:to="pageRoute(page)"
-						:aria-current="activePage && page.id === activePage.id ? 'page' : undefined"
-						data-cy="contextPageLink">
-						{{ pageTitle(page) }}
-					</NcButton>
-					<NcButton v-if="canManage" variant="tertiary" data-cy="contextPageCreate" @click="openPageForm(null)">
+			<nav v-if="!isOverview && !isMenuRoute && !isStandalone && (pages.length > 1 || canManage)"
+				class="context__pages"
+				:aria-label="t('tables', 'Pages')"
+				data-cy="contextPages">
+				<NcButton v-for="page in pages"
+					:key="page.id"
+					:variant="activePage && page.id === activePage.id ? 'primary' : 'tertiary'"
+					:to="pageRoute(page)"
+					:aria-current="activePage && page.id === activePage.id ? 'page' : undefined"
+					data-cy="contextPageLink">
+					{{ pageTitle(page) }}
+				</NcButton>
+				<NcButton v-if="canManage" variant="tertiary" data-cy="contextPageCreate" @click="openPageForm(null)">
+					<template #icon>
+						<Plus :size="20" />
+					</template>
+					{{ t('tables', 'New page') }}
+				</NcButton>
+				<NcActions v-if="canManage && activePage && activePage.page_type !== 'startpage'"
+					:aria-label="t('tables', 'Page actions')"
+					data-cy="contextPageActions">
+					<NcActionButton :close-after-click="true" data-cy="contextPageRename" @click="openPageForm(activePage)">
 						<template #icon>
-							<Plus :size="20" />
+							<PencilOutline :size="20" />
 						</template>
-						{{ t('tables', 'New page') }}
-					</NcButton>
-					<NcActions v-if="canManage && activePage && activePage.page_type !== 'startpage'"
-						:aria-label="t('tables', 'Page actions')"
-						data-cy="contextPageActions">
-						<NcActionButton :close-after-click="true" data-cy="contextPageRename" @click="openPageForm(activePage)">
-							<template #icon>
-								<PencilOutline :size="20" />
-							</template>
-							{{ t('tables', 'Rename page') }}
-						</NcActionButton>
-						<NcActionButton :close-after-click="true" data-cy="contextPageDelete" @click="deletePage(activePage)">
-							<template #icon>
-								<TrashCanOutline :size="20" />
-							</template>
-							{{ t('tables', 'Delete page') }}
-						</NcActionButton>
-					</NcActions>
-				</nav>
-			</div>
+						{{ t('tables', 'Rename page') }}
+					</NcActionButton>
+					<NcActionButton :close-after-click="true" data-cy="contextPageDelete" @click="deletePage(activePage)">
+						<template #icon>
+							<TrashCanOutline :size="20" />
+						</template>
+						{{ t('tables', 'Delete page') }}
+					</NcActionButton>
+				</NcActions>
+			</nav>
 
 			<div v-if="isMenuRoute" class="context__menu-target" data-cy="context-menu-target">
 				<NcEmptyContent v-if="!menuTarget"
@@ -86,7 +85,7 @@
 					@saved="onPageSaved" />
 				<DataWidget v-else :key="menuTarget.data.type + '-' + menuTarget.data.id" :target="menuTarget.data" />
 			</div>
-			<template v-else>
+			<template v-else-if="!isOverview">
 				<GridPage v-if="activePage"
 					:key="activePage.id"
 					:context="context"
@@ -112,7 +111,7 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions } from 'pinia'
-import { NcActionButton, NcActions, NcButton, NcEmptyContent, NcIconSvgWrapper } from '@nextcloud/vue'
+import { NcActionButton, NcActions, NcButton, NcEmptyContent } from '@nextcloud/vue'
 import { showConfirmation } from '@nextcloud/dialogs'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
@@ -121,7 +120,6 @@ import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import PencilOutline from 'vue-material-design-icons/PencilOutline.vue'
 import Plus from 'vue-material-design-icons/Plus.vue'
 import TrashCanOutline from 'vue-material-design-icons/TrashCanOutline.vue'
-import { emit } from '@nextcloud/event-bus'
 import svgHelper from '../shared/components/ncIconPicker/mixins/svgHelper.js'
 import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMixin.js'
 import { useTablesStore } from '../store/store.js'
@@ -129,8 +127,9 @@ import ErrorMessage from '../modules/main/partials/ErrorMessage.vue'
 import GridPage from '../modules/grid/GridPage.vue'
 import DataWidget from '../modules/grid/widgets/DataWidget.vue'
 import ContextPageForm from '../modules/modals/ContextPageForm.vue'
+import ApplicationOverview from '../modules/main/sections/ApplicationOverview.vue'
 import displayError, { getNotFoundError, getGenericLoadError } from '../shared/utils/displayError.js'
-import { menuItemRoute } from '../shared/utils/menuItems.js'
+import { menuItemRoute, pageTitle } from '../shared/utils/menuItems.js'
 
 /**
  * An application: its title and description, and its pages. The start page is the
@@ -145,7 +144,6 @@ export default {
 		NcActions,
 		NcButton,
 		NcEmptyContent,
-		NcIconSvgWrapper,
 		ChevronLeft,
 		OpenInNew,
 		PencilOutline,
@@ -155,6 +153,7 @@ export default {
 		GridPage,
 		DataWidget,
 		ContextPageForm,
+		ApplicationOverview,
 	},
 
 	mixins: [svgHelper, permissionsMixin],
@@ -196,6 +195,20 @@ export default {
 		},
 		isMenuRoute() {
 			return !!this.$route.params.itemName
+		},
+		/**
+		 * Inside Tables the application opens on its overview, where it is managed.
+		 *
+		 * @return {boolean}
+		 */
+		isOverview() {
+			return !this.isStandalone && !this.isMenuRoute && this.$route.params.pageId === undefined
+		},
+		breadcrumbLabel() {
+			if (this.isMenuRoute) {
+				return this.selectedMenuItem ? this.selectedMenuItem.label : this.$route.params.itemName
+			}
+			return this.activePage ? pageTitle(this.activePage) : ''
 		},
 		selectedMenuItem() {
 			const technicalName = this.$route.params.itemName
@@ -268,12 +281,6 @@ export default {
 	},
 
 	async mounted() {
-		// An application opened on its own shows its menu in the navigation, which must stay open
-		if (!this.isStandalone) {
-			emit('toggle-navigation', {
-				open: false,
-			})
-		}
 		await this.reload()
 		this.openFirstPageWhenStandalone()
 	},
@@ -340,19 +347,19 @@ export default {
 		},
 		/**
 		 * @param {object} page a page of the application
-		 * @return {string} the route of the page; the start page is the application itself
+		 * @return {string} the route of the page
 		 */
 		pageRoute(page) {
-			return page.page_type === 'startpage'
-				? '/application/' + this.context.id
-				: '/application/' + this.context.id + '/page/' + page.id
+			return '/application/' + this.context.id + '/page/' + page.id
 		},
+		pageTitle,
 		/**
-		 * @param {object} page a page of the application
-		 * @return {string} its title; the start page is the dashboard unless it was named
+		 * Takes over a page created on the overview.
+		 *
+		 * @param {object} page the new page
 		 */
-		pageTitle(page) {
-			return page.title || (page.page_type === 'startpage' ? t('tables', 'Dashboard') : t('tables', 'Untitled page'))
+		onPageCreated(page) {
+			this.pages = [...this.pages, page]
 		},
 		/**
 		 * Takes over a saved page. Saving can add tables or views to the application, which the
@@ -428,25 +435,6 @@ export default {
 
 <style scoped lang="scss">
 .context {
-	.row.first-row {
-		position: sticky;
-		inset-inline-start: 0;
-		top: 0;
-		z-index: 15;
-		background-color: var(--color-main-background);
-		width: var(--app-content-width, 100%);
-	}
-
-	&__title {
-		display: inline-flex;
-	}
-
-	&__description {
-		margin: calc(3 * var(--default-grid-baseline, 4px));
-		max-width: 790px;
-		margin-inline-start: 32px;
-	}
-
 	&__breadcrumb {
 		position: sticky;
 		top: 0;
@@ -483,12 +471,8 @@ export default {
 		flex-wrap: wrap;
 		align-items: center;
 		gap: var(--default-grid-baseline);
-		margin-inline-start: calc(8 * var(--default-grid-baseline));
-	}
-
-	&:deep(.icon-vue) {
-		min-width: 32px;
-		min-height: 32px;
+		padding-block: calc(2 * var(--default-grid-baseline));
+		padding-inline: calc(var(--default-clickable-area) + 4 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
 	}
 }
 
