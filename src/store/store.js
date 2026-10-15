@@ -11,6 +11,9 @@ import displayError from '../shared/utils/displayError.js'
 import { NODE_TYPE_TABLE, NODE_TYPE_VIEW } from '../shared/constants.ts'
 import { getCurrentUser } from '@nextcloud/auth'
 
+// The one request for the widget types while it runs, so widgets that mount together share it
+let widgetTypesRequest = null
+
 export const useTablesStore = defineStore('store', {
 	state: () => ({
 		loading: {
@@ -27,6 +30,7 @@ export const useTablesStore = defineStore('store', {
 		activeRowId: null,
 		activeElementIsView: false,
 		activeContextId: null,
+		widgetTypes: [],
 		appNavCollapsed: false,
 	}),
 
@@ -497,6 +501,108 @@ export const useTablesStore = defineStore('store', {
 				throw e
 			}
 			return true
+		},
+
+		/**
+		 * Loads the widget types the first time a grid needs them.
+		 */
+		async loadWidgetTypes() {
+			if (this.widgetTypes.length > 0) {
+				return
+			}
+			widgetTypesRequest ??= axios.get(generateOcsUrl('/apps/tables/api/2/widget-types'))
+				.then(res => { this.widgetTypes = res.data.ocs.data })
+				.catch(e => displayError(e, t('tables', 'Could not load widget types.')))
+				.finally(() => { widgetTypesRequest = null })
+			await widgetTypesRequest
+		},
+
+		/**
+		 * @param {object} params parameters
+		 * @param {number} params.contextId id of the application
+		 * @return {Promise<Array|null>} the pages with their widgets, or null when loading failed
+		 */
+		async loadContextPages({ contextId }) {
+			try {
+				return (await axios.get(generateOcsUrl('/apps/tables/api/2/contexts/{contextId}/pages', { contextId }))).data.ocs.data
+			} catch (e) {
+				displayError(e, t('tables', 'Could not load the pages of the application.'))
+				return null
+			}
+		},
+
+		/**
+		 * @param {object} params parameters
+		 * @param {number} params.contextId id of the application
+		 * @param {string} params.title title of the page
+		 * @param {string|null} params.technicalName technical name of the page
+		 * @return {Promise<object|null>} the new page, or null when it could not be created
+		 */
+		async createContextPage({ contextId, title, technicalName = null }) {
+			try {
+				return (await axios.post(generateOcsUrl('/apps/tables/api/2/contexts/{contextId}/pages', { contextId }), { title, technicalName })).data.ocs.data
+			} catch (e) {
+				displayError(e, t('tables', 'Could not create the page.'))
+				return null
+			}
+		},
+
+		/**
+		 * @param {object} params parameters
+		 * @param {number} params.contextId id of the application
+		 * @param {number} params.pageId id of the page
+		 * @param {object} params.data title and technicalName to change; null keeps a value
+		 * @return {Promise<object|null>} the page, or null when it could not be changed
+		 */
+		async updateContextPage({ contextId, pageId, data }) {
+			try {
+				return (await axios.patch(generateOcsUrl('/apps/tables/api/2/contexts/{contextId}/pages/{pageId}', { contextId, pageId }), data)).data.ocs.data
+			} catch (e) {
+				displayError(e, t('tables', 'Could not change the page.'))
+				return null
+			}
+		},
+
+		/**
+		 * @param {object} params parameters
+		 * @param {number} params.contextId id of the application
+		 * @param {number} params.pageId id of the page
+		 * @return {Promise<boolean>} whether the page was deleted
+		 */
+		async deleteContextPage({ contextId, pageId }) {
+			try {
+				await axios.delete(generateOcsUrl('/apps/tables/api/2/contexts/{contextId}/pages/{pageId}', { contextId, pageId }))
+				return true
+			} catch (e) {
+				displayError(e, t('tables', 'Could not delete the page.'))
+				return false
+			}
+		},
+
+		/**
+		 * Saves the widgets of a page. A table or view that was not part of the application
+		 * becomes part of it, so the application is loaded again afterwards.
+		 *
+		 * @param {object} params parameters
+		 * @param {number} params.contextId id of the application
+		 * @param {number} params.pageId id of the page
+		 * @param {Array} params.widgets the widgets as the API takes them
+		 * @return {Promise<object|null>} the saved page, or null when saving failed
+		 */
+		async saveContextPageWidgets({ contextId, pageId, widgets }) {
+			let page
+			try {
+				page = (await axios.put(generateOcsUrl('/apps/tables/api/2/contexts/{contextId}/pages/{pageId}/widgets', { contextId, pageId }), { widgets })).data.ocs.data
+			} catch (e) {
+				displayError(e, t('tables', 'Could not save the page.'))
+				return null
+			}
+			try {
+				await this.loadContext({ id: contextId })
+			} catch {
+				// loadContext reported the error; the page itself was saved
+			}
+			return page
 		},
 
 		async getContextsTablesAndViews() {
