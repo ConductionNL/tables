@@ -20,6 +20,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Helper\PageContentHelper;
+use OCA\Tables\Helper\TechnicalNameHelper;
 use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Db\TTransactional;
 use OCP\DB\Exception;
@@ -83,15 +84,20 @@ class PageService {
 		$page->setContextId($contextId);
 		$page->setPageType(Page::TYPE_GRID);
 		$page->setTitle($this->validateTitle($title));
-		$page->setTechnicalName($this->validateTechnicalName($context, $technicalName, null));
-		$page = $this->pageMapper->insert($page);
+		$page->setTechnicalName($technicalName === null
+			? TechnicalNameHelper::unique(TechnicalNameHelper::fromText($page->getTitle() ?? ''), $this->takenTechnicalNames($context, null))
+			: $this->validateTechnicalName($context, $technicalName, null));
+		try {
+			$page = $this->pageMapper->insert($page);
+		} catch (Exception $e) {
+			throw $this->technicalNameTaken($e, (string)$page->getTechnicalName());
+		}
 
 		return $this->find($contextId, $page->getId(), $userId);
 	}
 
 	/**
-	 * Changes the title and technical name of a page. Null keeps the current value,
-	 * an empty technical name removes it.
+	 * Changes the title and technical name of a page. Null keeps the current value.
 	 *
 	 * @return TablesPage
 	 * @throws BadRequestError
@@ -108,9 +114,13 @@ class PageService {
 			$page->setTitle($this->validateTitle($title));
 		}
 		if ($technicalName !== null) {
-			$page->setTechnicalName($technicalName === '' ? null : $this->validateTechnicalName($context, $technicalName, $pageId));
+			$page->setTechnicalName($this->validateTechnicalName($context, $technicalName, $pageId));
 		}
-		$this->pageMapper->update($page);
+		try {
+			$this->pageMapper->update($page);
+		} catch (Exception $e) {
+			throw $this->technicalNameTaken($e, (string)$page->getTechnicalName());
+		}
 
 		return $this->find($contextId, $pageId, $userId);
 	}
@@ -270,7 +280,7 @@ class PageService {
 			'id' => (int)$page['id'],
 			'page_type' => (string)$page['page_type'],
 			'title' => $page['title'] ?? null,
-			'technical_name' => $page['technical_name'] ?? null,
+			'technical_name' => (string)($page['technical_name'] ?? ''),
 			'content' => $content,
 		];
 	}
@@ -287,23 +297,45 @@ class PageService {
 	}
 
 	/**
-	 * A technical name is optional, and unique within its application.
+	 * A technical name is unique within its application.
 	 *
 	 * @throws BadRequestError
 	 */
-	private function validateTechnicalName(Context $context, ?string $technicalName, ?int $pageId): ?string {
-		if ($technicalName === null) {
-			return null;
-		}
+	private function validateTechnicalName(Context $context, string $technicalName, ?int $pageId): string {
 		if (!Page::isValidTechnicalName($technicalName)) {
-			throw new BadRequestError('A technical name starts with a lowercase letter and holds only lowercase letters, digits and underscores.');
+			throw new BadRequestError('A technical name has 1 to ' . Page::TECHNICAL_NAME_MAX_LENGTH . ' characters, starts with a lowercase letter and holds only lowercase letters, digits and underscores.');
 		}
-		foreach ($context->getPages() as $id => $page) {
-			if ((int)$id !== $pageId && ($page['technical_name'] ?? null) === $technicalName) {
-				throw new BadRequestError('Another page of this application already uses the technical name ' . $technicalName . '.');
-			}
+		if (isset($this->takenTechnicalNames($context, $pageId)[$technicalName])) {
+			throw new BadRequestError('Another page of this application already uses the technical name ' . $technicalName . '.');
 		}
 		return $technicalName;
+	}
+
+	/**
+	 * A write another request beat to the same technical name is a bad request;
+	 * any other database error is passed on.
+	 */
+	private function technicalNameTaken(Exception $e, string $technicalName): BadRequestError|Exception {
+		if ($e->getReason() === Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+			return new BadRequestError('Another page of this application already uses the technical name ' . $technicalName . '.', 0, $e);
+		}
+		return $e;
+	}
+
+	/**
+	 * The technical names of the application's pages, apart from the given page.
+	 *
+	 * @return array<string, true>
+	 */
+	private function takenTechnicalNames(Context $context, ?int $pageId): array {
+		$taken = [];
+		foreach ($context->getPages() as $id => $page) {
+			$technicalName = $page['technical_name'] ?? null;
+			if ((int)$id !== $pageId && is_string($technicalName)) {
+				$taken[$technicalName] = true;
+			}
+		}
+		return $taken;
 	}
 
 	/**

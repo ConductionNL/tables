@@ -20,6 +20,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Helper\PageContentHelper;
+use OCA\Tables\Helper\TechnicalNameHelper;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\MenuItemInput;
 use OCP\AppFramework\Db\DoesNotExistException;
@@ -96,10 +97,11 @@ class ContextSchemeService {
 	/**
 	 * Brings the pages of a scheme into an application whose nodes the import already set. The
 	 * start page of the scheme fills the start page here, but only when it was arranged on the
-	 * grid; otherwise the start page keeps the content the nodes gave it. A grid page replaces the
-	 * page with the same technical name, or is added. Every grid view of an older scheme becomes a
-	 * grid page. A data widget whose table or view does not exist here, or that the importer cannot
-	 * add to the application, is left out.
+	 * grid; otherwise the start page keeps the content the nodes gave it. Every grid page, and every
+	 * grid view of an older scheme, gets a technical name: its own, else one made from its title,
+	 * unique within the scheme and apart from the start page here. It replaces the page with that
+	 * technical name, or is added. A data widget whose table or view does not exist here, or that
+	 * the importer cannot add to the application, is left out.
 	 *
 	 * @return array{pages: array<array-key, int>, gridViews: array<string, int>} the local page ids by page id in the scheme, and by grid view uuid
 	 * @throws BadRequestError|NotFoundError|PermissionError|Exception
@@ -114,14 +116,17 @@ class ContextSchemeService {
 
 		$localPages = $this->pageService->findAll($contextId, $userId);
 		$startPageId = null;
+		$reserved = [];
 		$pagesByTechnicalName = [];
 		foreach ($localPages as $page) {
 			if ($page['page_type'] === Page::TYPE_STARTPAGE) {
 				$startPageId = $page['id'];
-			} elseif ($page['technical_name'] !== null) {
+				$reserved[$page['technical_name']] = true;
+			} else {
 				$pagesByTechnicalName[$page['technical_name']] = $page['id'];
 			}
 		}
+		$technicalNames = $this->schemeTechnicalNames($scheme, $reserved);
 
 		$pageIds = [];
 		foreach ($scheme->getPages() ?? [] as $key => $page) {
@@ -142,31 +147,15 @@ class ContextSchemeService {
 				continue;
 			}
 
-			$technicalName = $page['technical_name'] ?? $page['technicalName'] ?? null;
-			$technicalName = is_string($technicalName) && Page::isValidTechnicalName($technicalName) ? $technicalName : null;
-			$title = $this->pageTitle($page['title'] ?? null, $technicalName);
-			if ($title === null) {
-				$this->logger->info('Page skipped on import, it has no title');
-				continue;
-			}
-			$pageId = $technicalName !== null ? ($pagesByTechnicalName[$technicalName] ?? null) : null;
-			if ($pageId === null) {
-				$pageId = $this->pageService->create($contextId, $title, $technicalName, $userId)['id'];
-				if ($technicalName !== null) {
-					$pagesByTechnicalName[$technicalName] = $pageId;
-				}
-			} else {
-				$this->pageService->update($contextId, $pageId, $title, null, $userId);
-			}
+			$pageId = $this->importPage($contextId, $page['title'] ?? null, $technicalNames['page:' . $key], $pagesByTechnicalName, $userId);
 			$pageIds[$sourceId] = $pageId;
 			$widgets = $this->widgetsFromContent($content, $schemeNodes, $nodeKeys, $userId);
 			$this->pageService->saveWidgets($contextId, $pageId, $widgets, $userId);
 		}
 
 		$gridViewPageIds = [];
-		foreach ($scheme->getGridViews() as $gridView) {
-			$title = $this->pageTitle($gridView['title'], null);
-			$pageId = $this->pageService->create($contextId, (string)$title, null, $userId)['id'];
+		foreach ($scheme->getGridViews() as $key => $gridView) {
+			$pageId = $this->importPage($contextId, $gridView['title'], $technicalNames['gridView:' . $key], $pagesByTechnicalName, $userId);
 			$widgets = $this->widgetsFromGridView($gridView['grid'] ?? null, $nodeKeys, $userId);
 			$this->pageService->saveWidgets($contextId, $pageId, $widgets, $userId);
 			$gridViewPageIds[$gridView['uuid']] = $pageId;
@@ -443,12 +432,58 @@ class ContextSchemeService {
 	/**
 	 * A page title from a scheme, falling back to the technical name; null when there is neither.
 	 */
-	private function pageTitle(mixed $title, ?string $technicalName): ?string {
+	private function pageTitle(mixed $title, string $technicalName): string {
 		$title = is_string($title) ? trim($title) : '';
 		if ($title === '') {
 			return $technicalName;
 		}
 		return mb_substr($title, 0, self::PAGE_TITLE_MAX_LENGTH);
+	}
+
+	/**
+	 * The local page with the technical name, renamed to the title of the scheme, or a new page.
+	 *
+	 * @param array<string, int> $pagesByTechnicalName local page ids by technical name; a new page is added
+	 * @throws BadRequestError|NotFoundError|PermissionError|Exception
+	 */
+	private function importPage(int $contextId, mixed $title, string $technicalName, array &$pagesByTechnicalName, string $userId): int {
+		$title = $this->pageTitle($title, $technicalName);
+		if (isset($pagesByTechnicalName[$technicalName])) {
+			$this->pageService->update($contextId, $pagesByTechnicalName[$technicalName], $title, null, $userId);
+			return $pagesByTechnicalName[$technicalName];
+		}
+		$pageId = $this->pageService->create($contextId, $title, $technicalName, $userId)['id'];
+		$pagesByTechnicalName[$technicalName] = $pageId;
+		return $pageId;
+	}
+
+	/**
+	 * The technical name of every grid page and grid view of a scheme, keyed `page:<key>` and
+	 * `gridView:<key>`.
+	 *
+	 * @param array<string, true> $reserved names the pages of the scheme cannot get
+	 * @return array<string, string>
+	 */
+	private function schemeTechnicalNames(ContextScheme $scheme, array $reserved): array {
+		$pages = [];
+		foreach ($scheme->getPages() ?? [] as $key => $page) {
+			if (!is_array($page) || ($page['page_type'] ?? $page['pageType'] ?? null) === Page::TYPE_STARTPAGE) {
+				continue;
+			}
+			$technicalName = $page['technical_name'] ?? $page['technicalName'] ?? null;
+			$pages['page:' . $key] = [
+				'name' => is_string($technicalName) ? $technicalName : null,
+				'fallback' => TechnicalNameHelper::pageFallback(false, is_string($page['title'] ?? null) ? $page['title'] : null),
+			];
+		}
+		foreach ($scheme->getGridViews() as $key => $gridView) {
+			$technicalName = $gridView['technicalName'] ?? $gridView['technical_name'] ?? null;
+			$pages['gridView:' . $key] = [
+				'name' => is_string($technicalName) ? $technicalName : null,
+				'fallback' => TechnicalNameHelper::pageFallback(false, $gridView['title']),
+			];
+		}
+		return TechnicalNameHelper::assign($pages, $reserved);
 	}
 
 	private function nodeKey(int $nodeType, int $nodeId): string {
