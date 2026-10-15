@@ -233,7 +233,7 @@ namespace OCA\Tables;
  *   contextId: int,
  *   label: string,
  *   icon: string|null,
- *   targetType: 'view'|'table'|'url',
+ *   targetType: 'view'|'table'|'url'|'page',
  *   targetId: int|null,
  *   url: string|null,
  *   technicalName: string,

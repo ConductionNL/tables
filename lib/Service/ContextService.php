@@ -39,6 +39,7 @@ use OCP\AppFramework\Db\TTransactional;
 use OCP\DB\Exception;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
+use OCP\IL10N;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
@@ -66,6 +67,7 @@ class ContextService {
 		private TableMapper $tableMapper,
 		private ViewMapper $viewMapper,
 		private MenuItemMapper $menuItemMapper,
+		private IL10N $l10n,
 	) {
 	}
 
@@ -154,22 +156,93 @@ class ContextService {
 				$this->insertNodesFromArray($context, $nodes);
 			}
 			$this->insertPage($context);
-			$this->replaceMenu($context, $menuItems ?? [], $ownerId);
+			$startPageId = self::startPageId($context->getPages() ?? []);
+			$menu = $menuItems ?? [];
+			if ($startPageId !== null) {
+				$menu = $this->menuWithStartPage($menu, $startPageId);
+			}
+			$this->replaceMenu($context, $menu, $ownerId);
 		}, $this->dbc);
 
 		return $context;
 	}
 
 	/**
+	 * The menu of a new application: a page item without an id opens the start page, and a
+	 * "Dashboard" item opening the start page goes first unless the menu already opens it.
+	 *
+	 * @param list<MenuItemInput> $menuItems
+	 * @return list<MenuItemInput>
+	 * @throws InvalidArgumentException
+	 */
+	private function menuWithStartPage(array $menuItems, int $startPageId): array {
+		$opensStartPage = false;
+		$taken = [];
+		foreach ($menuItems as $position => $item) {
+			if ($item->pointsAtNewStartPage()) {
+				$item = $menuItems[$position] = $item->withPageId($startPageId);
+			}
+			if ($item->getTargetType() === MenuItem::TARGET_PAGE && $item->getTargetId() === $startPageId) {
+				$opensStartPage = true;
+			}
+			if ($item->getTechnicalName() !== null) {
+				$taken[$item->getTechnicalName()] = true;
+			}
+		}
+		if ($opensStartPage) {
+			return $menuItems;
+		}
+		$dashboard = new MenuItemInput(
+			label: $this->l10n->t('Dashboard'),
+			icon: null,
+			targetType: MenuItem::TARGET_PAGE,
+			targetId: $startPageId,
+			url: null,
+			technicalName: self::uniqueTechnicalName('dashboard', $taken),
+		);
+		return [$dashboard, ...array_map(static fn (MenuItemInput $item): MenuItemInput => $item->shiftedBy(1), $menuItems)];
+	}
+
+	/**
+	 * @param array<array-key, mixed> $pages
+	 */
+	private static function startPageId(array $pages): ?int {
+		foreach ($pages as $pageId => $page) {
+			if (is_array($page) && ($page['page_type'] ?? $page['pageType'] ?? null) === Page::TYPE_STARTPAGE) {
+				return (int)$pageId;
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * @param array<string, true> $taken
+	 */
+	private static function uniqueTechnicalName(string $base, array $taken): string {
+		$technicalName = $base;
+		for ($suffix = 2; isset($taken[$technicalName]); $suffix++) {
+			$technicalName = substr($base, 0, MenuItemInput::MAX_TECHNICAL_NAME_LENGTH - 10) . '_' . $suffix;
+		}
+		return $technicalName;
+	}
+
+	/**
 	 * Replaces the menu of an application and adds the views and tables it points at
 	 * as nodes, so everyone the application is shared with can open them. Removing an
 	 * item leaves its view or table in the application: it stays a resource until it is
-	 * removed as one.
+	 * removed as one. A page item must open a page of this application; it adds no node.
 	 *
 	 * @param list<MenuItemInput> $menuItems
 	 * @throws Exception|PermissionError|InvalidArgumentException
 	 */
 	protected function replaceMenu(Context $context, array $menuItems, ?string $userId): void {
+		$pageIds = array_map(intval(...), array_keys($context->getPages() ?? []));
+		foreach ($menuItems as $item) {
+			if ($item->getTargetType() === MenuItem::TARGET_PAGE && !in_array($item->getTargetId(), $pageIds, true)) {
+				throw new InvalidArgumentException('A menu item can only open a page of its own application.');
+			}
+		}
+
 		$storedMenu = array_values(array_filter($context->getMenuItems() ?? [], is_array(...)));
 		$this->addMenuTargetsAsNodes($context, $menuItems, $storedMenu, $userId);
 
@@ -250,11 +323,7 @@ class ContextService {
 			if (isset($names[$position])) {
 				continue;
 			}
-			$base = $this->technicalNameFromLabel($item->getLabel());
-			$technicalName = $base;
-			for ($suffix = 2; isset($taken[$technicalName]); $suffix++) {
-				$technicalName = substr($base, 0, MenuItemInput::MAX_TECHNICAL_NAME_LENGTH - 10) . '_' . $suffix;
-			}
+			$technicalName = self::uniqueTechnicalName($this->technicalNameFromLabel($item->getLabel()), $taken);
 			$names[$position] = $technicalName;
 			$taken[$technicalName] = true;
 		}
@@ -345,13 +414,7 @@ class ContextService {
 		];
 
 		$pages = $context->getPages() ?? [];
-		$startPageId = null;
-		foreach ($pages as $pageId => $page) {
-			if (($page['page_type'] ?? $page['pageType'] ?? null) === Page::TYPE_STARTPAGE) {
-				$startPageId = (int)$pageId;
-				break;
-			}
-		}
+		$startPageId = self::startPageId($pages);
 
 		foreach ($missing as $key => [$nodeType, $nodeId]) {
 			$exists = isset($existing[$nodeType][$nodeId]);

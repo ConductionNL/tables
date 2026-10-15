@@ -30,6 +30,7 @@ use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\MenuItemInput;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
+use OCP\IL10N;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
@@ -66,6 +67,8 @@ final class ContextServiceTest extends TestCase {
 		$shareService = $this->createMock(ShareService::class);
 		$navigationManager = $this->createMock(INavigationManager::class);
 		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnCallback(static fn (string $text): string => 'translated ' . $text);
 
 		$this->service = new ContextService(
 			$this->contextMapper,
@@ -84,6 +87,7 @@ final class ContextServiceTest extends TestCase {
 			$this->tableMapper,
 			$this->viewMapper,
 			$this->menuItemMapper,
+			$l10n,
 		);
 	}
 
@@ -355,11 +359,177 @@ final class ContextServiceTest extends TestCase {
 
 		$created = $this->service->create('Intake portal', 'heart', ' desc ', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
 			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
-		]));
+		], allowNewStartPage: true));
 
 		$this->assertSame('desc', $created->getDescription());
-		$this->assertCount(1, $created->getMenuItems());
-		$this->assertSame('docs', $inserted[0]->getTechnicalName());
+		$this->assertCount(2, $created->getMenuItems());
+		$this->assertSame(['dashboard', 'docs'], array_map(static fn (MenuItem $item) => $item->getTechnicalName(), $inserted));
+	}
+
+	/**
+	 * @param list<MenuItem> $inserted collects the stored items
+	 */
+	private function expectCreation(int $contextId, int $startPageId, array &$inserted): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context) use ($contextId): Context {
+			$context->setId($contextId);
+			return $context;
+		});
+		$this->pageMapper->method('insert')->willReturnCallback(static function (Page $page) use ($startPageId): Page {
+			$page->setId($startPageId);
+			return $page;
+		});
+		$this->expectMenuReplacement($contextId, $inserted);
+	}
+
+	/**
+	 * @param list<MenuItem> $items
+	 * @return list<array{string, string, ?int, string, ?string}>
+	 */
+	private static function describeMenu(array $items): array {
+		return array_map(static fn (MenuItem $item): array => [
+			$item->getLabel(), $item->getTargetType(), $item->getTargetId(), $item->getTechnicalName(), $item->getIcon(),
+		], $items);
+	}
+
+	public function testCreateWithoutAMenuAddsADashboardItemForTheStartPage(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$created = $this->service->create('Intake portal', 'heart', '', [], 'user-1', 0);
+
+		$this->assertSame([['translated Dashboard', 'page', 3, 'dashboard', null]], self::describeMenu($inserted));
+		$this->assertSame(3, $created->getMenuItems()[0]['targetId']);
+	}
+
+	public function testCreatePutsTheDashboardItemFirstWithAFreeTechnicalName(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
+			['label' => 'Docs', 'url' => 'https://example.org', 'technicalName' => 'dashboard'],
+		], allowNewStartPage: true));
+
+		$this->assertSame([
+			['translated Dashboard', 'page', 3, 'dashboard_2', null],
+			['Docs', 'url', null, 'dashboard', null],
+		], self::describeMenu($inserted));
+	}
+
+	public function testCreateResolvesAPageItemWithoutAnIdToTheStartPage(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
+			['label' => 'Docs', 'url' => 'https://example.org'],
+			['label' => 'Overview', 'targetType' => 'page', 'icon' => 'home'],
+		], allowNewStartPage: true));
+
+		$this->assertSame([
+			['Docs', 'url', null, 'docs', null],
+			['Overview', 'page', 3, 'overview', 'home'],
+		], self::describeMenu($inserted));
+	}
+
+	/**
+	 * @param list<MenuItem> $items
+	 * @return array<string, ?string> the label of each item's parent, by label
+	 */
+	private static function parentLabels(array $items): array {
+		$labels = [];
+		foreach ($items as $item) {
+			$labels[$item->getId()] = $item->getLabel();
+		}
+		$parents = [];
+		foreach ($items as $item) {
+			$parents[$item->getLabel()] = $item->getParentId() === null ? null : $labels[$item->getParentId()];
+		}
+		return $parents;
+	}
+
+	public function testCreateKeepsChildrenUnderTheirParentWhenTheDashboardItemGoesFirst(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
+			['label' => 'Docs', 'url' => 'https://example.org/docs'],
+			['label' => 'Guide', 'url' => 'https://example.org/guide', 'parentIndex' => 0],
+		], allowNewStartPage: true));
+
+		$this->assertSame(['translated Dashboard' => null, 'Docs' => null, 'Guide' => 'Docs'], self::parentLabels($inserted));
+	}
+
+	public function testCreateStoresChildrenUnderTheStartPageItem(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
+			['label' => 'Overview', 'targetType' => 'page'],
+			['label' => 'Docs', 'url' => 'https://example.org/docs', 'parentIndex' => 0],
+		], allowNewStartPage: true));
+
+		$this->assertSame(['Overview' => null, 'Docs' => 'Overview'], self::parentLabels($inserted));
+		$this->assertSame([3, null], array_map(static fn (MenuItem $item) => $item->getTargetId(), $inserted));
+	}
+
+	public function testAPageOfTheApplicationIsAcceptedAndAddsNoNode(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->contextNodeRelMapper->expects($this->never())->method('insert');
+		$this->pageContentMapper->expects($this->never())->method('insert');
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Dashboard', 'targetType' => 'page', 'targetId' => 301],
+		]));
+
+		$this->assertSame([['Dashboard', 'page', 301, 'dashboard', null]], self::describeMenu($inserted));
+		$this->assertSame([], $updated->getNodes());
+	}
+
+	public function testAPageOfAnotherApplicationIsRefused(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->menuItemMapper->expects($this->never())->method('deleteAllByContextId');
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('a page of its own application');
+		$this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Elsewhere', 'targetType' => 'page', 'targetId' => 302],
+		]));
+	}
+
+	public function testUpdateRefusesAPageItemWithoutAnId(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->menuItemMapper->expects($this->never())->method('deleteAllByContextId');
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('a page of its own application');
+		$this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Dashboard', 'targetType' => 'page'],
+		], allowNewStartPage: true));
+	}
+
+	public function testUpdateAddsNoDashboardItem(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setPages([301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []]]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Docs', 'url' => 'https://example.org'],
+		]));
+
+		$this->assertSame([['Docs', 'url', null, 'docs', null]], self::describeMenu($inserted));
 	}
 
 	public function testDeleteRemovesTheMenuOfTheApplication(): void {

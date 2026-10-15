@@ -40,6 +40,7 @@ class MenuItemInputTest extends TestCase {
 			'label too long' => [['label' => str_repeat('x', 201), 'url' => 'https://example.org'], 'needs a label'],
 			'unknown target type' => [['label' => 'X', 'targetType' => 'kanban', 'targetId' => 1], 'Unexpected menu item target type'],
 			'view without id' => [['label' => 'X', 'targetType' => 'view'], 'needs its id'],
+			'page without id' => [['label' => 'X', 'targetType' => 'page'], 'needs its id'],
 			'id as a string' => [['label' => 'X', 'targetType' => 'table', 'targetId' => '4'], 'needs its id'],
 			'id of zero' => [['label' => 'X', 'targetType' => 'table', 'targetId' => 0], 'needs its id'],
 			'javascript link' => [['label' => 'X', 'url' => 'javascript:alert(1)'], 'http or https'],
@@ -95,6 +96,43 @@ class MenuItemInputTest extends TestCase {
 		$this->expectException(InvalidArgumentException::class);
 		$this->expectExceptionMessage($message);
 		MenuItemInput::createListFromInputArray($items);
+	}
+
+	public function testAPageItemWithoutAnIdOpensTheNewStartPageOnlyWhenAllowed(): void {
+		[$startPage, $page] = MenuItemInput::createListFromInputArray([
+			['label' => 'Dashboard', 'targetType' => 'page', 'technicalName' => 'home'],
+			['label' => 'Overview', 'targetType' => 'page', 'targetId' => 5],
+		], allowNewStartPage: true);
+
+		$this->assertTrue($startPage->pointsAtNewStartPage());
+		$this->assertSame(['Dashboard', null, 'page', null, null, 'home'], $this->toArray($startPage));
+		$this->assertFalse($page->pointsAtNewStartPage());
+		$this->assertSame(['Overview', null, 'page', 5, null, null], $this->toArray($page));
+
+		$resolved = $startPage->withPageId(3);
+		$this->assertFalse($resolved->pointsAtNewStartPage());
+		$this->assertSame(['Dashboard', null, 'page', 3, null, 'home'], $this->toArray($resolved));
+	}
+
+	public function testOnlyAPageItemMayLeaveOutItsIdWhenTheStartPageIsAllowed(): void {
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('needs its id');
+		MenuItemInput::createFromInputArray(['label' => 'X', 'targetType' => 'view'], allowNewStartPage: true);
+	}
+
+	public function testResolvingTheStartPageKeepsTheParentAndShiftingMovesIt(): void {
+		[, $child] = MenuItemInput::createListFromInputArray([
+			['label' => 'Cases', 'targetType' => 'table', 'targetId' => 4],
+			['label' => 'Overview', 'targetType' => 'page', 'parentIndex' => 0],
+		], allowNewStartPage: true);
+
+		$resolved = $child->withPageId(3);
+		$this->assertSame(0, $resolved->getParentIndex());
+		$this->assertSame(1, $resolved->shiftedBy(1)->getParentIndex());
+		$this->assertTrue($child->shiftedBy(1)->pointsAtNewStartPage());
+
+		$topLevel = MenuItemInput::createFromInputArray(['label' => 'Docs', 'url' => 'https://example.org']);
+		$this->assertSame($topLevel, $topLevel->shiftedBy(1));
 	}
 
 	public function testRejectsAMenuThatIsNotAList(): void {
