@@ -78,7 +78,7 @@ import { showError } from '@nextcloud/dialogs'
 import '@nextcloud/dialogs/style.css'
 import NcContextResource from '../../shared/components/ncContextResource/NcContextResource.vue'
 import MenuItemsEditor from '../../shared/components/ncContextResource/MenuItemsEditor.vue'
-import { areMenuItemsValid, toMenuItemPayload } from '../../shared/utils/menuItems.js'
+import { areMenuItemsValid, newDashboardItem, toMenuItemPayload } from '../../shared/utils/menuItems.js'
 import NcIconPicker from '../../shared/components/ncIconPicker/NcIconPicker.vue'
 import svgHelper from '../../shared/components/ncIconPicker/mixins/svgHelper.js'
 import permissionBitmask from '../../shared/components/ncContextResource/mixins/permissionBitmask.js'
@@ -118,7 +118,7 @@ export default {
 			customTitleChosen: false,
 			errorTitle: false,
 			description: '',
-			menuItems: [],
+			menuItems: [newDashboardItem(t('tables', 'Dashboard'))],
 			resources: [],
 			receivers: [],
 			showInNavigationDefault: false,
@@ -221,7 +221,7 @@ export default {
 		},
 		reset() {
 			this.title = ''
-			this.menuItems = []
+			this.menuItems = [newDashboardItem(t('tables', 'Dashboard'))]
 			this.errorTitle = false
 			this.setIcon(this.randomIcon())
 			this.customTitleChosen = false

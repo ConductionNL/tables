@@ -8,9 +8,11 @@ import {
 	canMove,
 	dragItemOver,
 	indentItem,
+	isFixedItem,
 	isValidMenuLink,
 	menuItemErrors,
 	moveItem,
+	newDashboardItem,
 	outdentItem,
 	parentOfPosition,
 	removeItem,
@@ -114,5 +116,60 @@ describe('menu items', () => {
 
 		expect(dragItemOver(items, 0, 1)).to.equal(null, 'a block cannot be dropped on its own child')
 		expect(dragItemOver(items, 2, 2)).to.equal(null)
+	})
+
+	it('keeps the dashboard item first, fixed and pointing at the new start page', () => {
+		const dashboard = newDashboardItem('Dashboard')
+		const items = [dashboard, item('A'), item('B')]
+
+		expect(isFixedItem(dashboard)).to.equal(true)
+		expect(menuItemErrors(dashboard)).to.deep.equal({ label: false, target: false, url: false })
+		expect(menuItemErrors({ ...dashboard, label: ' ' }).label).to.equal(true)
+		expect(areMenuItemsValid(items)).to.equal(true)
+
+		const payload = toMenuItemPayload({ ...dashboard, label: 'Overview' }, items)
+		expect(payload.targetType).to.equal('page')
+		expect(payload.targetId).to.equal(null)
+		expect(payload.label).to.equal('Overview')
+		expect(payload.technicalName).to.equal('dashboard')
+
+		expect(removeItem(items, 0)).to.equal(items)
+		expect(canMove(items, 0, 1)).to.equal(false)
+		expect(canMove(items, 1, -1)).to.equal(false)
+		expect(moveItem(items, 1, -1)).to.equal(items)
+		expect(canIndent(items, 0)).to.equal(false)
+		expect(dragItemOver(items, 0, 2)).to.equal(null)
+		expect(dragItemOver(items, 2, 0)).to.equal(null)
+		expect(shape(dragItemOver(items, 2, 1).items)).to.deep.equal(['dashboard', 'B', 'A'])
+	})
+
+	it('nests items under the dashboard item like under any other', () => {
+		const items = [newDashboardItem('Dashboard'), item('A')]
+
+		const nested = indentItem(items, 1)
+		expect(shape(nested)).to.deep.equal(['dashboard', 'dashboard>A'])
+		expect(toMenuItemPayload(nested[1], nested).parentIndex).to.equal(0)
+		expect(shape(outdentItem(nested, 1))).to.deep.equal(['dashboard', 'A'])
+	})
+
+	it('passes a page item from the server through as it is', () => {
+		const page = { key: 'p', label: 'Overview', icon: null, targetType: 'page', targetId: 12, url: null, technicalName: 'overview', parentKey: null }
+		const items = [page, item('A')]
+
+		expect(menuItemErrors(page)).to.deep.equal({ label: false, target: false, url: false })
+		expect(areMenuItemsValid(items)).to.equal(true)
+		expect(toMenuItemPayload(page, items)).to.deep.equal({
+			label: 'Overview',
+			icon: null,
+			targetType: 'page',
+			targetId: 12,
+			url: null,
+			technicalName: 'overview',
+			parentIndex: null,
+		})
+		expect(isFixedItem(page)).to.equal(false)
+		expect(shape(moveItem(items, 0, 1))).to.deep.equal(['A', 'p'])
+		// without an id, only the fixed dashboard item is valid
+		expect(menuItemErrors({ ...page, targetId: null }).target).to.equal(true)
 	})
 })
