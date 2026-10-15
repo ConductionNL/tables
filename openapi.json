@@ -657,8 +657,7 @@
                         "nullable": true
                     },
                     "technical_name": {
-                        "type": "string",
-                        "nullable": true
+                        "type": "string"
                     },
                     "content": {
                         "type": "array",
@@ -14956,7 +14955,7 @@
                                         "type": "string",
                                         "nullable": true,
                                         "default": null,
-                                        "description": "New technical name, null keeps it and an empty string removes it"
+                                        "description": "New technical name, unique within the application; null keeps it"
                                     }
                                 }
                             }
@@ -15678,7 +15677,7 @@
                                         "type": "string",
                                         "nullable": true,
                                         "default": null,
-                                        "description": "Name to address the page by, unique within the application"
+                                        "description": "Name to address the page by, unique within the application; null makes one from the title"
                                     }
                                 }
                             }

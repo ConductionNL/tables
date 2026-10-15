@@ -152,6 +152,17 @@ class ContextMapperTest extends DatabaseTestCase {
 		$this->assertNull($pages[$startPage->getId()]['title']);
 		$this->assertSame('Overview', $pages[$gridPage->getId()]['title']);
 		$this->assertSame('overview', $pages[$gridPage->getId()]['technical_name']);
+		$this->assertSame('dashboard', $pages[$startPage->getId()]['technical_name']);
+	}
+
+	public function testTechnicalNameIsUniqueWithinAnApplication(): void {
+		$context = $this->createContext();
+		$other = $this->createContext();
+		$this->addPage($context, Page::TYPE_GRID, 'Overview', 'overview');
+		$this->addPage($other, Page::TYPE_GRID, 'Overview', 'overview');
+
+		$this->expectException(\OCP\DB\Exception::class);
+		$this->addPage($context, Page::TYPE_GRID, 'Overview again', 'overview');
 	}
 
 	public function testFindAllReturnsEveryContextOnce(): void {
@@ -239,7 +250,7 @@ class ContextMapperTest extends DatabaseTestCase {
 		$page->setContextId($context->getId());
 		$page->setPageType($type);
 		$page->setTitle($title);
-		$page->setTechnicalName($technicalName);
+		$page->setTechnicalName($technicalName ?? ($type === Page::TYPE_STARTPAGE ? 'dashboard' : 'page_' . $type));
 		return $this->pageMapper->insert($page);
 	}
 

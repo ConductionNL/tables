@@ -289,7 +289,7 @@ namespace OCA\Tables;
  *  id: int,
  *  page_type: string,
  *  title: string|null,
- *  technical_name: string|null,
+ *  technical_name: string,
  *  content: list<TablesPageContent>,
  * }
  *
