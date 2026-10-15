@@ -27,6 +27,7 @@ use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\MenuItemInput;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
@@ -48,6 +49,7 @@ final class ContextServiceTest extends TestCase {
 	private MockObject $tableMapper;
 	private MockObject $viewMapper;
 	private MockObject $permissionsService;
+	private array $constructorArgs;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -70,7 +72,7 @@ final class ContextServiceTest extends TestCase {
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(static fn (string $text): string => 'translated ' . $text);
 
-		$this->service = new ContextService(
+		$this->constructorArgs = [
 			$this->contextMapper,
 			$this->contextNodeRelMapper,
 			$this->pageMapper,
@@ -88,7 +90,106 @@ final class ContextServiceTest extends TestCase {
 			$this->viewMapper,
 			$this->menuItemMapper,
 			$l10n,
-		);
+		];
+		$this->service = new ContextService(...$this->constructorArgs);
+	}
+
+	/**
+	 * A service whose updates, scheme service and table services are mocked, to follow an import.
+	 *
+	 * @param list<string> $calls collects the steps of the import in order
+	 */
+	private function importingService(ContextSchemeService&MockObject $schemeService, array &$calls): ContextService&MockObject {
+		$service = $this->getMockBuilder(ContextService::class)
+			->setConstructorArgs($this->constructorArgs)
+			->onlyMethods(['update', 'contextSchemeService', 'tableService', 'viewService', 'columnService'])
+			->getMock();
+		$service->method('contextSchemeService')->willReturn($schemeService);
+		$service->method('tableService')->willReturn($this->createMock(TableService::class));
+		$service->method('viewService')->willReturn($this->createMock(ViewService::class));
+		$service->method('columnService')->willReturn($this->createMock(ColumnService::class));
+		$service->method('update')->willReturnCallback(function (int $contextId, string $userId, ?string $name, ?string $icon, ?string $description, ?array $nodes, ?array $menuItems = null) use (&$calls): Context {
+			$calls[] = $nodes !== null ? 'nodes:' . json_encode(array_column($nodes, 'id')) : 'menu:' . count($menuItems ?? []);
+			return $this->contextWithMenu($contextId, []);
+		});
+		$this->contextMapper->method('findById')->willReturnCallback(fn (int $id): Context => $this->contextWithMenu($id, []));
+		return $service;
+	}
+
+	private function scheme(array $nodes, ?array $pages, ?array $menuItems, array $gridViews = []): ContextScheme {
+		return new ContextScheme('Intake', 'star', '', $nodes, $pages, ['addTables' => [], 'modifyTables' => []], $menuItems, $gridViews);
+	}
+
+	public function testImportSetsTheNodesThenThePagesThenTheMenu(): void {
+		$calls = [];
+		$schemeService = $this->createMock(ContextSchemeService::class);
+		$schemeService->expects($this->once())->method('importPages')->willReturnCallback(static function () use (&$calls): array {
+			$calls[] = 'pages';
+			return ['pages' => [3 => 30], 'gridViews' => ['grid-1' => 31]];
+		});
+		$schemeService->expects($this->once())->method('resolveMenuItems')
+			->with([['label' => 'Home']], 'user-1', [3 => 30], ['grid-1' => 31])
+			->willReturn([MenuItemInput::createFromInputArray(['label' => 'Home', 'targetType' => 'page', 'targetId' => 30])]);
+		$table = new Table();
+		$table->setId(5);
+		$this->tableMapper->method('findByUuid')->with('table-uuid')->willReturn($table);
+		$service = $this->importingService($schemeService, $calls);
+
+		$service->importScheme(7, $this->scheme(
+			[
+				['id' => 70, 'node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'table-uuid', 'permissions' => 1],
+				['id' => 71, 'node_type' => Application::NODE_TYPE_VIEW, 'node_uuid' => 'grid-1', 'permissions' => 1],
+			],
+			[['id' => 3, 'page_type' => 'startpage', 'content' => []]],
+			[['label' => 'Home']],
+			[['uuid' => 'grid-1', 'title' => 'Old page']],
+		), 'user-1');
+
+		// The grid view node is no node any more: it became a page
+		$this->assertSame(['nodes:[5]', 'pages', 'menu:1'], $calls);
+	}
+
+	public function testImportOfASchemeWithoutPagesOrMenuLeavesBothAlone(): void {
+		$calls = [];
+		$schemeService = $this->createMock(ContextSchemeService::class);
+		$schemeService->expects($this->never())->method('importPages');
+		$schemeService->expects($this->never())->method('resolveMenuItems');
+		$service = $this->importingService($schemeService, $calls);
+
+		$service->importScheme(7, $this->scheme([], null, null), 'user-1');
+
+		$this->assertSame(['nodes:[]'], $calls);
+	}
+
+	public function testImportOfAnEmptyMenuClearsTheMenu(): void {
+		$calls = [];
+		$schemeService = $this->createMock(ContextSchemeService::class);
+		$schemeService->method('resolveMenuItems')->with([])->willReturn([]);
+		$service = $this->importingService($schemeService, $calls);
+
+		$service->importScheme(7, $this->scheme([], null, []), 'user-1');
+
+		$this->assertSame(['nodes:[]', 'menu:0'], $calls);
+	}
+
+	public function testExportCarriesThePagesAndTheMenu(): void {
+		$context = $this->contextWithMenu(7, []);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$schemeService = $this->createMock(ContextSchemeService::class);
+		$schemeService->method('exportPages')->with(7, 'user-1')->willReturn([['id' => 3, 'page_type' => 'startpage', 'content' => []]]);
+		$schemeService->method('exportMenuItems')->with($context)->willReturn([['label' => 'Home', 'targetType' => 'page', 'targetPageId' => 3]]);
+		$service = $this->getMockBuilder(ContextService::class)
+			->setConstructorArgs($this->constructorArgs)
+			->onlyMethods(['contextSchemeService', 'tableService', 'viewService'])
+			->getMock();
+		$service->method('contextSchemeService')->willReturn($schemeService);
+		$service->method('tableService')->willReturn($this->createMock(TableService::class));
+		$service->method('viewService')->willReturn($this->createMock(ViewService::class));
+
+		$scheme = $service->getScheme(7, 'user-1')->jsonSerialize();
+
+		$this->assertSame([['id' => 3, 'page_type' => 'startpage', 'content' => []]], $scheme['pages']);
+		$this->assertSame([['label' => 'Home', 'targetType' => 'page', 'targetPageId' => 3]], $scheme['menuItems']);
 	}
 
 	private function contextWithMenu(int $id, array $menuItems): Context {

@@ -7703,6 +7703,36 @@ export interface operations {
                         readonly addTables: readonly components["schemas"]["Table"][];
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
+                    /**
+                     * @description Menu of the context: tables and views by uuid, pages by their id in the scheme, parents by technical name; leave it out to keep the current menu
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url" | "page";
+                        readonly targetUuid?: string;
+                        /** Format: int64 */
+                        readonly targetPageId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                        readonly parentTechnicalName?: string;
+                    }[] | null;
+                    /**
+                     * @description Pages of the context with their widgets (a scheme of an older version keys them by id); data widgets name their node by its id in the nodes; leave it out to keep the current pages
+                     * @default null
+                     */
+                    readonly pages?: readonly {
+                        readonly [key: string]: Record<string, never>;
+                    }[] | null;
+                    /**
+                     * @description Views without a table from a scheme of an older version; each becomes a page
+                     * @default []
+                     */
+                    readonly gridViews?: readonly {
+                        readonly [key: string]: Record<string, never>;
+                    }[];
                 };
             };
         };

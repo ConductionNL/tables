@@ -13831,6 +13831,75 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "menuItems": {
+                                        "type": "array",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Menu of the context: tables and views by uuid, pages by their id in the scheme, parents by technical name; leave it out to keep the current menu",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "label",
+                                                "targetType"
+                                            ],
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string"
+                                                },
+                                                "icon": {
+                                                    "type": "string"
+                                                },
+                                                "targetType": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "view",
+                                                        "table",
+                                                        "url",
+                                                        "page"
+                                                    ]
+                                                },
+                                                "targetUuid": {
+                                                    "type": "string"
+                                                },
+                                                "targetPageId": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
+                                                },
+                                                "parentTechnicalName": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "pages": {
+                                        "type": "array",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Pages of the context with their widgets (a scheme of an older version keys them by id); data widgets name their node by its id in the nodes; leave it out to keep the current pages",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "gridViews": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Views without a table from a scheme of an older version; each becomes a page",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object"
+                                            }
+                                        }
                                     }
                                 }
                             }
