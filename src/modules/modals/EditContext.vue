@@ -34,7 +34,13 @@
 				<div class="col-4">
 					{{ t('tables', 'Resources') }}
 				</div>
-				<NcContextResource v-model:resources="resources" v-model:receivers="receivers" />
+				<NcContextResource v-model:resources="resources" v-model:receivers="receivers" :sortable="false" />
+				<NcButton variant="tertiary" data-cy="editContextArrangeStartPage" @click="arrangeStartPage">
+					<template #icon>
+						<ViewDashboardEditOutline :size="20" />
+					</template>
+					{{ t('tables', 'Arrange the dashboard') }}
+				</NcButton>
 			</div>
 			<div class="row space-T">
 				<NcActionCheckbox :model-value="showInNavigationDefault" @change="changeDisplayMode">
@@ -69,6 +75,7 @@
 
 <script>
 import { NcDialog, NcButton, NcIconSvgWrapper, NcActionCheckbox } from '@nextcloud/vue'
+import ViewDashboardEditOutline from 'vue-material-design-icons/ViewDashboardEditOutline.vue'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import { getCurrentUser } from '@nextcloud/auth'
 import '@nextcloud/dialogs/style.css'
@@ -91,6 +98,7 @@ export default {
 		NcIconSvgWrapper,
 		NcContextResource,
 		NcActionCheckbox,
+		ViewDashboardEditOutline,
 	},
 	mixins: [svgHelper, permissionBitmask, permissionsMixin],
 	props: {
@@ -232,41 +240,55 @@ export default {
 		getPermissionFromBitmask(bitmask, permission) {
 			return !!(bitmask & permission)
 		},
+		/**
+		 * Every table and view of the application: those on the start page in its order first,
+		 * then the ones that are only on other pages.
+		 *
+		 * @param {object} context the application
+		 * @return {Array} the resources
+		 */
 		getContextResources(context) {
 			const resources = []
-			if (context && context.pages) {
-				const pages = Object.values(context.pages)
-				const startPage = pages.find(p => p.page_type === 'startpage')
+			if (!context?.nodes) {
+				return resources
+			}
+			const startPage = Object.values(context.pages ?? {}).find(p => p.page_type === 'startpage')
+			const startPageOrder = Object.values(startPage?.content ?? {})
+				.sort((a, b) => a.order - b.order)
+				.map(content => content.node_rel_id)
+			const relIds = [...new Set([...startPageOrder, ...Object.keys(context.nodes).map(id => parseInt(id))])]
 
-				if (startPage && startPage.content) {
-					const sortedContent = Object.values(startPage.content).sort((a, b) => a.order - b.order)
+			for (const relId of relIds) {
+				const node = context.nodes[relId]
+				if (!node) continue
 
-					for (const content of sortedContent) {
-						const node = context.nodes[content.node_rel_id]
-						if (!node) continue
-
-						if (parseInt(node.node_type) === NODE_TYPE_TABLE || parseInt(node.node_type) === NODE_TYPE_VIEW) {
-							const element = parseInt(node.node_type) === NODE_TYPE_TABLE ? this.tables.find(t => t.id === node.node_id) : this.views.find(v => v.id === node.node_id)
-							if (element) {
-								const elementKey = parseInt(node.node_type) === NODE_TYPE_TABLE ? 'table-' : 'view-'
-								const resource = {
-									title: element.title,
-									emoji: element.emoji,
-									key: `${elementKey}` + element.id,
-									nodeType: parseInt(node.node_type) === NODE_TYPE_TABLE ? NODE_TYPE_TABLE : NODE_TYPE_VIEW,
-									id: (element.id).toString(),
-									permissionRead: this.getPermissionFromBitmask(node.permissions, PERMISSION_READ),
-									permissionCreate: this.getPermissionFromBitmask(node.permissions, PERMISSION_CREATE),
-									permissionUpdate: this.getPermissionFromBitmask(node.permissions, PERMISSION_UPDATE),
-									permissionDelete: this.getPermissionFromBitmask(node.permissions, PERMISSION_DELETE),
-								}
-								resources.push(resource)
-							}
-						}
+				if (parseInt(node.node_type) === NODE_TYPE_TABLE || parseInt(node.node_type) === NODE_TYPE_VIEW) {
+					const element = parseInt(node.node_type) === NODE_TYPE_TABLE ? this.tables.find(t => t.id === node.node_id) : this.views.find(v => v.id === node.node_id)
+					if (element) {
+						const elementKey = parseInt(node.node_type) === NODE_TYPE_TABLE ? 'table-' : 'view-'
+						resources.push({
+							title: element.title,
+							emoji: element.emoji,
+							key: `${elementKey}` + element.id,
+							nodeType: parseInt(node.node_type) === NODE_TYPE_TABLE ? NODE_TYPE_TABLE : NODE_TYPE_VIEW,
+							id: (element.id).toString(),
+							permissionRead: this.getPermissionFromBitmask(node.permissions, PERMISSION_READ),
+							permissionCreate: this.getPermissionFromBitmask(node.permissions, PERMISSION_CREATE),
+							permissionUpdate: this.getPermissionFromBitmask(node.permissions, PERMISSION_UPDATE),
+							permissionDelete: this.getPermissionFromBitmask(node.permissions, PERMISSION_DELETE),
+						})
 					}
 				}
 			}
 			return resources
+		},
+		/**
+		 * Closes the dialog and opens the dashboard of the application in edit mode.
+		 */
+		async arrangeStartPage() {
+			const contextId = this.contextId
+			this.actionCancel()
+			await this.$router.push({ path: '/application/' + contextId, query: { edit: '1' } }).catch(err => err)
 		},
 		async actionDeleteContext() {
 			this.prepareDeleteContext = false

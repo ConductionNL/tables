@@ -314,6 +314,32 @@ final class ContextServiceTest extends TestCase {
 		self::assertNull($content->getGridY());
 	}
 
+	public function testUpdateKeepsTheOrderOfAStartPageArrangedOnTheGrid(): void {
+		$context = new Context();
+		$context->id = 7;
+		$context->setNodes([
+			101 => ['id' => 101, 'node_type' => 0, 'node_id' => 11, 'permissions' => 1],
+			102 => ['id' => 102, 'node_type' => 0, 'node_id' => 12, 'permissions' => 1],
+		]);
+		$context->setPages([
+			301 => ['id' => 301, 'page_type' => Page::TYPE_STARTPAGE, 'content' => [
+				500 => ['id' => 500, 'node_rel_id' => null, 'type' => 'header', 'order' => 10, 'grid_x' => 0, 'grid_y' => 0, 'grid_width' => 12, 'grid_height' => 2],
+				501 => ['id' => 501, 'node_rel_id' => 101, 'type' => 'data', 'order' => 20, 'grid_x' => 0, 'grid_y' => 2, 'grid_width' => 6, 'grid_height' => 5],
+				502 => ['id' => 502, 'node_rel_id' => 102, 'type' => 'data', 'order' => 30, 'grid_x' => 6, 'grid_y' => 2, 'grid_width' => 6, 'grid_height' => 5],
+			]],
+		]);
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->pageContentMapper->expects($this->never())->method('update');
+
+		$updated = $this->service->update(7, 'user-1', 'Renamed', null, null, [
+			['id' => 11, 'type' => 0, 'permissions' => 1],
+			['id' => 12, 'type' => 0, 'permissions' => 1],
+		]);
+
+		self::assertSame(20, $updated->getPages()[301]['content'][501]['order']);
+	}
+
 	private function buildPageContent(int $id, int $pageId, int $nodeRelId, int $order): PageContent {
 		$pageContent = new PageContent();
 		$pageContent->id = $id;

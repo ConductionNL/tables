@@ -6,7 +6,7 @@
 	<div>
 		<div>
 			<ResourceForm :resources="localResources" data-cy="contextResourceForm" @add="addResource" />
-			<ResourceList :resources="localResources" data-cy="contextResourceList" @remove="removeResource"
+			<ResourceList :resources="localResources" :sortable="sortable" data-cy="contextResourceList" @remove="removeResource"
 				@update:resources="updateOrder" />
 			<ResourceSharees :select-users="true" :select-groups="true" :receivers="localReceivers"
 				data-cy="contextResourceShare" @update="updateReceivers" />
@@ -46,6 +46,10 @@ export default {
 		receivers: {
 			type: Array,
 			default: () => ([]),
+		},
+		sortable: {
+			type: Boolean,
+			default: true,
 		},
 	},
 

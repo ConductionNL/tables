@@ -259,7 +259,9 @@ class ContextService {
 				}
 			}
 
-			if ($startPageId !== null && isset($currentPages[$startPageId]['content'])) {
+			// a start page arranged on the grid takes its order from the positions
+			if ($startPageId !== null && isset($currentPages[$startPageId]['content'])
+				&& !$this->hasPositionedContent($currentPages[$startPageId]['content'])) {
 				$nodeTypeIdToRelId = [];
 				foreach ($currentNodes as $relId => $nodeData) {
 					$key = sprintf('t%di%d', $nodeData['node_type'], $nodeData['node_id']);
@@ -308,6 +310,18 @@ class ContextService {
 		}
 
 		return $context;
+	}
+
+	/**
+	 * @param array<array-key, array<string, mixed>> $content
+	 */
+	private function hasPositionedContent(array $content): bool {
+		foreach ($content as $entry) {
+			if (($entry['grid_y'] ?? $entry['gridY'] ?? null) !== null) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

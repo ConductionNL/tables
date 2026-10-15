@@ -19,6 +19,8 @@
 				:view-setting="viewSetting"
 				@create-column="createColumn"
 				@import="openImportModal"
+				@download-csv="downloadCSV(rows)"
+				@download-filtered-csv="filteredRows => downloadCSV(filteredRows)"
 				@update:view-setting="setting => viewSetting = setting" />
 			<TableWrapper v-else
 				:table="element"
@@ -27,6 +29,9 @@
 				:view-setting="viewSetting"
 				@create-column="createColumn"
 				@import="openImportModal"
+				@import-scheme="openImportSchemeModal"
+				@download-csv="downloadCSV(rows)"
+				@download-filtered-csv="filteredRows => downloadCSV(filteredRows)"
 				@update:view-setting="setting => viewSetting = setting" />
 		</template>
 	</div>
@@ -36,6 +41,8 @@
 import { NcLoadingIcon } from '@nextcloud/vue'
 import { mapActions, mapState, storeToRefs } from 'pinia'
 import { emit } from '@nextcloud/event-bus'
+import { showError } from '@nextcloud/dialogs'
+import exportTableMixin from '../../../shared/components/ncTable/mixins/exportTableMixin.js'
 import TableWrapper from '../../main/sections/TableWrapper.vue'
 import CustomView from '../../main/sections/View.vue'
 import { useTablesStore } from '../../../store/store.js'
@@ -52,6 +59,7 @@ export default {
 		TableWrapper,
 		CustomView,
 	},
+	mixins: [exportTableMixin],
 	props: {
 		// The table or view to show, as {type: 'table'|'view', id}; null when the widget has none
 		target: {
@@ -115,7 +123,7 @@ export default {
 		this.load()
 	},
 	methods: {
-		...mapActions(useTablesStore, ['loadContextTable', 'loadContextView']),
+		...mapActions(useTablesStore, ['loadContextTable', 'loadContextView', 'validateExportAccess']),
 		...mapActions(useDataStore, ['loadColumnsFromBE', 'loadRowsFromBE', 'loadRelationsFromBE']),
 		/**
 		 * Loads the table or view with its columns, rows and relations.
@@ -159,6 +167,27 @@ export default {
 		 */
 		createColumn() {
 			emit('tables:column:create', { isView: this.isView, element: this.element })
+		},
+		/**
+		 * Downloads the given rows as CSV, once the server confirms the access is still there.
+		 *
+		 * @param {Array} rows the rows to export
+		 */
+		async downloadCSV(rows) {
+			const access = await this.validateExportAccess({ id: this.element.id, isView: this.isView })
+			if (!access?.ok) {
+				if (access?.reason === 'NO_ACCESS') {
+					showError(t('tables', 'Your access was revoked. Reload the page to update your permissions.'))
+				}
+				return
+			}
+			this.downloadCsv(rows, this.columns, this.element.title)
+		},
+		/**
+		 * Asks the app to open the scheme import dialog for the shown table.
+		 */
+		openImportSchemeModal() {
+			emit('tables:modal:table-scheme-import', { table: this.element })
 		},
 		/**
 		 * Asks the app to open the import dialog for the shown table or view.
