@@ -132,6 +132,55 @@ test.describe('Applications', () => {
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 30000 })
 	})
 
+	test('The overview lists the tables the application uses, its members and its counts', async ({ userPage: { page, user } }) => {
+		const requests = await (await ocsRequest(page.request, user, { method: 'POST', url: '/index.php/apps/tables/api/1/tables', data: { title: 'Requests' } })).json()
+		const invoices = await (await ocsRequest(page.request, user, { method: 'POST', url: '/index.php/apps/tables/api/1/tables', data: { title: 'Invoices' } })).json()
+		const contextResponse = await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: `${API}/contexts?format=json`,
+			data: {
+				name: 'used tables application',
+				iconName: 'star',
+				menuItems: [
+					{ label: 'All requests', targetType: 'table', targetId: requests.id },
+					{ label: 'Docs', targetType: 'url', url: 'https://docs.nextcloud.com' },
+				],
+			},
+		})
+		const context = (await contextResponse.json()).ocs.data
+		// A data widget on a grid page adds its table to the application
+		const billingPageId = (await (await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts/${context.id}/pages?format=json`, data: { title: 'Billing' } })).json()).ocs.data.id
+		await ocsRequest(page.request, user, {
+			method: 'PATCH',
+			url: `${API}/contexts/${context.id}/pages/${billingPageId}?format=json`,
+			data: { widgets: [{ type: 'data', gridX: 0, gridY: 0, gridWidth: 12, gridHeight: 5, source: { nodeType: 0, nodeId: invoices.id } }] },
+		})
+
+		await page.goto(`/index.php/apps/tables/#/application/${context.id}/overview`)
+
+		const stats = page.locator('[data-cy="context-stats"]')
+		await expect(stats).toContainText('2 pages')
+		await expect(stats).toContainText('2 tables')
+		await expect(stats).toContainText('1 member')
+		await expect(page.locator('[data-cy="context-table-row"]').filter({ hasText: 'Requests' })).toContainText('All requests')
+		await expect(page.locator('[data-cy="context-table-row"]').filter({ hasText: 'Invoices' })).toContainText('Billing')
+		await expect(page.locator('[data-cy="context-members-list"]')).toContainText('Owner')
+	})
+
+	test('An application with many pages gets a filter for them', async ({ userPage: { page, user } }) => {
+		const contextId = await createEmptyApplication(page.request, user, 'many pages application')
+		for (const title of ['Intake', 'Planning', 'Reports', 'Archive', 'Invoices', 'Contacts', 'Settings']) {
+			await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts/${contextId}/pages?format=json`, data: { title } })
+		}
+
+		await page.goto(`/index.php/apps/tables/#/application/${contextId}/overview`)
+		await expect(page.locator('[data-cy="page-card"]')).toHaveCount(8)
+		await page.getByRole('textbox', { name: 'Filter pages' }).fill('voic')
+
+		await expect(page.locator('[data-cy="page-card"]')).toHaveCount(1)
+		await expect(page.locator('[data-cy="page-card"]')).toContainText('Invoices')
+	})
+
 	test('The overview lists the pages; a page added there gets a menu entry and opens in edit mode', async ({ userPage: { page, user } }) => {
 		const contextResponse = await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts?format=json`, data: { name: 'overview application', iconName: 'star' } })
 		const contextId = (await contextResponse.json()).ocs.data.id
