@@ -628,7 +628,10 @@ class ContextService {
 	public function delete(int $contextId, string $userId): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
 
-		$this->atomic(function () use ($context): void {
+		// The application goes first, so the transaction holds the write lock before it reads: on
+		// SQLite a transaction that reads first fails at once when another request writes meanwhile
+		$this->atomicRetry(function () use ($context): void {
+			$this->contextMapper->delete($context);
 			$this->shareService->deleteAllForContext($context);
 			$this->menuItemMapper->deleteAllByContextId($context->getId());
 			$this->contextNodeRelMapper->deleteAllByContextId($context->getId());
@@ -637,7 +640,6 @@ class ContextService {
 				$this->pageContentMapper->deleteByPageId($pageId);
 				$this->pageMapper->deleteByPageId($pageId);
 			}
-			$this->contextMapper->delete($context);
 		}, $this->dbc);
 		return $context;
 	}
