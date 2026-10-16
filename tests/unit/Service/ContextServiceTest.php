@@ -156,6 +156,48 @@ final class ContextServiceTest extends TestCase {
 		$this->assertSame('Welcome table!', $updated->getMenuItems()[1]['label']);
 	}
 
+	public function testUpdateStoresAChildUnderItsParentAndKeepsTheOrder(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->expectExistingTargets([6 => new View()], [4 => new Table()]);
+		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$relations = [];
+		$this->expectNodeInsertion($relations);
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, MenuItemInput::createListFromInputArray([
+			['label' => 'Cases', 'targetType' => 'table', 'targetId' => 4],
+			['label' => 'Open cases', 'targetType' => 'view', 'targetId' => 6, 'parentIndex' => 0],
+			['label' => 'Docs', 'targetType' => 'url', 'url' => 'https://example.org'],
+		]));
+
+		$byLabel = [];
+		foreach ($inserted as $item) {
+			$byLabel[$item->getLabel()] = $item;
+		}
+		$this->assertNull($byLabel['Cases']->getParentId());
+		$this->assertSame($byLabel['Cases']->getId(), $byLabel['Open cases']->getParentId());
+		$this->assertSame([10, 20, 30], [$byLabel['Cases']->getOrder(), $byLabel['Open cases']->getOrder(), $byLabel['Docs']->getOrder()]);
+		$this->assertCount(3, $updated->getMenuItems());
+	}
+
+	public function testReplaceMenuRefusesAChildUnderAChild(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$inserted = [];
+		$this->expectMenuReplacement(7, $inserted);
+
+		// built without createListFromInputArray, which already refuses this, to reach the service's own guard
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('top-level');
+		$this->service->update(7, 'user-1', null, null, null, null, [
+			new MenuItemInput('A', null, 'url', null, 'https://a.example', null),
+			new MenuItemInput('B', null, 'url', null, 'https://b.example', null, 0),
+			new MenuItemInput('C', null, 'url', null, 'https://c.example', null, 1),
+		]);
+	}
+
 	public function testMenuTargetsBecomeNodesSoRecipientsCanOpenThem(): void {
 		$context = $this->contextWithMenu(7, []);
 		$context->setNodes([101 => ['id' => 101, 'node_id' => 4, 'node_type' => Application::NODE_TYPE_TABLE, 'permissions' => 1]]);
@@ -397,6 +439,47 @@ final class ContextServiceTest extends TestCase {
 			['Docs', 'url', null, 'docs', null],
 			['Overview', 'page', 3, 'overview', 'home'],
 		], self::describeMenu($inserted));
+	}
+
+	/**
+	 * @param list<MenuItem> $items
+	 * @return array<string, ?string> the label of each item's parent, by label
+	 */
+	private static function parentLabels(array $items): array {
+		$labels = [];
+		foreach ($items as $item) {
+			$labels[$item->getId()] = $item->getLabel();
+		}
+		$parents = [];
+		foreach ($items as $item) {
+			$parents[$item->getLabel()] = $item->getParentId() === null ? null : $labels[$item->getParentId()];
+		}
+		return $parents;
+	}
+
+	public function testCreateKeepsChildrenOfASubmittedMenuUnderTheirParent(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
+			['label' => 'Docs', 'url' => 'https://example.org/docs'],
+			['label' => 'Guide', 'url' => 'https://example.org/guide', 'parentIndex' => 0],
+		], allowNewStartPage: true));
+
+		$this->assertSame(['Docs' => null, 'Guide' => 'Docs'], self::parentLabels($inserted));
+	}
+
+	public function testCreateStoresChildrenUnderTheStartPageItem(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
+			['label' => 'Overview', 'targetType' => 'page'],
+			['label' => 'Docs', 'url' => 'https://example.org/docs', 'parentIndex' => 0],
+		], allowNewStartPage: true));
+
+		$this->assertSame(['Overview' => null, 'Docs' => 'Overview'], self::parentLabels($inserted));
+		$this->assertSame([3, null], array_map(static fn (MenuItem $item) => $item->getTargetId(), $inserted));
 	}
 
 	public function testAPageOfTheApplicationIsAcceptedAndAddsNoNode(): void {
