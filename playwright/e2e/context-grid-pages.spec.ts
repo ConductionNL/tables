@@ -204,6 +204,43 @@ test.describe('Grid pages of an application', () => {
 		expect((await renamed).status()).toBe(400)
 	})
 
+	test('Widgets on the start page show above its tables', async ({ userPage: { page, user }, browser, baseURL, request }) => {
+		const sharee = await createRandomUser(request)
+		const table = await createTableViaApi(page.request, user, 'grid start table')
+		const contextId = await createApplicationViaApi(page.request, user, 'grid start app', [table])
+		await ocsRequest(page.request, user, {
+			method: 'POST',
+			url: '/index.php/apps/tables/api/1/shares',
+			data: { nodeId: contextId, nodeType: 'context', receiver: sharee.userId, receiverType: 'user', permissionRead: true, displayMode: 2 },
+		})
+		await openApplication(page, contextId)
+		await expect(page.locator('h1', { hasText: 'grid start table' })).toBeVisible({ timeout: 30000 })
+		await expect(page.locator('[data-cy="startPageGrid"] [data-cy="gridItem"]')).toHaveCount(0)
+
+		await page.locator('[data-cy="startPageGrid"] [data-cy="gridPageEdit"]').click()
+		await page.locator('[data-cy="gridPageAddWidget"]').click()
+		await page.locator('[data-cy="widgetFieldHeading"] input').fill('Team dashboard')
+		await page.locator('[data-cy="addWidgetSubmit"]').click()
+		const saved = page.waitForResponse(r => /\/pages\/\d+/.test(r.url()) && r.request().method() === 'PATCH')
+		await page.locator('[data-cy="gridPageSave"]').click()
+		expect((await saved).ok()).toBe(true)
+
+		await page.reload()
+		const header = page.getByText('Team dashboard')
+		const tableHeading = page.locator('h1', { hasText: 'grid start table' })
+		await expect(header).toBeVisible({ timeout: 30000 })
+		await expect(tableHeading).toBeVisible({ timeout: 30000 })
+		expect((await header.boundingBox())!.y).toBeLessThan((await tableHeading.boundingBox())!.y)
+
+		const shareeContext = await browser.newContext({ baseURL, viewport: { width: 1600, height: 1000 } })
+		const shareePage = await shareeContext.newPage()
+		await login(shareePage, sharee)
+		await openApplication(shareePage, contextId)
+		await expect(shareePage.getByText('Team dashboard')).toBeVisible({ timeout: 30000 })
+		await expect(shareePage.locator('[data-cy="gridPageEdit"]')).toHaveCount(0)
+		await shareeContext.close()
+	})
+
 	test('A table removed from the application leaves its widget asking for a new one', async ({ userPage: { page, user } }) => {
 		const table = await createTableViaApi(page.request, user, 'grid removed table')
 		const contextId = await createApplicationViaApi(page.request, user, 'grid removal app', [table])

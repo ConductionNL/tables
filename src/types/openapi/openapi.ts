@@ -914,7 +914,7 @@ export type paths = {
         readonly head?: never;
         /**
          * [api v2] Change a page or its widgets
-         * @description Fields left out keep their value; an empty emoji or description removes it. When `widgets` is given, the widgets of the grid page are made to match it in one transaction: listed widgets with an `id` are updated, listed widgets without one are added and widgets that are not listed are deleted.
+         * @description Fields left out keep their value; an empty emoji or description removes it. When `widgets` is given, the widgets of the page are made to match it in one transaction: listed widgets with an `id` are updated, listed widgets without one are added and widgets that are not listed are deleted. On the start page the widgets are shown above its tables and views.
          *     A widget has a `type`, an optional `title`, `gridX`, `gridY`, `gridWidth` and `gridHeight` on a grid of 12 columns and `settings` following the schema of its type. A widget of a type with a source has a `source`: `{nodeRelId}` of a table or view of this application, `{nodeType, nodeId}` of a table or view the user manages, which is added to the application, or null.
          */
         readonly patch: operations["context_page-update"];
