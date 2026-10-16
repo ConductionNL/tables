@@ -6,8 +6,30 @@
 	<div class="row main-context-view">
 		<div v-if="loading" class="icon-loading" />
 
-		<div v-else-if="activeContext">
-			<div class="content context">
+		<div v-else-if="activeContext" :class="{ 'context--standalone': isStandalone }">
+			<div v-if="isMenuRoute && !isStandalone" class="context__breadcrumb" data-cy="context-breadcrumb">
+				<NcButton variant="tertiary" data-cy="context-menu-overview" @click="openRoute('/application/' + activeContext.id)">
+					<template #icon>
+						<ChevronLeft :size="20" />
+					</template>
+					{{ activeContext.name }}
+				</NcButton>
+				<span class="context__breadcrumb-separator" aria-hidden="true">/</span>
+				<span class="context__breadcrumb-current">{{ selectedMenuItem ? selectedMenuItem.label : $route.params.itemName }}</span>
+				<NcButton variant="secondary"
+					:href="applicationUrl"
+					target="_blank"
+					rel="noopener"
+					class="context__breadcrumb-open"
+					data-cy="context-open-application">
+					<template #icon>
+						<OpenInNew :size="20" />
+					</template>
+					{{ t('tables', 'Open application') }}
+				</NcButton>
+			</div>
+
+			<div v-if="!isMenuRoute && !isStandalone" class="content context">
 				<div class="row first-row">
 					<h1 class="context__title" data-cy="context-title">
 						<NcIconSvgWrapper :svg="icon" :size="32" style="display: inline-block;" />&nbsp; {{
@@ -23,7 +45,16 @@
 					@add-page="openPageForm(null)" />
 			</div>
 
-			<template v-if="activePageId !== null">
+			<div v-if="isMenuRoute && !menuTarget" class="context__menu-target">
+				<NcEmptyContent :name="t('tables', 'This menu item points at nothing')"
+					:description="t('tables', 'The page, view or table it opened no longer exists, or you have no access to it.')"
+					data-cy="context-menu-target-missing" />
+			</div>
+			<div v-else-if="menuTarget && menuTarget.data" class="context__menu-target" data-cy="context-menu-target">
+				<DataWidget :key="menuTarget.data.type + '-' + menuTarget.data.id" :target="menuTarget.data" />
+			</div>
+
+			<template v-else-if="activePageId !== null">
 				<GridPage v-if="activePage"
 					:key="activePage.id"
 					:context="activeContext"
@@ -36,7 +67,7 @@
 				<ErrorMessage v-else :message="t('tables', 'This page could not be found')" />
 			</template>
 
-			<GridPage v-else-if="startPage"
+			<GridPage v-else-if="showsStartPage && startPage"
 				:key="'start-' + startPage.id"
 				:context="activeContext"
 				:page="startPage"
@@ -44,7 +75,7 @@
 				is-start-page
 				@saved="page => startPage = page" />
 
-			<div v-if="activePageId === null" class="resources">
+			<div v-if="showsStartPage" class="resources">
 				<div v-for="resource in contextResources" :key="resource.key">
 					<div v-if="!resource.isView" class="resource">
 						<TableWrapper v-model:view-setting="resourceViewSettings[resource.key]" :table="resource" :columns="columns[resource.key]"
@@ -76,7 +107,11 @@
 <script>
 import MainModals from '../modules/modals/Modals.vue'
 import { mapState, mapActions, storeToRefs } from 'pinia'
-import { NcIconSvgWrapper } from '@nextcloud/vue'
+import { NcButton, NcEmptyContent, NcIconSvgWrapper } from '@nextcloud/vue'
+import { loadState } from '@nextcloud/initial-state'
+import { generateUrl } from '@nextcloud/router'
+import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import TableWrapper from '../modules/main/sections/TableWrapper.vue'
 import CustomView from '../modules/main/sections/View.vue'
 import { emit } from '@nextcloud/event-bus'
@@ -88,15 +123,28 @@ import { useDataStore } from '../store/data.js'
 import ErrorMessage from '../modules/main/partials/ErrorMessage.vue'
 import ContextPageBar from '../modules/grid/ContextPageBar.vue'
 import GridPage from '../modules/grid/GridPage.vue'
+import DataWidget from '../modules/grid/widgets/DataWidget.vue'
 import ContextPageForm from '../modules/modals/ContextPageForm.vue'
 import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMixin.js'
 import displayError, { getNotFoundError, getGenericLoadError } from '../shared/utils/displayError.js'
 import { showConfirmation, showError } from '@nextcloud/dialogs'
+import { menuItemRoute } from '../shared/utils/menuItems.js'
+import { PAGE_TYPE_START } from '../modules/grid/gridLayout.js'
 
+/**
+ * An application: its title, description and page bar, then the start page or a grid page.
+ * A menu item route opens what the item points at. Opened on its own, at /apps/tables/app/{id},
+ * the application's menu is the navigation and it starts on its first menu item.
+ */
 export default {
 	components: {
 		MainModals,
+		NcButton,
+		NcEmptyContent,
 		NcIconSvgWrapper,
+		ChevronLeft,
+		OpenInNew,
+		DataWidget,
 		ErrorMessage,
 		TableWrapper,
 		CustomView,
@@ -127,14 +175,90 @@ export default {
 			pageLoading: false,
 			pageFormOpen: false,
 			pageBeingEdited: null,
+			standaloneContextId: loadState('tables', 'contextId', null),
+			openedFirstPage: false,
 		}
 	},
 
 	computed: {
 		...mapState(useTablesStore, ['tables', 'contexts', 'activeContextId', 'views', 'activeContext']),
-		// The grid page in the route; null on the start page
+		/**
+		 * The grid page in the route, or the one the menu item in the route opens; null otherwise.
+		 *
+		 * @return {number|null}
+		 */
 		activePageId() {
-			return this.$route.params.pageId ? parseInt(this.$route.params.pageId) : null
+			if (this.$route.params.pageId) {
+				return parseInt(this.$route.params.pageId)
+			}
+			return this.menuTarget?.pageId ?? null
+		},
+		/**
+		 * Whether the start page with its tables and views is shown: on the application's own route,
+		 * and for a menu item that opens it.
+		 *
+		 * @return {boolean}
+		 */
+		showsStartPage() {
+			if (this.activePageId !== null) {
+				return false
+			}
+			return !this.isMenuRoute || this.menuTarget?.startPage === true
+		},
+		/**
+		 * Whether the application was opened on its own, at /apps/tables/app/{id}, with its own menu.
+		 *
+		 * @return {boolean}
+		 */
+		isStandalone() {
+			return this.standaloneContextId !== null
+		},
+		applicationUrl() {
+			return window.location.origin + generateUrl('/apps/tables/app/' + this.activeContext?.id)
+		},
+		menuItems() {
+			return [...(this.activeContext?.menuItems ?? [])].sort((a, b) => a.order - b.order)
+		},
+		isMenuRoute() {
+			return !!this.$route.params.itemName
+		},
+		selectedMenuItem() {
+			const technicalName = this.$route.params.itemName
+			if (!technicalName) {
+				return null
+			}
+			return this.menuItems.find(item => item.technicalName === technicalName) ?? null
+		},
+		/**
+		 * What the selected menu item opens: the start page, a grid page of the application, or a
+		 * table or view. Null when the item is unknown, broken or a link.
+		 *
+		 * @return {{startPage: true}|{pageId: number}|{data: {type: string, id: number}}|null}
+		 */
+		menuTarget() {
+			const item = this.selectedMenuItem
+			if (!item || item.broken || item.targetType === 'url') {
+				return null
+			}
+			if (item.targetType === 'page') {
+				const page = this.activeContext?.pages?.[item.targetId]
+				if (!page) {
+					return null
+				}
+				return page.page_type === PAGE_TYPE_START ? { startPage: true } : { pageId: page.id }
+			}
+			return { data: { type: item.targetType, id: item.targetId } }
+		},
+		/**
+		 * The menu item an application opened on its own starts on: its first entry that is not a link.
+		 *
+		 * @return {object|null}
+		 */
+		firstStandalonePage() {
+			if (!this.isStandalone || this.openedFirstPage) {
+				return null
+			}
+			return this.menuItems.find(item => item.targetType !== 'url') ?? null
 		},
 		canManage() {
 			return this.ownsContext(this.activeContext)
@@ -175,7 +299,9 @@ export default {
 	},
 
 	watch: {
-
+		menuItems() {
+			this.openFirstPageWhenStandalone()
+		},
 		activeContext: {
 			handler() {
 				if (this.errorMessage) {
@@ -190,11 +316,14 @@ export default {
 				this.reload()
 			},
 		},
-		activePageId(pageId, previousPageId) {
+		activePageId(pageId) {
 			if (pageId !== null) {
 				this.loadActivePage()
-			} else if (previousPageId !== null) {
-				// The start page resources are only loaded while the start page is shown
+			}
+		},
+		showsStartPage(shown) {
+			// The start page resources are only loaded while the start page is shown
+			if (shown) {
 				this.reload()
 			}
 		},
@@ -207,15 +336,42 @@ export default {
 	},
 
 	async mounted() {
-		emit('toggle-navigation', {
-			open: false,
-		})
+		// An application opened on its own shows its menu in the navigation, which must stay open
+		if (!this.isStandalone) {
+			emit('toggle-navigation', {
+				open: false,
+			})
+		}
 		await this.reload()
+		this.openFirstPageWhenStandalone()
 	},
 
 	methods: {
 		...mapActions(useTablesStore, ['loadContext', 'validateExportAccess', 'loadContextTable', 'loadContextView', 'loadContextPage', 'createContextPage', 'updateContextPage', 'deleteContextPage']),
 		...mapActions(useDataStore, ['loadColumnsFromBE', 'loadRowsFromBE', 'loadRelationsFromBE']),
+		/**
+		 * Navigates inside the app. NcButton cannot take a route itself: @nextcloud/vue brings its own
+		 * vue-router, whose router key the app's router does not provide, so its "to" renders a plain button.
+		 *
+		 * @param {string} route the route to open
+		 */
+		openRoute(route) {
+			this.$router.push(route).catch(err => err)
+		},
+		/**
+		 * An application opened on its own starts on its first menu item. Only once: the start
+		 * page stays reachable from the navigation afterwards.
+		 */
+		openFirstPageWhenStandalone() {
+			if (this.$route.params.itemName || this.$route.params.pageId || !this.activeContext) {
+				return
+			}
+			const first = this.firstStandalonePage
+			if (first) {
+				this.openedFirstPage = true
+				this.$router.replace(menuItemRoute(first, this.activeContext.id)).catch(err => err)
+			}
+		},
 		contextSignature() {
 			const ctx = this.activeContext
 			return ctx ? `${ctx.id}:${Object.keys(ctx.nodes || {}).sort().join(',')}` : null
@@ -249,10 +405,10 @@ export default {
 
 				if (this.activePageId !== null) {
 					await this.loadActivePage()
-				} else if (this.context && this.context.pages) {
+				} else if (this.showsStartPage && this.context && this.context.pages) {
 					await this.loadStartPage()
 					const pages = Object.values(this.context.pages)
-					const startPage = pages.find(p => p.page_type === 'startpage')
+					const startPage = pages.find(p => p.page_type === PAGE_TYPE_START)
 
 					if (startPage && startPage.content) {
 						const sortedContent = Object.values(startPage.content).sort((a, b) => a.order - b.order)
@@ -355,7 +511,7 @@ export default {
 		 */
 		async loadStartPage() {
 			this.startPage = null
-			const startPage = Object.values(this.context?.pages ?? {}).find(page => page.page_type === 'startpage')
+			const startPage = Object.values(this.context?.pages ?? {}).find(page => page.page_type === PAGE_TYPE_START)
 			if (!startPage) {
 				return
 			}
@@ -518,11 +674,47 @@ export default {
 		min-width: 32px;
 		min-height: 32px;
 	}
+
+	&__breadcrumb {
+		position: sticky;
+		top: 0;
+		z-index: 15;
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: calc(2 * var(--default-grid-baseline));
+		padding-block: calc(2 * var(--default-grid-baseline));
+		padding-inline: calc(var(--default-clickable-area) + 4 * var(--default-grid-baseline)) calc(4 * var(--default-grid-baseline));
+		border-bottom: 1px solid var(--color-border);
+		background-color: var(--color-main-background);
+	}
+
+	&__breadcrumb-separator {
+		color: var(--color-text-maxcontrast);
+	}
+
+	&__breadcrumb-current {
+		font-weight: bold;
+	}
+
+	&__breadcrumb-open {
+		margin-inline-start: auto;
+	}
+
+	&__menu-target {
+		width: var(--app-content-width, 100%);
+		padding-block: calc(2 * var(--default-grid-baseline));
+	}
 }
 
 .main-context-view {
 	width: max-content;
 	min-width: var(--app-content-width, 100%);
+}
+
+.context--standalone {
+	// Leave room for the navigation toggle that floats over the top left corner of the content
+	padding-inline-start: var(--default-clickable-area);
 }
 
 .resource {
