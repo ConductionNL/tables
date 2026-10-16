@@ -236,6 +236,33 @@ export const useTablesStore = defineStore('store', {
 			return res.data.id
 		},
 
+		/**
+		 * Replaces the menu of an application.
+		 *
+		 * @param {object} payload the application and its new menu
+		 * @param {number} payload.id the id of the application
+		 * @param {Array<object>} payload.menuItems the menu as the API takes it
+		 * @return {Promise<object|false>} the updated application, or false when it could not be saved
+		 */
+		async updateContextMenuItems({ id, menuItems }) {
+			let res = null
+			try {
+				res = await axios.put(generateOcsUrl('/apps/tables/api/2/contexts/' + id), { menuItems })
+			} catch (e) {
+				displayError(e, t('tables', 'Could not update application.'))
+				return false
+			}
+
+			// The update answers with the application as stored; the read endpoint shapes its pages
+			// the way the rest of the app reads them
+			try {
+				await this.loadContext({ id })
+			} catch {
+				// loadContext reported the error; the menu itself was saved
+			}
+			return this.contexts.find(c => c.id === id) ?? res.data.ocs.data
+		},
+
 		async updateView({ id, data }) {
 			let res = null
 

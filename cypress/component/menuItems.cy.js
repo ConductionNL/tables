@@ -16,8 +16,10 @@ import {
 	newDashboardItem,
 	opensNewStartPage,
 	outdentItem,
+	pageTitle,
 	parentOfPosition,
 	removeItem,
+	toEditableMenuItems,
 	toMenuItemPayload,
 } from '../../src/shared/utils/menuItems.js'
 
@@ -183,6 +185,26 @@ describe('menu items', () => {
 		expect(shape(moveItem(items, 0, 1))).to.deep.equal(['A', 'p'])
 		// without an id, only the dashboard item of a new application is valid
 		expect(menuItemErrors({ ...page, targetId: null }).target).to.equal(true)
+	})
+
+	it('names a page by its title, an untitled start page as the dashboard', () => {
+		expect(pageTitle({ title: 'Intake', page_type: 'grid' })).to.equal('Intake')
+		expect(pageTitle({ title: null, page_type: 'startpage' })).to.equal('Dashboard')
+		expect(pageTitle({ title: null, pageType: 'startpage' })).to.equal('Dashboard')
+		expect(pageTitle({ title: null, pageType: 'grid' })).to.equal('Untitled page')
+		expect(pageTitle({ title: 'Home', page_type: 'startpage' })).to.equal('Home')
+	})
+
+	it('turns the stored menu into editor items that keep their parent', () => {
+		const editable = toEditableMenuItems([
+			{ id: 1, label: 'Cases', icon: 'star', targetType: 'table', targetId: 4, url: null, technicalName: 'cases', parentId: null },
+			{ id: 2, label: 'Docs', targetType: 'url', url: 'https://example.org', technicalName: 'docs', parentId: 1 },
+		])
+
+		expect(editable.map(entry => entry.key)).to.deep.equal(['item-1', 'item-2'])
+		expect(editable[0]).to.deep.include({ label: 'Cases', icon: 'star', targetType: 'table', targetId: 4, url: '', parentKey: null })
+		expect(editable[1]).to.deep.include({ icon: null, targetId: null, url: 'https://example.org', parentKey: 'item-1' })
+		expect(toEditableMenuItems(null)).to.deep.equal([])
 	})
 
 	it('routes a page, view or table entry inside the app and leaves a link outside it', () => {
