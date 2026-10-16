@@ -30,6 +30,12 @@
 			<NcButton v-if="emoji" variant="tertiary" data-cy="contextPageRemoveEmoji" @click.prevent="emoji = ''">
 				{{ t('tables', 'Remove emoji') }}
 			</NcButton>
+			<NcTextField v-model="technicalName"
+				:label="t('tables', 'Technical name')"
+				:helper-text="technicalNameHelperText"
+				:error="!technicalNameIsValid"
+				:maxlength="200"
+				data-cy="contextPageTechnicalName" />
 			<NcTextArea v-model="description"
 				:label="t('tables', 'Description')"
 				:maxlength="2000"
@@ -47,10 +53,14 @@
 
 <script>
 import { NcButton, NcDialog, NcEmojiPicker, NcTextArea, NcTextField } from '@nextcloud/vue'
+import { translate as t } from '@nextcloud/l10n'
 import EmoticonOutline from 'vue-material-design-icons/EmoticonOutline.vue'
 
+const TECHNICAL_NAME = /^[a-z][a-z0-9_]*$/
+
 /**
- * Asks for the title, emoji and description of a new grid page, or of the page being edited.
+ * Asks for the title, emoji, technical name and description of a new grid page, or of
+ * the page being edited.
  */
 export default {
 	name: 'ContextPageForm',
@@ -78,12 +88,27 @@ export default {
 		return {
 			title: '',
 			emoji: '',
+			technicalName: '',
 			description: '',
 		}
 	},
 	computed: {
+		// A new page may leave it empty, the server then makes one from the title
+		technicalNameIsValid() {
+			return (this.technicalName === '' && !this.page) || TECHNICAL_NAME.test(this.technicalName)
+		},
+		technicalNameHelperText() {
+			if (!this.technicalNameIsValid) {
+				return this.technicalName === ''
+					? t('tables', 'Every page needs a technical name.')
+					: t('tables', 'Start with a lowercase letter and use only lowercase letters, digits and underscores.')
+			}
+			return this.page
+				? t('tables', 'Lowercase letters, digits and underscores, starting with a letter.')
+				: t('tables', 'Leave empty to make one from the title.')
+		},
 		canSubmit() {
-			return this.title.trim() !== ''
+			return this.title.trim() !== '' && this.technicalNameIsValid
 		},
 	},
 	watch: {
@@ -91,6 +116,7 @@ export default {
 			if (open) {
 				this.title = this.page?.title ?? ''
 				this.emoji = this.page?.emoji ?? ''
+				this.technicalName = this.page?.technicalName ?? ''
 				this.description = this.page?.description ?? ''
 			}
 		},
@@ -100,7 +126,11 @@ export default {
 			if (!this.canSubmit) {
 				return
 			}
-			this.$emit('submit', { title: this.title.trim(), emoji: this.emoji, description: this.description.trim() })
+			const data = { title: this.title.trim(), emoji: this.emoji, description: this.description.trim() }
+			if (this.technicalName !== '') {
+				data.technicalName = this.technicalName
+			}
+			this.$emit('submit', data)
 		},
 	},
 }

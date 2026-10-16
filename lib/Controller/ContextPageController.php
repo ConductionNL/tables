@@ -72,10 +72,11 @@ class ContextPageController extends AOCSController {
 	 * @param string $title Title of the page
 	 * @param string|null $emoji Emoji shown with the title
 	 * @param string|null $description Description of the page
+	 * @param string|null $technicalName Name to address the page by, unique within the application; left out makes one from the title
 	 * @return DataResponse<Http::STATUS_OK, TablesPage, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Page created
-	 * 400: Invalid title, emoji or description
+	 * 400: Invalid title, emoji, description or technical name
 	 * 403: No permissions
 	 * 404: Not found
 	 *
@@ -83,9 +84,9 @@ class ContextPageController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function create(int $contextId, string $title, ?string $emoji = null, ?string $description = null): DataResponse {
+	public function create(int $contextId, string $title, ?string $emoji = null, ?string $description = null, ?string $technicalName = null): DataResponse {
 		try {
-			return new DataResponse($this->pageService->create($contextId, $title, $emoji, $description, $this->userId));
+			return new DataResponse($this->pageService->create($contextId, $title, $emoji, $description, $technicalName, $this->userId));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (PermissionError $e) {
@@ -117,10 +118,11 @@ class ContextPageController extends AOCSController {
 	 * @param string|null $emoji New emoji, empty to remove it
 	 * @param string|null $description New description, empty to remove it
 	 * @param list<array<string, mixed>>|null $widgets All widgets of the page
+	 * @param string|null $technicalName New technical name, unique within the application
 	 * @return DataResponse<Http::STATUS_OK, TablesPage, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Page updated
-	 * 400: Invalid page field or widget
+	 * 400: Invalid page field, technical name or widget
 	 * 403: No permissions on the application or on a table or view to add
 	 * 404: Not found
 	 *
@@ -128,9 +130,9 @@ class ContextPageController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function update(int $contextId, int $pageId, ?string $title = null, ?string $emoji = null, ?string $description = null, ?array $widgets = null): DataResponse {
+	public function update(int $contextId, int $pageId, ?string $title = null, ?string $emoji = null, ?string $description = null, ?array $widgets = null, ?string $technicalName = null): DataResponse {
 		try {
-			return new DataResponse($this->pageService->update($contextId, $pageId, $title, $emoji, $description, $widgets, $this->userId));
+			return new DataResponse($this->pageService->update($contextId, $pageId, $title, $emoji, $description, $widgets, $this->userId, $technicalName));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (PermissionError $e) {
