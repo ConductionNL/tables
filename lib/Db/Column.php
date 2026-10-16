@@ -115,6 +115,7 @@ class Column extends EntitySuper implements JsonSerializable {
 	public const SUBTYPE_SELECTION_MULTI = 'selection-multi';
 
 	public const SUBTYPE_TEXT_LINE = 'line';
+	public const SUBTYPE_TEXT_LINK = 'link';
 
 	public const META_ID_TITLE = 'id';
 

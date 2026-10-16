@@ -18,6 +18,7 @@ use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Helper\ColumnsHelper;
 use OCA\Tables\Notification\NotificationHelper;
 use OCA\Tables\Service\PermissionsService;
+use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowQueryResolver;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Tests\Unit\Database\DatabaseTestCase;
@@ -48,6 +49,7 @@ class RowServiceImportRowTest extends DatabaseTestCase {
 			$this->createMock(NotificationHelper::class),
 			$this->connectionAdapter,
 			new RowQueryResolver(),
+			$this->createMock(RowObjectInputConverter::class),
 		);
 		$this->table = new Table();
 		$this->table->setId($this->createTestTable()['id']);

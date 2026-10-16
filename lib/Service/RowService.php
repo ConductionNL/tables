@@ -20,12 +20,14 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Errors\RowValidationError;
 use OCA\Tables\Event\RowAddedEvent;
 use OCA\Tables\Event\RowDeletedEvent;
 use OCA\Tables\Event\RowUpdatedEvent;
 use OCA\Tables\Helper\ColumnsHelper;
 use OCA\Tables\Model\RowDataInput;
 use OCA\Tables\Model\RowListQuery;
+use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Notification\NotificationHelper;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\ColumnTypes\IColumnTypeBusiness;
@@ -62,6 +64,7 @@ class RowService extends SuperService {
 		private readonly NotificationHelper $notificationHelper,
 		private readonly IDBConnection $connection,
 		private readonly RowQueryResolver $rowQueryResolver,
+		private readonly RowObjectInputConverter $rowObjectInputConverter,
 	) {
 		parent::__construct($logger, $userId, $permissionsService);
 
@@ -400,7 +403,11 @@ class RowService extends SuperService {
 		}
 	}
 
-	public function create(?int $tableId, ?int $viewId, RowDataInput|array $data, ?string $userId = null): Row2 {
+	/**
+	 * Data in the object shape is validated strictly: every property that cannot be stored
+	 * as given is reported in one RowValidationError instead of being stored as empty.
+	 */
+	public function create(?int $tableId, ?int $viewId, RowDataInput|RowObjectInput|array $data, ?string $userId = null): Row2 {
 		if ($userId) {
 			$this->userId = $userId;
 		}
@@ -455,8 +462,8 @@ class RowService extends SuperService {
 
 		$tableId ??= $view->getTableId();
 
-		$data = $data instanceof RowDataInput ? $data : RowDataInput::fromArray($data);
-		$data = $this->cleanupAndValidateData($data, $columns, $tableId, $viewId);
+		[$data, $conversionErrors] = $this->toRowDataInput($data, $columns);
+		$data = $this->cleanupAndValidateData($data, $columns, $tableId, $viewId, null, $conversionErrors);
 		$data = $this->enhanceWithViewDefaults($view, $data);
 
 		$row2 = new Row2();
@@ -557,12 +564,15 @@ class RowService extends SuperService {
 	}
 
 	/**
-	 * @param RowDataInput $data
+	 * @param Column[] $columns
+	 * @param array<string, string>|null $conversionErrors null for cells, which are validated leniently and stored as empty when they cannot be parsed; for the object shape the errors of its conversion, which turn on strict validation
 	 * @throws InternalError
 	 * @throws BadRequestError
-	 * @return RowDataInput
+	 * @throws RowValidationError when validating strictly and a property cannot be stored as given
 	 */
-	private function cleanupAndValidateData(RowDataInput $data, array $columns, ?int $tableId, ?int $viewId, ?int $rowId = null): RowDataInput {
+	private function cleanupAndValidateData(RowDataInput $data, array $columns, ?int $tableId, ?int $viewId, ?int $rowId = null, ?array $conversionErrors = null): RowDataInput {
+		$isStrict = $conversionErrors !== null;
+		$errors = $conversionErrors ?? [];
 		$view = $viewId ? $this->viewMapper->find($viewId) : null;
 		$readOnlyColumns = $view ? $this->extractColumnsByProperty($view, 'isReadonly') : [];
 		$mandatoryColumns = [];
@@ -587,9 +597,17 @@ class RowService extends SuperService {
 			$column = $this->getColumnFromColumnsArray($columnId, $columns);
 
 			if ($column) {
-				$this->validateColumnValueLimits($column, $entry['value']);
-				$columnBusiness = $this->columnsHelper->getColumnBusinessObject($column);
-				$columnBusiness->validateValue($entry['value'], $column, $this->userId, $tableId, $rowId);
+				try {
+					$this->validateColumnValueLimits($column, $entry['value']);
+					$columnBusiness = $this->columnsHelper->getColumnBusinessObject($column);
+					$columnBusiness->validateValue($entry['value'], $column, $this->userId, $tableId, $rowId);
+				} catch (BadRequestError $e) {
+					if (!$isStrict) {
+						throw $e;
+					}
+					$errors[RowObjectInputConverter::nameOf($column)] = $e->translatedMessage ?: $e->getMessage();
+					continue;
+				}
 			}
 
 			// check if it is allowed to insert a value for the requested column
@@ -610,14 +628,53 @@ class RowService extends SuperService {
 			}
 
 			// parse given value to respect the column type value format
-			$out->add((int)$entry['columnId'], $this->parseValueByColumnType($column, $entry['value']));
+			$parsedValue = $this->parseValueByColumnType($column, $entry['value']);
+			if ($isStrict && $this->isBlankedByParsing($entry['value'], $parsedValue)) {
+				$errors[RowObjectInputConverter::nameOf($column)] = 'The value cannot be stored in a column of type ' . $column->getType() . ($column->getSubtype() ? '/' . $column->getSubtype() : '') . '.';
+				continue;
+			}
+			$out->add((int)$entry['columnId'], $parsedValue);
 		}
 
 		if (!empty($mandatoryColumns)) {
-			$this->validateMandatoryColumns($mandatoryColumns, $out, $columns, $rowId !== null);
+			$mandatoryErrors = $this->findMandatoryColumnErrors($mandatoryColumns, $out, $columns, $rowId !== null);
+			if (!$isStrict && $mandatoryErrors !== []) {
+				throw reset($mandatoryErrors);
+			}
+			foreach ($mandatoryErrors as $columnId => $mandatoryError) {
+				$column = $this->getColumnFromColumnsArray($columnId, $columns);
+				$errors[$column ? RowObjectInputConverter::nameOf($column) : 'column_' . $columnId] ??= $mandatoryError->translatedMessage ?: $mandatoryError->getMessage();
+			}
 		}
 
+		if ($errors !== []) {
+			throw new RowValidationError($errors);
+		}
 		return $out;
+	}
+
+	/**
+	 * Whether parsing turned a given value into an empty one, which the lenient path stores
+	 * silently.
+	 */
+	private function isBlankedByParsing(mixed $given, mixed $parsed): bool {
+		$isGivenEmpty = $given === null || $given === '' || $given === [];
+		$isParsedEmpty = $parsed === null || $parsed === '';
+		return !$isGivenEmpty && $isParsedEmpty;
+	}
+
+	/**
+	 * @param RowDataInput|RowObjectInput|list<array{columnId: string|int, value: mixed}> $data
+	 * @param Column[] $columns
+	 * @return array{0: RowDataInput, 1: array<string, string>|null} the cells, and for the object shape the errors of its conversion
+	 * @throws InternalError
+	 */
+	private function toRowDataInput(RowDataInput|RowObjectInput|array $data, array $columns): array {
+		if ($data instanceof RowObjectInput) {
+			$converted = $this->rowObjectInputConverter->toCells($data, $columns);
+			return [$converted['cells'], $converted['errors']];
+		}
+		return [$data instanceof RowDataInput ? $data : RowDataInput::fromArray($data), null];
 	}
 
 	/**
@@ -625,10 +682,11 @@ class RowService extends SuperService {
 	 * @param RowDataInput $data
 	 * @param Column[] $columns
 	 * @param bool $isExistingRow Whether the data updates an existing row instead of creating one
-	 * @throws BadRequestError
+	 * @return array<int, BadRequestError> the error per mandatory column id that has no valid value
 	 * @throws InternalError
 	 */
-	private function validateMandatoryColumns(array $mandatoryColumns, RowDataInput $data, array $columns, bool $isExistingRow): void {
+	private function findMandatoryColumnErrors(array $mandatoryColumns, RowDataInput $data, array $columns, bool $isExistingRow): array {
+		$errors = [];
 		foreach ($mandatoryColumns as $columnId => $isMandatory) {
 			if (!$isMandatory) {
 				continue;
@@ -656,16 +714,16 @@ class RowService extends SuperService {
 				if ($isExistingRow) {
 					continue;
 				}
-				throw new BadRequestError(
+				$errors[$columnId] = new BadRequestError(
 					'Mandatory column "' . $column->getTitle() . '" cannot be empty.'
 				);
+				continue;
 			}
 
 			try {
 				$columnBusiness = $this->columnsHelper->getColumnBusinessObject($column);
-				$isValid = $this->isValueValidForMandatoryColumn($value, $column, $columnBusiness);
-				if (!$isValid) {
-					throw new BadRequestError(
+				if (!$this->isValueValidForMandatoryColumn($value, $column, $columnBusiness)) {
+					$errors[$columnId] = new BadRequestError(
 						'Mandatory column "' . $column->getTitle() . '" cannot be empty or invalid.'
 					);
 				}
@@ -673,6 +731,7 @@ class RowService extends SuperService {
 				$this->logger->debug('Column type business class not found for mandatory validation', ['exception' => $e]);
 			}
 		}
+		return $errors;
 	}
 
 	private function isValueValidForMandatoryColumn($value, Column $column, IColumnTypeBusiness $columnBusiness): bool {
@@ -767,7 +826,7 @@ class RowService extends SuperService {
 	 *
 	 * @param int $id
 	 * @param int|null $viewId
-	 * @param list<array{columnId: string|int, value: mixed}> $data
+	 * @param list<array{columnId: string|int, value: mixed}>|RowObjectInput $data cells, or the object shape, which is validated strictly
 	 * @param string $userId
 	 * @return Row2
 	 *
@@ -780,7 +839,7 @@ class RowService extends SuperService {
 	public function updateSet(
 		int $id,
 		?int $viewId,
-		array $data,
+		array|RowObjectInput $data,
 		string $userId,
 		?int $tableId,
 	): Row2 {
@@ -868,8 +927,8 @@ class RowService extends SuperService {
 		}
 
 		$previousData = $item->getData();
-		$data = RowDataInput::fromArray($data);
-		$data = $this->cleanupAndValidateData($data, $columns, $item->getTableId(), $viewId, $id);
+		[$data, $conversionErrors] = $this->toRowDataInput($data, $columns);
+		$data = $this->cleanupAndValidateData($data, $columns, $item->getTableId(), $viewId, $id, $conversionErrors);
 
 		foreach ($data as $entry) {
 			// Check whether the column of which the value should change is part of the table / view

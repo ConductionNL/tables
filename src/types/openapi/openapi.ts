@@ -1297,6 +1297,28 @@ export type components = {
                 };
             };
         };
+        readonly RowLink: {
+            readonly title: string;
+            readonly url: string;
+            readonly providerId: string;
+        };
+        readonly RowObject: {
+            readonly "@self": components["schemas"]["RowSelf"];
+        } & {
+            readonly [key: string]: (components["schemas"]["RowObjectValue"] | components["schemas"]["RowSelf"]) | null;
+        };
+        readonly RowObjectPage: {
+            readonly results: readonly components["schemas"]["RowObject"][];
+            /** Format: int64 */
+            readonly total: number;
+            /** Format: int64 */
+            readonly limit: number;
+            /** Format: int64 */
+            readonly page: number;
+            /** Format: int64 */
+            readonly pages: number;
+        };
+        readonly RowObjectValue: string | number | readonly number[] | components["schemas"]["RowLink"] | readonly components["schemas"]["RowUsergroup"][];
         readonly RowPage: {
             readonly results: readonly components["schemas"]["Row"][];
             /** Format: int64 */
@@ -1307,6 +1329,29 @@ export type components = {
             readonly page: number;
             /** Format: int64 */
             readonly pages: number;
+        };
+        readonly RowSelf: {
+            readonly id: string | null;
+            /** Format: int64 */
+            readonly rowId: number;
+            /** Format: int64 */
+            readonly tableId: number;
+            readonly createdBy: string;
+            readonly createdAt: string | null;
+            readonly lastEditBy: string;
+            readonly lastEditAt: string | null;
+        };
+        readonly RowUsergroup: {
+            readonly id: string;
+            /** Format: int64 */
+            readonly type: number;
+            readonly displayName: string;
+        };
+        readonly RowValidationError: {
+            readonly message: string;
+            readonly errors: {
+                readonly [key: string]: string;
+            };
         };
         readonly Share: {
             /** Format: int64 */
@@ -8562,6 +8607,8 @@ export interface operations {
                 readonly fields?: string | null;
                 /** @description Filters as filter[field]=value or filter[field][operator]=value, all of which must match */
                 readonly filter?: string | null;
+                /** @description The shape of the returned rows, defaults to "cells" */
+                readonly shape?: "cells" | "object" | null;
             };
             readonly header: {
                 /** @description Required to be true for the API request to pass */
@@ -8586,7 +8633,7 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["RowPage"];
+                            readonly data: components["schemas"]["RowPage"] | components["schemas"]["RowObjectPage"];
                         };
                     };
                 };
@@ -8689,10 +8736,16 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description An array containing the column identifiers and their values */
+                    /** @description The values of the row: keyed by column id, or with shape "object" keyed by technical name */
                     readonly data: string | {
                         readonly [key: string]: Record<string, never>;
                     };
+                    /**
+                     * @description The shape of the data and of the returned row, defaults to "cells"
+                     * @default null
+                     * @enum {string|null}
+                     */
+                    readonly shape?: "cells" | "object" | null;
                 };
             };
         };
@@ -8706,12 +8759,12 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["RowObject"];
                         };
                     };
                 };
             };
-            /** @description Invalid request parameters */
+            /** @description Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -8722,7 +8775,7 @@ export interface operations {
                             readonly meta: components["schemas"]["OCSMeta"];
                             readonly data: {
                                 readonly message: string;
-                            };
+                            } | components["schemas"]["RowValidationError"];
                         };
                     };
                 };
@@ -8793,7 +8846,10 @@ export interface operations {
     };
     readonly "rowocs-get-row": {
         readonly parameters: {
-            readonly query?: never;
+            readonly query?: {
+                /** @description The shape of the returned row, defaults to "cells" */
+                readonly shape?: "cells" | "object" | null;
+            };
             readonly header: {
                 /** @description Required to be true for the API request to pass */
                 readonly "OCS-APIRequest": boolean;
@@ -8819,7 +8875,7 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["RowObject"];
                         };
                     };
                 };
@@ -8924,10 +8980,16 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description An array containing the column identifiers and their values */
+                    /** @description The values to change: keyed by column id, or with shape "object" keyed by technical name */
                     readonly data: string | {
                         readonly [key: string]: Record<string, never>;
                     };
+                    /**
+                     * @description The shape of the data and of the returned row, defaults to "cells"
+                     * @default null
+                     * @enum {string|null}
+                     */
+                    readonly shape?: "cells" | "object" | null;
                 };
             };
         };
@@ -8941,12 +9003,12 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["RowObject"];
                         };
                     };
                 };
             };
-            /** @description Invalid request parameters */
+            /** @description Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -8957,7 +9019,7 @@ export interface operations {
                             readonly meta: components["schemas"]["OCSMeta"];
                             readonly data: {
                                 readonly message: string;
-                            };
+                            } | components["schemas"]["RowValidationError"];
                         };
                     };
                 };

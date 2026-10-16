@@ -763,6 +763,119 @@
                     }
                 }
             },
+            "RowLink": {
+                "type": "object",
+                "required": [
+                    "title",
+                    "url",
+                    "providerId"
+                ],
+                "properties": {
+                    "title": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "providerId": {
+                        "type": "string"
+                    }
+                }
+            },
+            "RowObject": {
+                "allOf": [
+                    {
+                        "type": "object",
+                        "required": [
+                            "@self"
+                        ],
+                        "properties": {
+                            "@self": {
+                                "$ref": "#/components/schemas/RowSelf"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": {
+                            "nullable": true,
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/RowObjectValue"
+                                },
+                                {
+                                    "$ref": "#/components/schemas/RowSelf"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "RowObjectPage": {
+                "type": "object",
+                "required": [
+                    "results",
+                    "total",
+                    "limit",
+                    "page",
+                    "pages"
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/RowObject"
+                        }
+                    },
+                    "total": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "pages": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
+            "RowObjectValue": {
+                "anyOf": [
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/schemas/RowLink"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/RowUsergroup"
+                        }
+                    }
+                ]
+            },
             "RowPage": {
                 "type": "object",
                 "required": [
@@ -794,6 +907,84 @@
                     "pages": {
                         "type": "integer",
                         "format": "int64"
+                    }
+                }
+            },
+            "RowSelf": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "rowId",
+                    "tableId",
+                    "createdBy",
+                    "createdAt",
+                    "lastEditBy",
+                    "lastEditAt"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "rowId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "tableId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "createdBy": {
+                        "type": "string"
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "lastEditBy": {
+                        "type": "string"
+                    },
+                    "lastEditAt": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                }
+            },
+            "RowUsergroup": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "type",
+                    "displayName"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "displayName": {
+                        "type": "string"
+                    }
+                }
+            },
+            "RowValidationError": {
+                "type": "object",
+                "required": [
+                    "message",
+                    "errors"
+                ],
+                "properties": {
+                    "message": {
+                        "type": "string"
+                    },
+                    "errors": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
                     }
                 }
             },
@@ -15928,7 +16119,7 @@
                                 ],
                                 "properties": {
                                     "data": {
-                                        "description": "An array containing the column identifiers and their values",
+                                        "description": "The values of the row: keyed by column id, or with shape \"object\" keyed by technical name",
                                         "oneOf": [
                                             {
                                                 "type": "string"
@@ -15940,6 +16131,16 @@
                                                 }
                                             }
                                         ]
+                                    },
+                                    "shape": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "enum": [
+                                            "cells",
+                                            "object"
+                                        ],
+                                        "description": "The shape of the data and of the returned row, defaults to \"cells\""
                                     }
                                 }
                             }
@@ -16004,7 +16205,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObject"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16013,8 +16221,8 @@
                             }
                         }
                     },
-                    "403": {
-                        "description": "No permissions",
+                    "400": {
+                        "description": "Invalid request parameters, or with shape \"object\" the values that cannot be stored, per technical name",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16034,15 +16242,22 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "type": "object",
-                                                    "required": [
-                                                        "message"
-                                                    ],
-                                                    "properties": {
-                                                        "message": {
-                                                            "type": "string"
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "message"
+                                                            ],
+                                                            "properties": {
+                                                                "message": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowValidationError"
                                                         }
-                                                    }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16051,8 +16266,8 @@
                             }
                         }
                     },
-                    "400": {
-                        "description": "Invalid request parameters",
+                    "403": {
+                        "description": "No permissions",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16305,6 +16520,20 @@
                         }
                     },
                     {
+                        "name": "shape",
+                        "in": "query",
+                        "description": "The shape of the returned rows, defaults to \"cells\"",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null,
+                            "enum": [
+                                "cells",
+                                "object"
+                            ]
+                        }
+                    },
+                    {
                         "name": "OCS-APIRequest",
                         "in": "header",
                         "description": "Required to be true for the API request to pass",
@@ -16337,7 +16566,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/RowPage"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/RowPage"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObjectPage"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16579,6 +16815,20 @@
                         }
                     },
                     {
+                        "name": "shape",
+                        "in": "query",
+                        "description": "The shape of the returned row, defaults to \"cells\"",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null,
+                            "enum": [
+                                "cells",
+                                "object"
+                            ]
+                        }
+                    },
+                    {
                         "name": "OCS-APIRequest",
                         "in": "header",
                         "description": "Required to be true for the API request to pass",
@@ -16611,7 +16861,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObject"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16827,7 +17084,7 @@
                                 ],
                                 "properties": {
                                     "data": {
-                                        "description": "An array containing the column identifiers and their values",
+                                        "description": "The values to change: keyed by column id, or with shape \"object\" keyed by technical name",
                                         "oneOf": [
                                             {
                                                 "type": "string"
@@ -16839,6 +17096,16 @@
                                                 }
                                             }
                                         ]
+                                    },
+                                    "shape": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "enum": [
+                                            "cells",
+                                            "object"
+                                        ],
+                                        "description": "The shape of the data and of the returned row, defaults to \"cells\""
                                     }
                                 }
                             }
@@ -16912,7 +17179,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObject"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16921,8 +17195,8 @@
                             }
                         }
                     },
-                    "403": {
-                        "description": "No permissions",
+                    "400": {
+                        "description": "Invalid request parameters, or with shape \"object\" the values that cannot be stored, per technical name",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16942,15 +17216,22 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "type": "object",
-                                                    "required": [
-                                                        "message"
-                                                    ],
-                                                    "properties": {
-                                                        "message": {
-                                                            "type": "string"
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "message"
+                                                            ],
+                                                            "properties": {
+                                                                "message": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowValidationError"
                                                         }
-                                                    }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16959,8 +17240,8 @@
                             }
                         }
                     },
-                    "400": {
-                        "description": "Invalid request parameters",
+                    "403": {
+                        "description": "No permissions",
                         "content": {
                             "application/json": {
                                 "schema": {

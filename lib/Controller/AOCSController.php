@@ -13,6 +13,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Errors\RowValidationError;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
@@ -64,6 +65,10 @@ abstract class AOCSController extends OCSController {
 	 */
 	protected function handleBadRequestError(BadRequestError $e): DataResponse {
 		$this->logger->warning('An bad request was encountered: ' . $e->getMessage(), ['exception' => $e]);
-		return new DataResponse(['message' => $e->translatedMessage ?: $e->getMessage()], Http::STATUS_BAD_REQUEST);
+		$body = ['message' => $e->translatedMessage ?: $e->getMessage()];
+		if ($e instanceof RowValidationError) {
+			$body['errors'] = $e->errors;
+		}
+		return new DataResponse($body, Http::STATUS_BAD_REQUEST);
 	}
 }

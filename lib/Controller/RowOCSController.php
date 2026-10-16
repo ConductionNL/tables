@@ -8,6 +8,7 @@
 namespace OCA\Tables\Controller;
 
 use OCA\Tables\AppInfo\Application;
+use OCA\Tables\Db\Row2;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
@@ -16,8 +17,11 @@ use OCA\Tables\Helper\ConversionHelper;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
 use OCA\Tables\Model\RowDataInput;
 use OCA\Tables\Model\RowListQuery;
+use OCA\Tables\Model\RowObjectInput;
+use OCA\Tables\Model\RowShape;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\FederationService;
+use OCA\Tables\Service\RowObjectSerializer;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
@@ -32,6 +36,9 @@ use Psr\Log\LoggerInterface;
 /**
  * @psalm-import-type TablesRow from ResponseDefinitions
  * @psalm-import-type TablesRowPage from ResponseDefinitions
+ * @psalm-import-type TablesRowObject from ResponseDefinitions
+ * @psalm-import-type TablesRowObjectPage from ResponseDefinitions
+ * @psalm-import-type TablesRowValidationError from ResponseDefinitions
  */
 class RowOCSController extends AOCSController {
 
@@ -44,6 +51,7 @@ class RowOCSController extends AOCSController {
 		private readonly TableService $tableService,
 		private readonly ViewService $viewService,
 		private readonly FederationService $federationService,
+		private readonly RowObjectSerializer $rowObjectSerializer,
 	) {
 		parent::__construct($request, $logger, $n, $userId);
 	}
@@ -53,11 +61,12 @@ class RowOCSController extends AOCSController {
 	 *
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to create a row on a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
-	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @param string|array<string, mixed> $data The values of the row: keyed by column id, or with shape "object" keyed by technical name
+	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{message: string}|TablesRowValidationError, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid request parameters
+	 * 400: Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -65,7 +74,12 @@ class RowOCSController extends AOCSController {
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_CREATE, typeParam: 'nodeCollection')]
 	#[ApiRoute(verb: 'POST', url: '/api/2/{nodeCollection}/{nodeId}/rows', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
-	public function createRow(string $nodeCollection, int $nodeId, mixed $data): DataResponse {
+	public function createRow(string $nodeCollection, int $nodeId, mixed $data, ?string $shape = null): DataResponse {
+		try {
+			$rowShape = RowShape::fromRequest($shape);
+		} catch (\InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
+		}
 		if (is_string($data)) {
 			$data = json_decode($data, true);
 		}
@@ -81,12 +95,19 @@ class RowOCSController extends AOCSController {
 			$viewId = $nodeId;
 		}
 
-		$newRowData = new RowDataInput();
-		foreach ($data as $key => $value) {
-			$newRowData->add((int)$key, $value);
+		if ($rowShape === RowShape::Object) {
+			$newRowData = new RowObjectInput($data);
+		} else {
+			$newRowData = new RowDataInput();
+			foreach ($data as $key => $value) {
+				$newRowData->add((int)$key, $value);
+			}
 		}
 
 		try {
+			if ($rowShape === RowShape::Object && $this->isFederated($tableId, $viewId)) {
+				throw new BadRequestError('The object shape is not supported for federated tables and views.');
+			}
 			if ($tableId !== null && $this->federationService->isNodeFederated($tableId, 'table')) {
 				$table = $this->tableService->find($nodeId, true);
 				return new DataResponse($this->federationService->createRow($table, $data));
@@ -95,7 +116,7 @@ class RowOCSController extends AOCSController {
 				$view = $this->viewService->find($nodeId, false, $this->userId);
 				return new DataResponse($this->federationService->createRow($view, $data));
 			}
-			return new DataResponse($this->rowService->create($tableId, $viewId, $newRowData)->jsonSerialize());
+			return new DataResponse($this->shapeRow($this->rowService->create($tableId, $viewId, $newRowData), $rowShape));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -122,7 +143,8 @@ class RowOCSController extends AOCSController {
 	 * @param string|null $search Text to look for in the text cells and the selection labels
 	 * @param string|null $fields Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned
 	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match
-	 * @return DataResponse<Http::STATUS_OK, TablesRowPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells"
+	 * @return DataResponse<Http::STATUS_OK, TablesRowPage|TablesRowObjectPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Rows returned
 	 * 400: Invalid query parameters, or the table or view is federated
@@ -143,6 +165,7 @@ class RowOCSController extends AOCSController {
 		?string $search = null,
 		?string $fields = null,
 		mixed $filter = null,
+		?string $shape = null,
 	): DataResponse {
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
@@ -151,13 +174,16 @@ class RowOCSController extends AOCSController {
 			}
 			try {
 				$query = RowListQuery::createFromRequest($page, $offset, $limit, $sort, $search, $fields, $filter);
+				$rowShape = RowShape::fromRequest($shape);
 			} catch (\InvalidArgumentException $e) {
 				throw new BadRequestError($e->getMessage());
 			}
 
 			$found = $this->rowService->findPage($query, $tableId, $viewId, $this->userId);
 			return new DataResponse([
-				'results' => array_values(array_map(static fn ($row) => $row->jsonSerialize(), $found['rows'])),
+				'results' => $rowShape === RowShape::Object
+					? $this->rowObjectSerializer->serializeAll(array_values($found['rows']))
+					: array_values(array_map(static fn ($row) => $row->jsonSerialize(), $found['rows'])),
 				'total' => $found['total'],
 				'limit' => $query->limit,
 				'page' => $query->getPage(),
@@ -180,7 +206,8 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to get a row from a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row, either its integer id or its uuid
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells"
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
 	 * 400: Invalid row identifier, or the table or view is federated
@@ -191,14 +218,19 @@ class RowOCSController extends AOCSController {
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_READ, typeParam: 'nodeCollection')]
 	#[ApiRoute(verb: 'GET', url: '/api/2/{nodeCollection}/{nodeId}/rows/{rowId}', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
-	public function getRow(string $nodeCollection, int $nodeId, string $rowId): DataResponse {
+	public function getRow(string $nodeCollection, int $nodeId, string $rowId, ?string $shape = null): DataResponse {
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
+			try {
+				$rowShape = RowShape::fromRequest($shape);
+			} catch (\InvalidArgumentException $e) {
+				throw new BadRequestError($e->getMessage());
+			}
 			if ($this->isFederated($tableId, $viewId)) {
 				throw new BadRequestError('Getting a single row is not supported for federated tables and views.');
 			}
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
-			return new DataResponse($this->rowService->findInNode($resolvedRowId, $tableId, $viewId, $this->userId)->jsonSerialize());
+			return new DataResponse($this->shapeRow($this->rowService->findInNode($resolvedRowId, $tableId, $viewId, $this->userId), $rowShape));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -216,11 +248,12 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to update a row on a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row to update, either its integer id or its uuid
-	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @param string|array<string, mixed> $data The values to change: keyed by column id, or with shape "object" keyed by technical name
+	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{message: string}|TablesRowValidationError, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row updated
-	 * 400: Invalid request parameters
+	 * 400: Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -228,7 +261,12 @@ class RowOCSController extends AOCSController {
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_UPDATE, typeParam: 'nodeCollection')]
 	#[ApiRoute(verb: 'PUT', url: '/api/2/{nodeCollection}/{nodeId}/rows/{rowId}', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
-	public function updateRow(string $nodeCollection, int $nodeId, string $rowId, mixed $data): DataResponse {
+	public function updateRow(string $nodeCollection, int $nodeId, string $rowId, mixed $data, ?string $shape = null): DataResponse {
+		try {
+			$rowShape = RowShape::fromRequest($shape);
+		} catch (\InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
+		}
 		if (is_string($data)) {
 			$data = json_decode($data, true);
 		}
@@ -237,6 +275,9 @@ class RowOCSController extends AOCSController {
 		}
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
+			if ($rowShape === RowShape::Object && $this->isFederated($tableId, $viewId)) {
+				throw new BadRequestError('The object shape is not supported for federated tables and views.');
+			}
 			if ($tableId !== null && $this->federationService->isNodeFederated($tableId, 'table')) {
 				$table = $this->tableService->find($nodeId, true);
 				return new DataResponse($this->federationService->updateRow($table, $this->federatedRowId($rowId), $data));
@@ -246,7 +287,8 @@ class RowOCSController extends AOCSController {
 				return new DataResponse($this->federationService->updateRow($view, $this->federatedRowId($rowId), $data));
 			}
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
-			return new DataResponse($this->rowService->updateSet($resolvedRowId, $viewId, $data, $this->userId, $tableId)->jsonSerialize());
+			$values = $rowShape === RowShape::Object ? new RowObjectInput($data) : $data;
+			return new DataResponse($this->shapeRow($this->rowService->updateSet($resolvedRowId, $viewId, $values, $this->userId, $tableId), $rowShape));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -297,6 +339,14 @@ class RowOCSController extends AOCSController {
 		} catch (InternalError|\Exception $e) {
 			return $this->handleError($e);
 		}
+	}
+
+	/**
+	 * @return TablesRow|TablesRowObject
+	 * @throws InternalError
+	 */
+	private function shapeRow(Row2 $row, RowShape $rowShape): array {
+		return $rowShape === RowShape::Object ? $this->rowObjectSerializer->serialize($row) : $row->jsonSerialize();
 	}
 
 	/**

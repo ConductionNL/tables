@@ -105,6 +105,45 @@ namespace OCA\Tables;
  * 	pages: int,
  * }
  *
+ * @psalm-type TablesRowSelf = array{
+ * 	id: ?string,
+ * 	rowId: int,
+ * 	tableId: int,
+ * 	createdBy: string,
+ * 	createdAt: ?string,
+ * 	lastEditBy: string,
+ * 	lastEditAt: ?string,
+ * }
+ *
+ * @psalm-type TablesRowLink = array{
+ * 	title: string,
+ * 	url: string,
+ * 	providerId: string,
+ * }
+ *
+ * @psalm-type TablesRowUsergroup = array{
+ * 	id: string,
+ * 	type: int,
+ * 	displayName: string,
+ * }
+ *
+ * @psalm-type TablesRowObjectValue = string|int|float|list<int>|TablesRowLink|list<TablesRowUsergroup>
+ *
+ * @psalm-type TablesRowObject = array{'@self': TablesRowSelf}&array<string, TablesRowObjectValue|TablesRowSelf|null>
+ *
+ * @psalm-type TablesRowObjectPage = array{
+ * 	results: list<TablesRowObject>,
+ * 	total: int,
+ * 	limit: int,
+ * 	page: int,
+ * 	pages: int,
+ * }
+ *
+ * @psalm-type TablesRowValidationError = array{
+ * 	message: string,
+ * 	errors: array<string, string>,
+ * }
+ *
  * @psalm-type TablesPublicRow = array{
  *    id: int,
  *    createdAt: string,

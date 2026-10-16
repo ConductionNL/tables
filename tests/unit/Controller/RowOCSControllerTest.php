@@ -14,8 +14,11 @@ use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Errors\RowValidationError;
 use OCA\Tables\Model\RowListQuery;
+use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Service\FederationService;
+use OCA\Tables\Service\RowObjectSerializer;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
@@ -32,12 +35,14 @@ class RowOCSControllerTest extends TestCase {
 	private RowService&MockObject $rowService;
 	private TableService&MockObject $tableService;
 	private FederationService&MockObject $federationService;
+	private RowObjectSerializer&MockObject $rowObjectSerializer;
 	private RowOCSController $controller;
 
 	protected function setUp(): void {
 		$this->rowService = $this->createMock(RowService::class);
 		$this->tableService = $this->createMock(TableService::class);
 		$this->federationService = $this->createMock(FederationService::class);
+		$this->rowObjectSerializer = $this->createMock(RowObjectSerializer::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
 		$this->controller = new RowOCSController(
@@ -49,6 +54,7 @@ class RowOCSControllerTest extends TestCase {
 			$this->tableService,
 			$this->createMock(ViewService::class),
 			$this->federationService,
+			$this->rowObjectSerializer,
 		);
 	}
 
@@ -208,5 +214,94 @@ class RowOCSControllerTest extends TestCase {
 		$this->rowService->expects($this->never())->method('findPage');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('views', 5)->getStatus());
+	}
+
+	public function testGetRowInTheObjectShape(): void {
+		$row = $this->row(7);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('findInNode')->willReturn($row);
+		$this->rowObjectSerializer->expects($this->once())
+			->method('serialize')
+			->with($row)
+			->willReturn(['@self' => ['id' => self::UUID], 'name' => 'Alice']);
+
+		$response = $this->controller->getRow('tables', 3, self::UUID, 'object');
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$this->assertSame('Alice', $response->getData()['name']);
+	}
+
+	public function testGetRowsInTheObjectShape(): void {
+		$rows = [$this->row(7), $this->row(8)];
+		$this->rowService->method('findPage')->willReturn(['rows' => $rows, 'total' => 2]);
+		$this->rowObjectSerializer->expects($this->once())
+			->method('serializeAll')
+			->with($rows)
+			->willReturn([['name' => 'Alice'], ['name' => 'Bob']]);
+
+		$data = $this->controller->getRows('tables', 3, shape: 'object')->getData();
+
+		$this->assertSame([['name' => 'Alice'], ['name' => 'Bob']], $data['results']);
+	}
+
+	public function testCellsShapeIsTheDefault(): void {
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('findInNode')->willReturn($this->row(7));
+		$this->rowObjectSerializer->expects($this->never())->method('serialize');
+
+		$this->assertSame(self::UUID, $this->controller->getRow('tables', 3, '7', 'cells')->getData()['uuid']);
+	}
+
+	public function testUnknownShapeIsABadRequest(): void {
+		$this->rowService->expects($this->never())->method('findInNode');
+		$this->rowService->expects($this->never())->method('findPage');
+		$this->rowService->expects($this->never())->method('create');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRow('tables', 3, '7', 'flat')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, shape: 'flat')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['name' => 'x'], 'flat')->getStatus());
+	}
+
+	public function testCreateRowInTheObjectShapeKeepsTheTechnicalNames(): void {
+		$row = $this->row(7);
+		$this->rowService->expects($this->once())
+			->method('create')
+			->with(3, null, $this->callback(fn ($input): bool => $input instanceof RowObjectInput && $input->values === ['name' => 'Alice']))
+			->willReturn($row);
+		$this->rowObjectSerializer->method('serialize')->with($row)->willReturn(['name' => 'Alice']);
+
+		$response = $this->controller->createRow('tables', 3, ['name' => 'Alice'], 'object');
+
+		$this->assertSame(['name' => 'Alice'], $response->getData());
+	}
+
+	public function testInvalidValuesComeBackPerProperty(): void {
+		$this->rowService->method('create')->willThrowException(new RowValidationError(['age' => 'Expected a number.']));
+
+		$response = $this->controller->createRow('tables', 3, ['age' => 'many'], 'object');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertSame(['age' => 'Expected a number.'], $response->getData()['errors']);
+	}
+
+	public function testUpdateRowInTheObjectShape(): void {
+		$row = $this->row(7);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->expects($this->once())
+			->method('updateSet')
+			->with(7, null, $this->callback(fn ($input): bool => $input instanceof RowObjectInput && $input->values === ['name' => 'Bob']), 'user1', 3)
+			->willReturn($row);
+		$this->rowObjectSerializer->method('serialize')->willReturn(['name' => 'Bob']);
+
+		$this->assertSame(['name' => 'Bob'], $this->controller->updateRow('tables', 3, self::UUID, ['name' => 'Bob'], 'object')->getData());
+	}
+
+	public function testObjectShapeIsRefusedOnAFederatedTable(): void {
+		$this->federationService->method('isNodeFederated')->willReturn(true);
+		$this->federationService->expects($this->never())->method('updateRow');
+		$this->federationService->expects($this->never())->method('createRow');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'Bob'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['name' => 'Bob'], 'object')->getStatus());
 	}
 }
