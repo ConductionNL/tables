@@ -3,9 +3,11 @@
   - SPDX-License-Identifier: AGPL-3.0-or-later
 -->
 <template>
-	<div class="grid-page" data-cy="gridPage">
-		<div class="grid-page__header">
-			<div class="grid-page__heading">
+	<div class="grid-page"
+		:class="{ 'grid-page--start': isStartPage }"
+		:data-cy="isStartPage ? 'startPageGrid' : 'gridPage'">
+		<div v-if="!isStartPage || canEdit" class="grid-page__header">
+			<div v-if="!isStartPage" class="grid-page__heading">
 				<h2 class="grid-page__title" data-cy="gridPageTitle">
 					<span v-if="page.emoji" aria-hidden="true">{{ page.emoji }}</span>
 					{{ page.title }}
@@ -39,7 +41,7 @@
 						</template>
 						{{ t('tables', 'Edit page') }}
 					</NcButton>
-					<NcActions :aria-label="t('tables', 'Page actions')" data-cy="gridPageActions">
+					<NcActions v-if="!isStartPage" :aria-label="t('tables', 'Page actions')" data-cy="gridPageActions">
 						<NcActionButton :close-after-click="true" data-cy="gridPageEditDetails" @click="$emit('edit-details', page)">
 							<template #icon>
 								<TextBoxEditOutline :size="20" />
@@ -57,7 +59,7 @@
 			</div>
 		</div>
 
-		<NcEmptyContent v-if="activeGrid.layout.length === 0"
+		<NcEmptyContent v-if="activeGrid.layout.length === 0 && (isEditing || !isStartPage)"
 			class="grid-page__empty"
 			:name="t('tables', 'This page is empty')"
 			:description="emptyDescription">
@@ -71,7 +73,10 @@
 			</template>
 		</NcEmptyContent>
 
-		<GridCanvas :layout="activeGrid.layout" :editable="isEditing" @layout-change="onLayoutChange">
+		<GridCanvas v-if="activeGrid.layout.length > 0 || isEditing || !isStartPage"
+			:layout="activeGrid.layout"
+			:editable="isEditing"
+			@layout-change="onLayoutChange">
 			<template #widget="{ item, narrow }">
 				<GridWidget v-if="widgetsById[item.widgetId]"
 					:widget="widgetsById[item.widgetId]"
@@ -144,6 +149,12 @@ export default {
 			required: true,
 		},
 		canEdit: {
+			type: Boolean,
+			default: false,
+		},
+		// The start page shows its widgets above its tables and views, under the
+		// application's own title; without widgets it shows only the edit button
+		isStartPage: {
 			type: Boolean,
 			default: false,
 		},
@@ -374,6 +385,10 @@ export default {
 .grid-page {
 	width: 100%;
 	padding: calc(4 * var(--default-grid-baseline));
+
+	&--start {
+		padding-bottom: 0;
+	}
 
 	&__header {
 		display: flex;
