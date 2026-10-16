@@ -6,6 +6,9 @@
 import { translate as t } from '@nextcloud/l10n'
 import { NODE_TYPE_TABLE, NODE_TYPE_VIEW } from '../../shared/constants.ts'
 
+/** The page type of a grid page, as the API returns it. */
+export const PAGE_TYPE_GRID = 'grid'
+
 /** Number of columns of a grid page. */
 export const GRID_COLUMNS = 12
 
