@@ -320,8 +320,8 @@ final class ContextServiceTest extends TestCase {
 		], allowNewStartPage: true));
 
 		$this->assertSame('desc', $created->getDescription());
-		$this->assertCount(2, $created->getMenuItems());
-		$this->assertSame(['dashboard', 'docs'], array_map(static fn (MenuItem $item) => $item->getTechnicalName(), $inserted));
+		$this->assertCount(1, $created->getMenuItems());
+		$this->assertSame(['docs'], array_map(static fn (MenuItem $item) => $item->getTechnicalName(), $inserted));
 	}
 
 	/**
@@ -359,17 +359,28 @@ final class ContextServiceTest extends TestCase {
 		$this->assertSame(3, $created->getMenuItems()[0]['targetId']);
 	}
 
-	public function testCreatePutsTheDashboardItemFirstWithAFreeTechnicalName(): void {
+	public function testCreateWithAnEmptyMenuStoresNoItems(): void {
+		$inserted = [];
+		$this->expectCreation(8, 3, $inserted);
+
+		$created = $this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, []);
+
+		$this->assertSame([], $inserted);
+		$this->assertSame([], $created->getMenuItems());
+	}
+
+	public function testCreateStoresAMenuWithoutAStartPageItemAsSubmitted(): void {
 		$inserted = [];
 		$this->expectCreation(8, 3, $inserted);
 
 		$this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, MenuItemInput::createListFromInputArray([
 			['label' => 'Docs', 'url' => 'https://example.org', 'technicalName' => 'dashboard'],
+			['label' => 'Guide', 'url' => 'https://example.org/guide'],
 		], allowNewStartPage: true));
 
 		$this->assertSame([
-			['translated Dashboard', 'page', 3, 'dashboard_2', null],
 			['Docs', 'url', null, 'dashboard', null],
+			['Guide', 'url', null, 'guide', null],
 		], self::describeMenu($inserted));
 	}
 

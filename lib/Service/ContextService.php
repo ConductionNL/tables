@@ -159,7 +159,7 @@ class ContextService {
 			$startPageId = self::startPageId($context->getPages() ?? []);
 			$menu = $menuItems ?? [];
 			if ($startPageId !== null) {
-				$menu = $this->menuWithStartPage($menu, $startPageId);
+				$menu = $menuItems === null ? [$this->dashboardItem($startPageId)] : self::menuWithStartPage($menuItems, $startPageId);
 			}
 			$this->replaceMenu($context, $menu, $ownerId);
 		}, $this->dbc);
@@ -168,39 +168,30 @@ class ContextService {
 	}
 
 	/**
-	 * The menu of a new application: a page item without an id opens the start page, and a
-	 * "Dashboard" item opening the start page goes first unless the menu already opens it.
+	 * The submitted menu of a new application, where a page item without an id opens the start page.
 	 *
 	 * @param list<MenuItemInput> $menuItems
 	 * @return list<MenuItemInput>
-	 * @throws InvalidArgumentException
 	 */
-	private function menuWithStartPage(array $menuItems, int $startPageId): array {
-		$opensStartPage = false;
-		$taken = [];
-		foreach ($menuItems as $position => $item) {
-			if ($item->pointsAtNewStartPage()) {
-				$item = $menuItems[$position] = $item->withPageId($startPageId);
-			}
-			if ($item->getTargetType() === MenuItem::TARGET_PAGE && $item->getTargetId() === $startPageId) {
-				$opensStartPage = true;
-			}
-			if ($item->getTechnicalName() !== null) {
-				$taken[$item->getTechnicalName()] = true;
-			}
-		}
-		if ($opensStartPage) {
-			return $menuItems;
-		}
-		$dashboard = new MenuItemInput(
+	private static function menuWithStartPage(array $menuItems, int $startPageId): array {
+		return array_map(
+			static fn (MenuItemInput $item): MenuItemInput => $item->pointsAtNewStartPage() ? $item->withPageId($startPageId) : $item,
+			$menuItems,
+		);
+	}
+
+	/**
+	 * The "Dashboard" item opening the start page, the menu of a new application created without one.
+	 */
+	private function dashboardItem(int $startPageId): MenuItemInput {
+		return new MenuItemInput(
 			label: $this->l10n->t('Dashboard'),
 			icon: null,
 			targetType: MenuItem::TARGET_PAGE,
 			targetId: $startPageId,
 			url: null,
-			technicalName: self::uniqueTechnicalName('dashboard', $taken),
+			technicalName: 'dashboard',
 		);
-		return [$dashboard, ...$menuItems];
 	}
 
 	/**

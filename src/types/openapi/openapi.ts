@@ -6920,7 +6920,7 @@ export interface operations {
                         readonly permissions?: number;
                     }[];
                     /**
-                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page, and an item opening the start page is put first unless the menu has one
+                     * @description optional menu of the context, in order; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page; without a menu, the context gets one item opening the start page
                      * @default null
                      */
                     readonly menuItems?: readonly {
