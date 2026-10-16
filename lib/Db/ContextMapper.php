@@ -88,6 +88,7 @@ class ContextMapper extends QBMapper {
 			'description' => $rows[0]['description'],
 			'owner_id' => $rows[0]['owner_id'],
 			'owner_type' => $rows[0]['owner_type'],
+			'technical_name' => $rows[0]['technical_name'] ?? null,
 		];
 
 		$formatted['sharing'] = array_reduce($rows, function (array $carry, array $item) use ($userId) {
@@ -155,6 +156,53 @@ class ContextMapper extends QBMapper {
 		);
 
 		return $this->mapRowToEntity($formatted);
+	}
+
+	/**
+	 * The id of the context with this technical name that the user owns, else the oldest one
+	 * shared with them. Technical names are unique per owner only.
+	 *
+	 * @throws Exception
+	 */
+	public function findIdByTechnicalName(string $technicalName, string $userId): ?int {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct(['c.id', 'c.owner_id'])
+			->from($this->table, 'c');
+		$this->applyOwnedOrSharedQuery($qb, $userId);
+		$qb->andWhere($qb->expr()->eq('c.technical_name', $qb->createNamedParameter($technicalName, IQueryBuilder::PARAM_STR)))
+			->orderBy('c.id', 'ASC');
+		$result = $qb->executeQuery();
+		$sharedId = null;
+		while (($row = $result->fetchAssociative()) !== false) {
+			if ($row['owner_id'] === $userId) {
+				$result->closeCursor();
+				return (int)$row['id'];
+			}
+			$sharedId ??= (int)$row['id'];
+		}
+		$result->closeCursor();
+		return $sharedId;
+	}
+
+	/**
+	 * Whether the owner already has another context with this technical name.
+	 *
+	 * @throws Exception
+	 */
+	public function isTechnicalNameTaken(string $technicalName, string $ownerId, ?int $exceptContextId = null): bool {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id')
+			->from($this->table)
+			->where($qb->expr()->eq('technical_name', $qb->createNamedParameter($technicalName, IQueryBuilder::PARAM_STR)))
+			->andWhere($qb->expr()->eq('owner_id', $qb->createNamedParameter($ownerId, IQueryBuilder::PARAM_STR)))
+			->setMaxResults(1);
+		if ($exceptContextId !== null) {
+			$qb->andWhere($qb->expr()->neq('id', $qb->createNamedParameter($exceptContextId, IQueryBuilder::PARAM_INT)));
+		}
+		$result = $qb->executeQuery();
+		$taken = $result->fetchOne() !== false;
+		$result->closeCursor();
+		return $taken;
 	}
 
 	/**
