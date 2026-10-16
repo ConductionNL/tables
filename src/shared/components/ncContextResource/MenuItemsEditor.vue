@@ -18,9 +18,7 @@
 				@dragstart="dragStart(index, $event)"
 				@dragover.prevent="dragOver(index)"
 				@dragend="dragEnd">
-				<span v-if="isFixedItem(item)" class="menu-items-editor__handle" aria-hidden="true" />
-				<span v-else
-					class="menu-items-editor__handle"
+				<span class="menu-items-editor__handle"
 					aria-hidden="true"
 					:title="t('tables', 'Drag to move')"
 					@pointerdown="holdHandle(index)">
@@ -109,8 +107,7 @@
 							<FormatIndentDecrease :size="20" />
 						</template>
 					</NcButton>
-					<NcButton v-if="!isFixedItem(item)"
-						:aria-label="t('tables', 'Remove {label}', { label: itemName(item) }, undefined, { escape: false })"
+					<NcButton :aria-label="t('tables', 'Remove {label}', { label: itemName(item) }, undefined, { escape: false })"
 						:title="t('tables', 'Remove menu item')"
 						variant="tertiary"
 						data-cy="menuItemRemove"
@@ -154,10 +151,10 @@ import {
 	canMove,
 	dragItemOver,
 	indentItem,
-	isFixedItem,
 	menuItemErrors,
 	moveItem,
 	newMenuItem,
+	opensNewStartPage,
 	outdentItem,
 	removeItem,
 } from '../../utils/menuItems.js'
@@ -167,8 +164,7 @@ const URL_OPTION_ID = 'url'
 /**
  * Edits the ordered menu of an application. Every item opens a view, a table, a page of the
  * application or a link, carries an icon, and can sit under the top-level item above it: one level
- * of nesting. A fixed item, such as the dashboard item of a new application, can only be renamed
- * and given an icon. The list operations live in utils/menuItems.js.
+ * of nesting. A page item keeps its target. The list operations live in utils/menuItems.js.
  */
 export default {
 	name: 'MenuItemsEditor',
@@ -259,7 +255,6 @@ export default {
 		canIndent,
 		canMove,
 		indentItem,
-		isFixedItem,
 		moveItem,
 		newMenuItem,
 		outdentItem,
@@ -286,7 +281,7 @@ export default {
 					targetType: 'page',
 					targetId: item.targetId,
 					title: '',
-					label: isFixedItem(item) ? t('tables', 'Start page of the application') : t('tables', 'Page of the application'),
+					label: opensNewStartPage(item) ? t('tables', 'Start page of the application') : t('tables', 'Page of the application'),
 				}
 			}
 			if (item.targetType === 'url') {
@@ -318,7 +313,7 @@ export default {
 		 * @param {object|null} option the chosen option
 		 */
 		setTarget(index, option) {
-			if (!option || isFixedItem(this.items[index])) {
+			if (!option || this.items[index].targetType === 'page') {
 				return
 			}
 			const changes = { targetType: option.targetType, targetId: option.targetId }

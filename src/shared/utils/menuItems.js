@@ -6,8 +6,7 @@
 /*
  * The menu of an application as the editor holds it: a flat, ordered list where a child carries
  * the key of its parent. A parent always precedes its children, there is one level of nesting,
- * and a parent that moves takes its children along. A fixed item, such as the dashboard item of
- * a new application, keeps its place and its target. Every function returns a new list.
+ * and a parent that moves takes its children along. Every function returns a new list.
  */
 
 // The same limits as MenuItemInput on the server
@@ -21,7 +20,7 @@ export const DASHBOARD_TECHNICAL_NAME = 'dashboard'
  * creates the start page and points the item at it.
  *
  * @param {string} label the label shown in the menu
- * @return {object} the fixed dashboard item
+ * @return {object} the dashboard item
  */
 export function newDashboardItem(label) {
 	return {
@@ -33,18 +32,18 @@ export function newDashboardItem(label) {
 		url: null,
 		technicalName: DASHBOARD_TECHNICAL_NAME,
 		parentKey: null,
-		fixed: true,
+		opensNewStartPage: true,
 	}
 }
 
 /**
- * Whether an item keeps its place and target: it cannot be removed, moved or pointed elsewhere.
+ * Whether an item opens the start page the server creates with a new application.
  *
  * @param {object} item an item of the list
- * @return {boolean} true for a fixed item
+ * @return {boolean} true for the dashboard item of a new application
  */
-export function isFixedItem(item) {
-	return item?.fixed === true
+export function opensNewStartPage(item) {
+	return item?.opensNewStartPage === true && item.targetType === 'page'
 }
 
 /**
@@ -115,8 +114,7 @@ export function menuItemErrors(item) {
 	const label = (item.label ?? '').trim()
 	return {
 		label: label === '' || label.length > MAX_LABEL_LENGTH,
-		// a fixed page item without an id opens the start page the server creates
-		target: item.targetType !== 'url' && !(item.targetId > 0) && !(isFixedItem(item) && item.targetType === 'page'),
+		target: item.targetType !== 'url' && !(item.targetId > 0) && !opensNewStartPage(item),
 		url: item.targetType === 'url' && !isValidMenuLink(item.url),
 	}
 }
@@ -166,7 +164,7 @@ export function hasChildren(items, item) {
  * @return {boolean} true when it can become a child
  */
 export function canIndent(items, index) {
-	return !isFixedItem(items[index]) && parentAbove(items, index) !== null && !hasChildren(items, items[index])
+	return parentAbove(items, index) !== null && !hasChildren(items, items[index])
 }
 
 /**
@@ -211,9 +209,6 @@ export function outdentItem(items, index) {
  */
 export function removeItem(items, index) {
 	const removed = items[index]
-	if (isFixedItem(removed)) {
-		return items
-	}
 	return items
 		.filter((item, i) => i !== index)
 		.map(item => item.parentKey === removed.key ? { ...item, parentKey: null } : item)
@@ -256,7 +251,7 @@ export function siblingsOf(items, item) {
 export function canMove(items, index, step) {
 	const siblings = siblingsOf(items, items[index])
 	const neighbour = siblings[siblings.indexOf(items[index]) + step]
-	return neighbour !== undefined && !isFixedItem(items[index]) && !isFixedItem(neighbour)
+	return neighbour !== undefined
 }
 
 /**
@@ -308,10 +303,10 @@ export function parentOfPosition(items, position) {
  * @param {Array} items the editable list
  * @param {number} draggedIndex position of the dragged item
  * @param {number} overIndex position of the item it is dragged over
- * @return {{items: Array, draggedIndex: number}|null} the new list and the dragged item's new position, or null when nothing changes or a fixed item would move
+ * @return {{items: Array, draggedIndex: number}|null} the new list and the dragged item's new position, or null when nothing changes
  */
 export function dragItemOver(items, draggedIndex, overIndex) {
-	if (draggedIndex === overIndex || isFixedItem(items[draggedIndex])) {
+	if (draggedIndex === overIndex) {
 		return null
 	}
 	const moving = blockOf(items, draggedIndex)
@@ -335,8 +330,5 @@ export function dragItemOver(items, draggedIndex, overIndex) {
 		}
 	}
 	rest.splice(insertAt, 0, ...placed)
-	if (items.some((item, index) => isFixedItem(item) && rest[index] !== item)) {
-		return null
-	}
 	return { items: rest, draggedIndex: rest.indexOf(placed[0]) }
 }

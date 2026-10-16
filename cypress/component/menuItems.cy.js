@@ -8,11 +8,11 @@ import {
 	canMove,
 	dragItemOver,
 	indentItem,
-	isFixedItem,
 	isValidMenuLink,
 	menuItemErrors,
 	moveItem,
 	newDashboardItem,
+	opensNewStartPage,
 	outdentItem,
 	parentOfPosition,
 	removeItem,
@@ -118,11 +118,11 @@ describe('menu items', () => {
 		expect(dragItemOver(items, 2, 2)).to.equal(null)
 	})
 
-	it('keeps the dashboard item first, fixed and pointing at the new start page', () => {
+	it('starts the menu with a dashboard item that opens the new start page', () => {
 		const dashboard = newDashboardItem('Dashboard')
 		const items = [dashboard, item('A'), item('B')]
 
-		expect(isFixedItem(dashboard)).to.equal(true)
+		expect(opensNewStartPage(dashboard)).to.equal(true)
 		expect(menuItemErrors(dashboard)).to.deep.equal({ label: false, target: false, url: false })
 		expect(menuItemErrors({ ...dashboard, label: ' ' }).label).to.equal(true)
 		expect(areMenuItemsValid(items)).to.equal(true)
@@ -132,15 +132,25 @@ describe('menu items', () => {
 		expect(payload.targetId).to.equal(null)
 		expect(payload.label).to.equal('Overview')
 		expect(payload.technicalName).to.equal('dashboard')
+	})
 
-		expect(removeItem(items, 0)).to.equal(items)
-		expect(canMove(items, 0, 1)).to.equal(false)
-		expect(canMove(items, 1, -1)).to.equal(false)
-		expect(moveItem(items, 1, -1)).to.equal(items)
-		expect(canIndent(items, 0)).to.equal(false)
-		expect(dragItemOver(items, 0, 2)).to.equal(null)
-		expect(dragItemOver(items, 2, 0)).to.equal(null)
-		expect(shape(dragItemOver(items, 2, 1).items)).to.deep.equal(['dashboard', 'B', 'A'])
+	it('moves and removes the dashboard item like any other item', () => {
+		const items = [newDashboardItem('Dashboard'), item('A'), item('B')]
+
+		expect(shape(removeItem(items, 0))).to.deep.equal(['A', 'B'])
+		expect(canMove(items, 0, 1)).to.equal(true)
+		expect(shape(moveItem(items, 0, 1))).to.deep.equal(['A', 'dashboard', 'B'])
+		expect(canMove(items, 1, -1)).to.equal(true)
+		expect(shape(moveItem(items, 1, -1))).to.deep.equal(['A', 'dashboard', 'B'])
+		expect(shape(dragItemOver(items, 0, 2).items)).to.deep.equal(['A', 'B', 'dashboard'])
+		expect(shape(dragItemOver(items, 2, 0).items)).to.deep.equal(['B', 'dashboard', 'A'])
+
+		const moved = moveItem(items, 0, 1)
+		const nested = indentItem(moved, 1)
+		expect(canIndent(moved, 1)).to.equal(true)
+		expect(shape(nested)).to.deep.equal(['A', 'A>dashboard', 'B'])
+		const payload = toMenuItemPayload(nested[1], nested)
+		expect([payload.targetType, payload.targetId, payload.parentIndex]).to.deep.equal(['page', null, 0])
 	})
 
 	it('nests items under the dashboard item like under any other', () => {
@@ -167,9 +177,9 @@ describe('menu items', () => {
 			technicalName: 'overview',
 			parentIndex: null,
 		})
-		expect(isFixedItem(page)).to.equal(false)
+		expect(opensNewStartPage(page)).to.equal(false)
 		expect(shape(moveItem(items, 0, 1))).to.deep.equal(['A', 'p'])
-		// without an id, only the fixed dashboard item is valid
+		// without an id, only the dashboard item of a new application is valid
 		expect(menuItemErrors({ ...page, targetId: null }).target).to.equal(true)
 	})
 })
