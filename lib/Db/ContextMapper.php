@@ -37,7 +37,7 @@ class ContextMapper extends QBMapper {
 		$qb->select(
 			'c.*',
 			'r.id as node_rel_id', 'r.node_id', 'r.node_type', 'r.permissions',
-			'p.id as page_id', 'p.page_type',
+			'p.id as page_id', 'p.page_type', 'p.title as page_title', 'p.emoji as page_emoji', 'p.description as page_description',
 			'pc.id as content_id', 'pc.order',
 			'n.display_mode as display_mode_default',
 			's.id as share_id', 's.receiver', 's.receiver_type'
@@ -131,7 +131,10 @@ class ContextMapper extends QBMapper {
 			$carry[$item['page_id']] ??= ['content' => []];
 			$carry[$item['page_id']]['id'] = (int)$item['page_id'];
 			$carry[$item['page_id']]['page_type'] = $item['page_type'];
-			if ($item['node_rel_id'] !== null) {
+			$carry[$item['page_id']]['title'] = $item['page_title'];
+			$carry[$item['page_id']]['emoji'] = $item['page_emoji'];
+			$carry[$item['page_id']]['description'] = $item['page_description'];
+			if ($item['node_rel_id'] !== null && $item['content_id'] !== null) {
 				$carry[$item['page_id']]['content'][$item['content_id']] = [
 					'order' => (int)$item['order'],
 					'node_rel_id' => (int)$item['node_rel_id']
