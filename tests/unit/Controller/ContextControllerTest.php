@@ -11,6 +11,10 @@ namespace OCA\Tables\Tests\Unit\Controller;
 
 use OCA\Tables\Controller\ContextController;
 use OCA\Tables\Db\Context;
+use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\InternalError;
+use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\MenuItemInput;
 use OCA\Tables\Service\ColumnService;
 use OCA\Tables\Service\ContextService;
@@ -27,10 +31,14 @@ use Psr\Log\LoggerInterface;
 final class ContextControllerTest extends TestCase {
 	private ContextService&MockObject $contextService;
 	private ContextController $controller;
+	private IDBConnection&MockObject $db;
+
+	private const TABLES = ['addTables' => [], 'modifyTables' => []];
 
 	protected function setUp(): void {
 		parent::setUp();
 		$this->contextService = $this->createMock(ContextService::class);
+		$this->db = $this->createMock(IDBConnection::class);
 		$this->controller = new ContextController(
 			$this->createMock(IRequest::class),
 			$this->createMock(LoggerInterface::class),
@@ -38,7 +46,7 @@ final class ContextControllerTest extends TestCase {
 			'user-1',
 			$this->contextService,
 			$this->createMock(TableService::class),
-			$this->createMock(IDBConnection::class),
+			$this->db,
 			$this->createMock(ColumnService::class),
 			$this->createMock(ViewService::class),
 		);
@@ -68,5 +76,60 @@ final class ContextControllerTest extends TestCase {
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$this->assertStringContainsString('needs its id', $response->getData()['message']);
+	}
+
+	public function testImportOfAMalformedSchemeIsABadRequestThatNeverReachesTheService(): void {
+		$this->contextService->expects($this->never())->method('importScheme');
+
+		$response = $this->controller->importScheme(7, 'Intake', 'star', '', [], ['addTables' => []]);
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+	}
+
+	public function testImportThatTheServiceRefusesAsABadRequestRollsBackWithA400(): void {
+		$this->contextService->method('importScheme')->willThrowException(new BadRequestError('Unknown widget type'));
+		$this->db->expects($this->once())->method('rollBack');
+		$this->db->expects($this->never())->method('commit');
+
+		$response = $this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+	}
+
+	public function testImportThatFailsInternallyRollsBackWithA500(): void {
+		$this->contextService->method('importScheme')->willThrowException(new InternalError('insert failed'));
+		$this->db->expects($this->once())->method('rollBack');
+
+		$response = $this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
+
+		$this->assertSame(Http::STATUS_INTERNAL_SERVER_ERROR, $response->getStatus());
+	}
+
+	public function testImportOfAPageThatIsGoneRollsBackWithA404(): void {
+		$this->contextService->method('importScheme')->willThrowException(new NotFoundError('page not found'));
+		$this->db->expects($this->once())->method('rollBack');
+
+		$response = $this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
+
+		$this->assertSame(Http::STATUS_NOT_FOUND, $response->getStatus());
+	}
+
+	public function testImportPassesThePagesMenuAndGridViewsOnAndLeavesAbsentOnesNull(): void {
+		$schemes = [];
+		$this->contextService->expects($this->exactly(2))->method('importScheme')
+			->willReturnCallback(static function (int $contextId, ContextScheme $scheme) use (&$schemes): Context {
+				$schemes[] = $scheme;
+				return new Context();
+			});
+
+		$this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES);
+		$this->controller->importScheme(7, 'Intake', 'star', '', [], self::TABLES, [['id' => 3, 'page_type' => 'grid', 'title' => 'Reports']], [], [['uuid' => 'grid-1', 'title' => 'Old page']]);
+
+		$this->assertNull($schemes[0]->getMenuItems());
+		$this->assertNull($schemes[0]->getPages());
+		$this->assertSame([], $schemes[0]->getGridViews());
+		$this->assertSame([], $schemes[1]->getMenuItems());
+		$this->assertSame([['id' => 3, 'page_type' => 'grid', 'title' => 'Reports']], $schemes[1]->getPages());
+		$this->assertSame('grid-1', $schemes[1]->getGridViews()[0]['uuid']);
 	}
 }

@@ -41,7 +41,12 @@
 
 			<!-- show preview -->
 			<div v-if="showPreview">
-				<ImportContextSchemePreview :preview-data="preview" :table="table" @update="onUpdateScheme" />
+				<ImportContextSchemePreview :preview-data="preview"
+					:table="table"
+					:menu-items="uploadedScheme?.menuItems ?? null"
+					:pages="uploadedPages"
+					:current-menu-items="getContext(contextId)?.menuItems ?? []"
+					@update="onUpdateScheme" />
 			</div>
 
 			<!-- show results -->
@@ -145,6 +150,8 @@ export default {
 			importFinished: false,
 			preview: null,
 			schemeData: null,
+			// The scheme as read from the file; the preview rebuilds schemeData from the parts chosen
+			uploadedScheme: null,
 			waitForReload: false,
 			mimeTypes: [
 				'application/json',
@@ -156,6 +163,18 @@ export default {
 
 	computed: {
 		...mapState(useTablesStore, ['getContext', 'tables', 'views', 'activeContextId']),
+		/**
+		 * The pages of the uploaded scheme as a list; a file from an older version keys them by id.
+		 *
+		 * @return {Array<object>|null}
+		 */
+		uploadedPages() {
+			const pages = this.uploadedScheme?.pages
+			if (!pages || typeof pages !== 'object') {
+				return null
+			}
+			return Array.isArray(pages) ? pages : Object.values(pages)
+		},
 		importFileName() {
 			const fileName = this.selectedUploadFile ? this.selectedUploadFile.name : ''
 
@@ -241,8 +260,17 @@ export default {
 				this.loading = false
 			}
 		},
+		/**
+		 * Takes the scheme as chosen in the preview. When it brings the pages, the grid views of a file
+		 * from an older version come along, as each becomes a page.
+		 *
+		 * @param {object} newScheme the scheme the preview built
+		 */
 		onUpdateScheme(newScheme) {
-			this.schemeData = newScheme
+			const gridViews = this.uploadedScheme?.gridViews
+			this.schemeData = newScheme.pages && Array.isArray(gridViews) && gridViews.length > 0
+				? { ...newScheme, gridViews }
+				: newScheme
 		},
 		async actionImport() {
 			if (!this.schemeData) {
@@ -300,7 +328,8 @@ export default {
 			reader.readAsText(this.selectedUploadFile, 'UTF-8')
 			reader.onload = (evt) => {
 				try {
-					this.schemeData = JSON.parse(evt.target.result)
+					this.uploadedScheme = JSON.parse(evt.target.result)
+					this.schemeData = this.uploadedScheme
 				} catch (parseError) {
 					this.importFailed = true
 					this.errorMessage = t('tables', 'The selected file is not valid JSON.')

@@ -13848,7 +13848,63 @@
                                         "type": "array",
                                         "nullable": true,
                                         "default": null,
-                                        "description": "Pages of the scheme; each updates the page with the same technical name or is added, with its widgets",
+                                        "description": "Pages of the scheme; each updates the page with the same technical name or is added, with its widgets; leave it out to keep the current pages",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "menuItems": {
+                                        "type": "array",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Menu of the context: tables and views by uuid, pages by technical name, parents by technical name; leave it out to keep the current menu",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "label",
+                                                "targetType"
+                                            ],
+                                            "properties": {
+                                                "label": {
+                                                    "type": "string"
+                                                },
+                                                "icon": {
+                                                    "type": "string"
+                                                },
+                                                "targetType": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "view",
+                                                        "table",
+                                                        "url",
+                                                        "page"
+                                                    ]
+                                                },
+                                                "targetUuid": {
+                                                    "type": "string"
+                                                },
+                                                "targetPageTechnicalName": {
+                                                    "type": "string"
+                                                },
+                                                "url": {
+                                                    "type": "string"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
+                                                },
+                                                "parentTechnicalName": {
+                                                    "type": "string"
+                                                }
+                                            }
+                                        }
+                                    },
+                                    "gridViews": {
+                                        "type": "array",
+                                        "default": [],
+                                        "description": "Views without a table from a scheme of an older version; each becomes a page",
                                         "items": {
                                             "type": "object",
                                             "additionalProperties": {

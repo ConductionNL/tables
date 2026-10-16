@@ -7683,12 +7683,34 @@ export interface operations {
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
                     /**
-                     * @description Pages of the scheme; each updates the page with the same technical name or is added, with its widgets
+                     * @description Pages of the scheme; each updates the page with the same technical name or is added, with its widgets; leave it out to keep the current pages
                      * @default null
                      */
                     readonly pages?: readonly {
                         readonly [key: string]: Record<string, never>;
                     }[] | null;
+                    /**
+                     * @description Menu of the context: tables and views by uuid, pages by technical name, parents by technical name; leave it out to keep the current menu
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url" | "page";
+                        readonly targetUuid?: string;
+                        readonly targetPageTechnicalName?: string;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                        readonly parentTechnicalName?: string;
+                    }[] | null;
+                    /**
+                     * @description Views without a table from a scheme of an older version; each becomes a page
+                     * @default []
+                     */
+                    readonly gridViews?: readonly {
+                        readonly [key: string]: Record<string, never>;
+                    }[];
                 };
             };
         };
