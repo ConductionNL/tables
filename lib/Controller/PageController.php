@@ -8,6 +8,7 @@
 namespace OCA\Tables\Controller;
 
 use OCA\Tables\AppInfo\Application;
+use OCA\Tables\Db\ContextMapper;
 use OCA\Tables\Service\NodeService;
 use OCA\Tables\Service\ShareService;
 use OCA\Text\Event\LoadEditor;
@@ -32,6 +33,8 @@ class PageController extends Controller {
 		protected IInitialState $initialState,
 		protected ShareService $shareService,
 		protected NodeService $nodeService,
+		protected ContextMapper $contextMapper,
+		protected ?string $userId,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -58,18 +61,20 @@ class PageController extends Controller {
 	}
 
 	/**
-	 * Render default template
-	 *
-	 * @psalm-param int<0, max> $appId
+	 * Render the template for one application, addressed by id or by technical name
 	 */
 	#[NoAdminRequired]
 	#[NoCSRFRequired]
 	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
-	public function context(int $contextId): TemplateResponse {
-		$navId = Application::APP_ID . '_application_' . $contextId;
+	public function context(string $contextId): TemplateResponse {
+		$id = ctype_digit($contextId) ? (int)$contextId : ($this->userId === null ? null : $this->contextMapper->findIdByTechnicalName($contextId, $this->userId));
+		if ($id === null) {
+			return $this->index();
+		}
+		$navId = Application::APP_ID . '_application_' . $id;
 		$this->navigationManager->setActiveEntry($navId);
 
-		$this->initialState->provideInitialState('contextId', $contextId);
+		$this->initialState->provideInitialState('contextId', $id);
 
 		return $this->index();
 	}

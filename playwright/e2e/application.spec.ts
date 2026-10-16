@@ -181,6 +181,25 @@ test.describe('Applications', () => {
 		await expect(page.locator('[data-cy="page-card"]')).toContainText('Invoices')
 	})
 
+	test('An application with a technical name is opened at its readable address', async ({ userPage: { page, user } }) => {
+		// Technical names are unique per owner; a fresh one keeps reruns on the same instance apart
+		const technicalName = 'intake_' + Date.now()
+		const contextId = await createEmptyApplication(page.request, user, 'named application')
+		await page.goto(`/index.php/apps/tables/#/application/${contextId}/overview`)
+
+		await page.getByRole('button', { name: 'Application settings' }).click()
+		await page.getByRole('menuitem', { name: 'Edit name, icon and members' }).click()
+		await page.locator('[data-cy="editContextTechnicalName"]').fill(technicalName)
+		await page.locator('[data-cy="editContextSubmitBtn"]').click()
+		await expect(page.locator('[data-cy="context-address"]')).toContainText('/apps/tables/app/' + technicalName)
+		// Pages carry their own technical name, shown next to their title
+		await expect(page.locator('[data-cy="page-card-technical-name"]')).toHaveText(['dashboard'])
+
+		await page.goto('/index.php/apps/tables/app/' + technicalName)
+		await expect(page.locator('[data-cy="application-nav-header"]')).toContainText('named application')
+		await expect(page).toHaveURL(/\/menu\/dashboard$/)
+	})
+
 	test('The overview lists the pages; a page added there gets a menu entry and opens in edit mode', async ({ userPage: { page, user } }) => {
 		const contextResponse = await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts?format=json`, data: { name: 'overview application', iconName: 'star' } })
 		const contextId = (await contextResponse.json()).ocs.data.id
