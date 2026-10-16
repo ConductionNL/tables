@@ -1199,6 +1199,7 @@ export type components = {
             readonly owner: string;
             /** Format: int64 */
             readonly ownerType: number;
+            readonly menuItems: readonly components["schemas"]["MenuItem"][];
         };
         readonly ContextNavigation: {
             /** Format: int64 */
@@ -1232,6 +1233,25 @@ export type components = {
         readonly LinkShare: {
             readonly shareToken: string;
             readonly url: string;
+        };
+        readonly MenuItem: {
+            /** Format: int64 */
+            readonly id: number;
+            /** Format: int64 */
+            readonly contextId: number;
+            readonly label: string;
+            readonly icon: string | null;
+            /** @enum {string} */
+            readonly targetType: "view" | "table" | "url" | "page";
+            /** Format: int64 */
+            readonly targetId: number | null;
+            readonly url: string | null;
+            readonly technicalName: string;
+            /** Format: int64 */
+            readonly order: number;
+            /** Format: int64 */
+            readonly parentId: number | null;
+            readonly broken: boolean;
         };
         readonly NotifyConfig: {
             readonly "notify-assigned": boolean;
@@ -7005,6 +7025,22 @@ export interface operations {
                         /** Format: int64 */
                         readonly permissions?: number;
                     }[];
+                    /**
+                     * @description optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page; without a menu, the context gets one item opening the start page
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url" | "page";
+                        /** Format: int64 */
+                        readonly targetId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                        /** Format: int64 */
+                        readonly parentIndex?: number;
+                    }[] | null;
                 };
             };
         };
@@ -7195,6 +7231,22 @@ export interface operations {
                         /** Format: int64 */
                         readonly order: number;
                     } | null;
+                    /**
+                     * @description provide this parameter to replace the menu; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context, and an item without a technicalName keeps the one stored for the same target
+                     * @default null
+                     */
+                    readonly menuItems?: readonly {
+                        readonly label: string;
+                        readonly icon?: string;
+                        /** @enum {string} */
+                        readonly targetType: "view" | "table" | "url" | "page";
+                        /** Format: int64 */
+                        readonly targetId?: number;
+                        readonly url?: string;
+                        readonly technicalName?: string;
+                        /** Format: int64 */
+                        readonly parentIndex?: number;
+                    }[] | null;
                 };
             };
         };

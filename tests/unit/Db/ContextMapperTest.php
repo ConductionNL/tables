@@ -14,6 +14,7 @@ use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextMapper;
 use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
+use OCA\Tables\Db\MenuItemMapper;
 use OCA\Tables\Db\Page;
 use OCA\Tables\Db\PageContent;
 use OCA\Tables\Db\PageContentMapper;
@@ -39,7 +40,7 @@ class ContextMapperTest extends DatabaseTestCase {
 		parent::setUp();
 		$userHelper = $this->createMock(UserHelper::class);
 		$userHelper->method('getGroupIdsForUser')->willReturn([]);
-		$this->mapper = new ContextMapper($this->connectionAdapter, $userHelper, $this->createMock(GroupHelper::class));
+		$this->mapper = new ContextMapper($this->connectionAdapter, $userHelper, $this->createMock(GroupHelper::class), new MenuItemMapper($this->connectionAdapter));
 		$this->nodeRelMapper = new ContextNodeRelationMapper($this->connectionAdapter);
 		$this->pageMapper = new PageMapper($this->connectionAdapter);
 		$this->pageContentMapper = new PageContentMapper($this->connectionAdapter);
