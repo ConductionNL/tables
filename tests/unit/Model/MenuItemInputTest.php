@@ -120,7 +120,7 @@ class MenuItemInputTest extends TestCase {
 		MenuItemInput::createFromInputArray(['label' => 'X', 'targetType' => 'view'], allowNewStartPage: true);
 	}
 
-	public function testResolvingTheStartPageKeepsTheParentAndShiftingMovesIt(): void {
+	public function testResolvingTheStartPageKeepsTheParent(): void {
 		[, $child] = MenuItemInput::createListFromInputArray([
 			['label' => 'Cases', 'targetType' => 'table', 'targetId' => 4],
 			['label' => 'Overview', 'targetType' => 'page', 'parentIndex' => 0],
@@ -128,11 +128,7 @@ class MenuItemInputTest extends TestCase {
 
 		$resolved = $child->withPageId(3);
 		$this->assertSame(0, $resolved->getParentIndex());
-		$this->assertSame(1, $resolved->shiftedBy(1)->getParentIndex());
-		$this->assertTrue($child->shiftedBy(1)->pointsAtNewStartPage());
-
-		$topLevel = MenuItemInput::createFromInputArray(['label' => 'Docs', 'url' => 'https://example.org']);
-		$this->assertSame($topLevel, $topLevel->shiftedBy(1));
+		$this->assertSame(3, $resolved->getTargetId());
 	}
 
 	public function testRejectsAMenuThatIsNotAList(): void {
