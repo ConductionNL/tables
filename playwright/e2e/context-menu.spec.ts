@@ -84,8 +84,13 @@ test.describe('Application menu', () => {
 		await rows.first().locator('[data-cy="menuItemRemove"]').click()
 		await expect(rows).toHaveCount(0)
 
-		// A menu without an item for the start page gets one from the server
-		const { startPageId, menu } = await createApplication(page, 'test application without dashboard')
-		expect(menu).toEqual([['Dashboard', 'page', startPageId, 'dashboard']])
+		// The menu is stored as submitted, and the application still has its start page
+		const contextTitle = 'test application without dashboard'
+		const { context, startPageId, menu } = await createApplication(page, contextTitle)
+		expect(menu).toEqual([])
+		expect(startPageId).toBeGreaterThan(0)
+
+		await page.goto('/index.php/apps/tables/#/application/' + context.id)
+		await expect(page.locator('h1').filter({ hasText: contextTitle }).first()).toBeVisible()
 	})
 })
