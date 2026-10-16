@@ -101,7 +101,7 @@ class ContextController extends AOCSController {
 	 * @param string $iconName Material design icon name of the context
 	 * @param string $description Descriptive text of the context
 	 * @psalm-param list<array{id: int, type: int, permissions?: int}> $nodes optional nodes to be connected to this context
-	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url'|'page', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page, and an item opening the start page is put first unless the menu has one
+	 * @psalm-param ?list<array{label: string, icon?: string, targetType: 'view'|'table'|'url'|'page', targetId?: int, url?: string, technicalName?: string, parentIndex?: int}> $menuItems optional menu of the context, in order; parentIndex is the position of the parent item, for one level of nesting; the views and tables it opens become nodes of the context, a page item without a targetId opens the start page; without a menu, the context gets one item opening the start page
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN, array{message: string}, array{}>
 	 *

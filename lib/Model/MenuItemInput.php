@@ -137,18 +137,6 @@ class MenuItemInput {
 	}
 
 	/**
-	 * This item for a menu that gets the given number of items put in front of it.
-	 *
-	 * @throws InvalidArgumentException
-	 */
-	public function shiftedBy(int $positions): self {
-		if ($this->parentIndex === null) {
-			return $this;
-		}
-		return new self($this->label, $this->icon, $this->targetType, $this->targetId, $this->url, $this->technicalName, $this->parentIndex + $positions, $this->allowNewStartPage);
-	}
-
-	/**
 	 * @throws InvalidArgumentException
 	 */
 	public static function assertTechnicalNameValid(string $technicalName): void {
