@@ -50,6 +50,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 	private ContextNodeRelationMapper $nodeRelMapper;
 	private PageMapper $pageMapper;
 	private WidgetService $widgetService;
+	private TableMapper $tableMapper;
 	/** @var int[] */
 	private array $contextIds = [];
 
@@ -81,7 +82,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 			false,
 			$this->createMock(INavigationManager::class),
 			$this->createMock(IURLGenerator::class),
-			$this->createMock(TableMapper::class),
+			$this->tableMapper = $this->createMock(TableMapper::class),
 			$this->createMock(ViewMapper::class),
 			$this->widgetService,
 			new GridWidgetTypes($l10n),
@@ -119,7 +120,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 		$importedPages = $this->service->getPagesWithWidgets($importedContext);
 		$gridPages = array_values(array_filter($importedPages, static fn (array $page): bool => $page['page_type'] === Page::TYPE_GRID));
 		$this->assertCount(1, $gridPages);
-		$this->assertSame(['Overview', '📊', 'At a glance'], [$gridPages[0]['title'], $gridPages[0]['emoji'], $gridPages[0]['description']]);
+		$this->assertSame(['Overview', '📊', 'At a glance', 'overview'], [$gridPages[0]['title'], $gridPages[0]['emoji'], $gridPages[0]['description'], $gridPages[0]['technical_name']]);
 
 		$original = $this->service->getPagesWithWidgets($this->contextMapper->findById($context->getId(), self::OWNER))[$gridPageId]['widgets'];
 		$withoutIds = static fn (array $widgets): array => array_map(static function (array $widget): array {
@@ -148,6 +149,57 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 		$this->assertSame([], $this->pageMapper->getPageIdsForContext($context->getId()));
 	}
 
+	public function testImportedPagesAreNamedUniquelyWithinTheApplication(): void {
+		$table = new Table();
+		$table->id = 4343;
+		$table->setOwnership(self::OWNER);
+
+		$imported = $this->service->importContext($table, [
+			'name' => 'Named',
+			'nodes' => [['id' => 1, 'node_id' => 4343, 'node_type' => Application::NODE_TYPE_TABLE, 'permissions' => 1]],
+			'pages' => [
+				['id' => 1, 'page_type' => Page::TYPE_STARTPAGE, 'content' => []],
+				['id' => 2, 'page_type' => Page::TYPE_GRID, 'title' => 'Sales board', 'content' => []],
+				['id' => 3, 'page_type' => Page::TYPE_GRID, 'title' => 'Sales board', 'technical_name' => 'sales_board', 'content' => []],
+			],
+		], 4343);
+		$this->contextIds[] = $imported->getId();
+
+		$pages = array_values($this->contextMapper->findById($imported->getId(), self::OWNER)->getPages());
+		usort($pages, static fn (array $a, array $b): int => $a['id'] <=> $b['id']);
+		$this->assertSame(['dashboard', 'sales_board_2', 'sales_board'], array_column($pages, 'technical_name'));
+	}
+
+	public function testASchemeUpdatesThePageWithTheSameTechnicalNameAndAddsTheOthers(): void {
+		[$context, $relation, $gridPageId] = $this->createContextWithGridPage();
+		$this->tableMapper->method('findByUuid')->with('table-uuid')->willReturnCallback(static function (): Table {
+			$table = new Table();
+			$table->id = 4141;
+			return $table;
+		});
+
+		$this->service->importSchemePages($context->getId(), [
+			['id' => 900, 'node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'table-uuid', 'permissions' => 1],
+		], [
+			['page_type' => Page::TYPE_GRID, 'technical_name' => 'overview', 'title' => 'Renamed', 'emoji' => null, 'description' => null, 'widgets' => [
+				['type' => 'data', 'title' => 'Tasks', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 5, 'settings' => [], 'source' => ['nodeRelId' => 900]],
+			]],
+			['page_type' => Page::TYPE_GRID, 'technical_name' => 'planning', 'title' => 'Planning', 'widgets' => [
+				['type' => 'text', 'title' => null, 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 6, 'gridHeight' => 2, 'settings' => ['text' => 'Next'], 'source' => null],
+			]],
+		]);
+
+		$pages = $this->service->getPagesWithWidgets($this->contextMapper->findById($context->getId(), self::OWNER));
+		$this->assertCount(3, $pages);
+		$this->assertSame('Renamed', $pages[$gridPageId]['title']);
+		$this->assertCount(1, $pages[$gridPageId]['widgets']);
+		$this->assertSame(['nodeRelId' => $relation->getId()], $pages[$gridPageId]['widgets'][0]['source']);
+		$planning = array_values(array_filter($pages, static fn (array $page): bool => $page['technical_name'] === 'planning'));
+		$this->assertCount(1, $planning);
+		$this->assertSame(Page::TYPE_GRID, $planning[0]['page_type']);
+		$this->assertSame(['text' => 'Next'], $planning[0]['widgets'][0]['settings']);
+	}
+
 	/**
 	 * @return array{0: Context, 1: ContextNodeRelation, 2: int}
 	 */
@@ -163,6 +215,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 		$page->setTitle('Overview');
 		$page->setEmoji('📊');
 		$page->setDescription('At a glance');
+		$page->setTechnicalName('overview');
 		$page = $this->pageMapper->insert($page);
 
 		$this->widgetService->insert($page->getId(), 'header', 'Welcome', ['gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2], ['heading' => 'Projects', 'subheading' => '', 'textAlign' => 'center', 'backgroundColor' => '#123456', 'textColor' => ''], null);

@@ -25,6 +25,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Helper\TechnicalNameHelper;
 use OCA\Tables\Model\ColumnSettings;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Model\FilterSet;
@@ -530,6 +531,7 @@ class ContextService {
 		$page = new Page();
 		$page->setContextId($context->getId());
 		$page->setPageType(Page::TYPE_STARTPAGE);
+		$page->setTechnicalName(TechnicalNameHelper::START_PAGE_NAME);
 		$this->pageMapper->insert($page);
 
 		$addedPage = $page->jsonSerialize();
@@ -635,14 +637,20 @@ class ContextService {
 
 		// insert pages
 		$pageMap = [];
+		$relIdMap = array_map(static fn (ContextNodeRelation $relation): int => $relation->getId(), $nodeRelMap);
 		if (!empty($context['pages'])) {
-			foreach ($context['pages'] as $pageArr) {
+			$technicalNames = TechnicalNameHelper::assign(array_map(static fn (array $pageArr): array => [
+				'name' => is_string($pageArr['technical_name'] ?? null) ? $pageArr['technical_name'] : null,
+				'fallback' => TechnicalNameHelper::pageFallback(($pageArr['page_type'] ?? $pageArr['pageType'] ?? '') === Page::TYPE_STARTPAGE, $pageArr['title'] ?? null),
+			], $context['pages']));
+			foreach ($context['pages'] as $pageKey => $pageArr) {
 				$page = new Page();
 				$page->setContextId($newContext->getId());
 				$page->setPageType($pageArr['page_type'] ?? $pageArr['pageType'] ?? '');
 				$page->setTitle($pageArr['title'] ?? null);
 				$page->setEmoji($pageArr['emoji'] ?? null);
 				$page->setDescription($pageArr['description'] ?? null);
+				$page->setTechnicalName($technicalNames[$pageKey]);
 				$page = $this->pageMapper->insert($page);
 				$pageMap[$pageArr['id'] ?? null] = $page;
 
@@ -660,7 +668,10 @@ class ContextService {
 				}
 
 				foreach ($pageArr['widgets'] ?? [] as $widgetArr) {
-					$this->importWidget($page->getId(), $widgetArr, $nodeRelMap);
+					$widget = $this->readImportedWidget($widgetArr, $relIdMap);
+					if ($widget !== null) {
+						$this->widgetService->insert($page->getId(), $widget['type'], $widget['title'], $widget['position'], $widget['settings'], $widget['nodeRelId']);
+					}
 				}
 			}
 		}
@@ -683,40 +694,117 @@ class ContextService {
 	}
 
 	/**
-	 * Inserts an exported widget on a page. Its source is remapped to the imported node
-	 * relation, and dropped when that node was not imported. A widget whose type or
-	 * settings are not valid is skipped.
+	 * An exported widget as it is stored again. Its source is remapped to the imported
+	 * node relation and dropped when that node was not imported. A widget whose type or
+	 * settings are not valid gives null.
 	 *
-	 * @param array<array-key, ContextNodeRelation> $nodeRelMap imported node relations by their exported id
-	 * @throws Exception
-	 * @throws \JsonException
+	 * @param array<array-key, int> $relIdMap imported node relation ids by their exported id
+	 * @return array{id: null, type: string, title: ?string, position: array{gridX: int, gridY: int, gridWidth: int, gridHeight: int}, settings: array<string, mixed>, nodeRelId: ?int}|null
 	 */
-	private function importWidget(int $pageId, mixed $widgetArr, array $nodeRelMap): void {
+	private function readImportedWidget(mixed $widgetArr, array $relIdMap): ?array {
 		if (!is_array($widgetArr) || !is_string($widgetArr['type'] ?? null)) {
-			return;
+			return null;
 		}
 		try {
 			$hasSource = $this->gridWidgetTypes->get($widgetArr['type'])['hasSource'];
 			$settings = $this->gridWidgetTypes->sanitizeSettings($widgetArr['type'], $widgetArr['settings'] ?? null);
 		} catch (BadRequestError $e) {
 			$this->logger->warning('Skipping an imported widget: ' . $e->getMessage(), ['exception' => $e]);
-			return;
+			return null;
 		}
 		$oldNodeRelId = $hasSource ? ($widgetArr['source']['nodeRelId'] ?? null) : null;
-		$newNodeRel = $oldNodeRelId !== null ? ($nodeRelMap[$oldNodeRelId] ?? null) : null;
-		$this->widgetService->insert(
-			$pageId,
-			$widgetArr['type'],
-			is_string($widgetArr['title'] ?? null) ? $widgetArr['title'] : null,
-			[
+		return [
+			'id' => null,
+			'type' => $widgetArr['type'],
+			'title' => is_string($widgetArr['title'] ?? null) ? $widgetArr['title'] : null,
+			'position' => [
 				'gridX' => (int)($widgetArr['gridX'] ?? 0),
 				'gridY' => (int)($widgetArr['gridY'] ?? 0),
 				'gridWidth' => max(1, (int)($widgetArr['gridWidth'] ?? 1)),
 				'gridHeight' => max(1, (int)($widgetArr['gridHeight'] ?? 1)),
 			],
-			$settings,
-			$newNodeRel?->getId(),
-		);
+			'settings' => $settings,
+			'nodeRelId' => $oldNodeRelId !== null ? ($relIdMap[$oldNodeRelId] ?? null) : null,
+		];
+	}
+
+	/**
+	 * Applies the pages of a scheme to an application. A scheme page updates the page of
+	 * the application with the same technical name, or is added as a new page; its
+	 * widgets replace the widgets of that page. Pages the scheme does not name stay.
+	 *
+	 * @param list<array{id?: int, node_type: int, node_uuid?: string}> $schemeNodes the nodes of the scheme with their exported relation id
+	 * @param array<array-key, mixed> $schemePages
+	 * @throws Exception
+	 * @throws NotFoundError
+	 * @throws \JsonException
+	 */
+	public function importSchemePages(int $contextId, array $schemeNodes, array $schemePages): void {
+		$context = $this->contextMapper->findById($contextId);
+		$relIdsByNode = [];
+		foreach ($context->getNodes() ?? [] as $relId => $node) {
+			$relIdsByNode[sprintf('t%di%d', $node['node_type'], $node['node_id'])] = (int)$relId;
+		}
+		$relIdMap = [];
+		foreach ($schemeNodes as $node) {
+			if (!isset($node['id'], $node['node_uuid'])) {
+				continue;
+			}
+			try {
+				$nodeId = $node['node_type'] === Application::NODE_TYPE_VIEW
+					? $this->viewMapper->findByUuid($node['node_uuid'])->getId()
+					: $this->tableMapper->findByUuid($node['node_uuid'])->getId();
+			} catch (DoesNotExistException|MultipleObjectsReturnedException) {
+				continue;
+			}
+			$relId = $relIdsByNode[sprintf('t%di%d', $node['node_type'], $nodeId)] ?? null;
+			if ($relId !== null) {
+				$relIdMap[$node['id']] = $relId;
+			}
+		}
+
+		$pageIdsByName = [];
+		foreach ($context->getPages() ?? [] as $pageId => $page) {
+			if (is_string($page['technical_name'] ?? null)) {
+				$pageIdsByName[$page['technical_name']] = (int)$pageId;
+			}
+		}
+
+		foreach ($schemePages as $pageArr) {
+			if (!is_array($pageArr)) {
+				continue;
+			}
+			$isStartPage = ($pageArr['page_type'] ?? $pageArr['pageType'] ?? '') === Page::TYPE_STARTPAGE;
+			$name = $pageArr['technical_name'] ?? null;
+			$name = is_string($name) && Page::isValidTechnicalName($name)
+				? $name
+				: TechnicalNameHelper::pageFallback($isStartPage, $pageArr['title'] ?? null);
+
+			if (isset($pageIdsByName[$name])) {
+				$page = $this->pageMapper->findById($pageIdsByName[$name]);
+			} elseif ($isStartPage) {
+				continue;
+			} else {
+				$page = new Page();
+				$page->setContextId($contextId);
+				$page->setPageType(Page::TYPE_GRID);
+				$page->setTechnicalName($name);
+			}
+			$page->setTitle(is_string($pageArr['title'] ?? null) ? $pageArr['title'] : null);
+			$page->setEmoji(is_string($pageArr['emoji'] ?? null) ? $pageArr['emoji'] : null);
+			$page->setDescription(is_string($pageArr['description'] ?? null) ? $pageArr['description'] : null);
+			$page = $page->getId() === null ? $this->pageMapper->insert($page) : $this->pageMapper->update($page);
+			$pageIdsByName[$name] = $page->getId();
+
+			$widgets = [];
+			foreach ($pageArr['widgets'] ?? [] as $widgetArr) {
+				$widget = $this->readImportedWidget($widgetArr, $relIdMap);
+				if ($widget !== null) {
+					$widgets[] = $widget;
+				}
+			}
+			$this->widgetService->syncPage($page->getId(), $widgets);
+		}
 	}
 
 	/**
@@ -863,7 +951,7 @@ class ContextService {
 	 * @throws NotFoundExceptionInterface
 	 * @throws PermissionError
 	 */
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId): Context {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId, ?array $pages = null): Context {
 		// Validate the structure of the columns and views arrays
 		if (!isset($tables['addTables']) || !is_array($tables['addTables'])
 			|| !isset($tables['modifyTables']) || !is_array($tables['modifyTables'])) {
@@ -924,6 +1012,10 @@ class ContextService {
 		}
 
 		$context = $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes);
+		if ($pages !== null) {
+			$this->importSchemePages($contextId, $nodes, $pages);
+			$context = $this->contextMapper->findById($contextId, $userId);
+		}
 
 		return $context;
 	}

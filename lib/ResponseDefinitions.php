@@ -275,6 +275,7 @@ namespace OCA\Tables;
  *   title: ?string,
  *   emoji: ?string,
  *   description: ?string,
+ *   technicalName: string,
  *   widgets: list<TablesWidget>,
  * }
  *

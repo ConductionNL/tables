@@ -460,6 +460,7 @@
                     "title",
                     "emoji",
                     "description",
+                    "technicalName",
                     "widgets"
                 ],
                 "properties": {
@@ -485,6 +486,9 @@
                     "description": {
                         "type": "string",
                         "nullable": true
+                    },
+                    "technicalName": {
+                        "type": "string"
                     },
                     "widgets": {
                         "type": "array",
@@ -13678,6 +13682,18 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "pages": {
+                                        "type": "array",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Pages of the scheme; each updates the page with the same technical name or is added, with its widgets",
+                                        "items": {
+                                            "type": "object",
+                                            "additionalProperties": {
+                                                "type": "object"
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -14729,6 +14745,12 @@
                                                 "type": "object"
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "New technical name, unique within the application"
                                     }
                                 }
                             }
@@ -14799,7 +14821,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid page field or widget",
+                        "description": "Invalid page field, technical name or widget",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -15281,6 +15303,12 @@
                                         "nullable": true,
                                         "default": null,
                                         "description": "Description of the page"
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Name to address the page by, unique within the application; left out makes one from the title"
                                     }
                                 }
                             }
@@ -15341,7 +15369,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid title, emoji or description",
+                        "description": "Invalid title, emoji, description or technical name",
                         "content": {
                             "application/json": {
                                 "schema": {

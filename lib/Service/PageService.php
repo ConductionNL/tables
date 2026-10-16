@@ -18,6 +18,7 @@ use OCA\Tables\Db\PageMapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Helper\TechnicalNameHelper;
 use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
@@ -72,12 +73,14 @@ class PageService {
 			'title' => $page['title'] ?? null,
 			'emoji' => $page['emoji'] ?? null,
 			'description' => $page['description'] ?? null,
+			'technicalName' => (string)($page['technical_name'] ?? ''),
 			'widgets' => $widgets[$pageId] ?? [],
 		];
 	}
 
 	/**
-	 * Adds a grid page to an application.
+	 * Adds a grid page to an application. Without a technical name the page gets one
+	 * made from its title.
 	 *
 	 * @return TablesPage
 	 * @throws BadRequestError
@@ -85,8 +88,8 @@ class PageService {
 	 * @throws PermissionError
 	 * @throws Exception
 	 */
-	public function create(int $contextId, string $title, ?string $emoji, ?string $description, string $userId): array {
-		$this->getManageableContext($contextId, $userId);
+	public function create(int $contextId, string $title, ?string $emoji, ?string $description, ?string $technicalName, string $userId): array {
+		$context = $this->getManageableContext($contextId, $userId);
 
 		$page = new Page();
 		$page->setContextId($contextId);
@@ -94,7 +97,14 @@ class PageService {
 		$page->setTitle($this->validateTitle($title));
 		$page->setEmoji($this->validateEmoji($emoji));
 		$page->setDescription($this->validateDescription($description));
-		$page = $this->pageMapper->insert($page);
+		$page->setTechnicalName($technicalName === null
+			? TechnicalNameHelper::unique(TechnicalNameHelper::fromText($page->getTitle() ?? ''), $this->takenTechnicalNames($context, null))
+			: $this->validateTechnicalName($context, $technicalName, null));
+		try {
+			$page = $this->pageMapper->insert($page);
+		} catch (Exception $e) {
+			throw $this->technicalNameTaken($e, (string)$page->getTechnicalName());
+		}
 
 		return $this->find($contextId, $page->getId(), $userId);
 	}
@@ -119,7 +129,7 @@ class PageService {
 	 * @throws PermissionError
 	 * @throws Exception
 	 */
-	public function update(int $contextId, int $pageId, ?string $title, ?string $emoji, ?string $description, ?array $widgets, string $userId): array {
+	public function update(int $contextId, int $pageId, ?string $title, ?string $emoji, ?string $description, ?array $widgets, string $userId, ?string $technicalName = null): array {
 		$context = $this->getManageableContext($contextId, $userId);
 		$pageArray = $this->getPageArray($context, $pageId);
 
@@ -133,6 +143,9 @@ class PageService {
 		if ($description !== null) {
 			$page->setDescription($this->validateDescription($description));
 		}
+		if ($technicalName !== null) {
+			$page->setTechnicalName($this->validateTechnicalName($context, $technicalName, $pageId));
+		}
 
 		$rows = null;
 		$nodesToAdd = [];
@@ -145,7 +158,11 @@ class PageService {
 
 		$this->atomic(function () use ($page, $rows, $nodesToAdd, $contextId, $pageId, $userId): void {
 			if ($page->getUpdatedFields() !== []) {
-				$this->pageMapper->update($page);
+				try {
+					$this->pageMapper->update($page);
+				} catch (Exception $e) {
+					throw $this->technicalNameTaken($e, (string)$page->getTechnicalName());
+				}
 			}
 			if ($rows === null) {
 				return;
@@ -326,6 +343,48 @@ class PageService {
 			throw new BadRequestError('A page title needs 1 to ' . self::TITLE_MAX_LENGTH . ' characters.');
 		}
 		return $title;
+	}
+
+	/**
+	 * A technical name is unique within its application.
+	 *
+	 * @throws BadRequestError
+	 */
+	private function validateTechnicalName(Context $context, string $technicalName, ?int $pageId): string {
+		if (!Page::isValidTechnicalName($technicalName)) {
+			throw new BadRequestError('A technical name has 1 to ' . Page::TECHNICAL_NAME_MAX_LENGTH . ' characters, starts with a lowercase letter and holds only lowercase letters, digits and underscores.');
+		}
+		if (isset($this->takenTechnicalNames($context, $pageId)[$technicalName])) {
+			throw new BadRequestError('Another page of this application already uses the technical name ' . $technicalName . '.');
+		}
+		return $technicalName;
+	}
+
+	/**
+	 * A write that another request beat to the same technical name is a bad request;
+	 * any other database error is passed on.
+	 */
+	private function technicalNameTaken(Exception $e, string $technicalName): BadRequestError|Exception {
+		if ($e->getReason() === Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+			return new BadRequestError('Another page of this application already uses the technical name ' . $technicalName . '.', 0, $e);
+		}
+		return $e;
+	}
+
+	/**
+	 * The technical names of the application's pages, apart from the given page.
+	 *
+	 * @return array<string, true>
+	 */
+	private function takenTechnicalNames(Context $context, ?int $pageId): array {
+		$taken = [];
+		foreach ($context->getPages() ?? [] as $id => $page) {
+			$technicalName = $page['technical_name'] ?? null;
+			if ((int)$id !== $pageId && is_string($technicalName)) {
+				$taken[$technicalName] = true;
+			}
+		}
+		return $taken;
 	}
 
 	/**

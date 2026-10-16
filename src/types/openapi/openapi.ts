@@ -1254,6 +1254,7 @@ export type components = {
             readonly title: string | null;
             readonly emoji: string | null;
             readonly description: string | null;
+            readonly technicalName: string;
             readonly widgets: readonly components["schemas"]["Widget"][];
         };
         readonly PublicColumn: {
@@ -7629,6 +7630,13 @@ export interface operations {
                         readonly addTables: readonly components["schemas"]["Table"][];
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
+                    /**
+                     * @description Pages of the scheme; each updates the page with the same technical name or is added, with its widgets
+                     * @default null
+                     */
+                    readonly pages?: readonly {
+                        readonly [key: string]: Record<string, never>;
+                    }[] | null;
                 };
             };
         };
@@ -8199,6 +8207,11 @@ export interface operations {
                     readonly widgets?: readonly {
                         readonly [key: string]: Record<string, never>;
                     }[] | null;
+                    /**
+                     * @description New technical name, unique within the application
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };
@@ -8217,7 +8230,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid page field or widget */
+            /** @description Invalid page field, technical name or widget */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -8324,6 +8337,11 @@ export interface operations {
                      * @default null
                      */
                     readonly description?: string | null;
+                    /**
+                     * @description Name to address the page by, unique within the application; left out makes one from the title
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };
@@ -8342,7 +8360,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid title, emoji or description */
+            /** @description Invalid title, emoji, description or technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
