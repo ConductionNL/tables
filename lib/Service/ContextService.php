@@ -71,6 +71,7 @@ class ContextService {
 		private GridWidgetTypes $gridWidgetTypes,
 		private MenuItemMapper $menuItemMapper,
 		private IL10N $l10n,
+		private ContextSchemeService $contextSchemeService,
 	) {
 	}
 
@@ -1049,7 +1050,7 @@ class ContextService {
 	 * the application with the same technical name, or is added as a new page; its
 	 * widgets replace the widgets of that page. Pages the scheme does not name stay.
 	 *
-	 * @param list<array{id?: int, node_type: int, node_uuid?: string}> $schemeNodes the nodes of the scheme with their exported relation id
+	 * @param list<array{id?: int, node_type: int, node_uuid?: string, ...<array-key, mixed>}> $schemeNodes the nodes of the scheme with their exported relation id
 	 * @param array<array-key, mixed> $schemePages
 	 * @throws Exception
 	 * @throws NotFoundError
@@ -1135,8 +1136,8 @@ class ContextService {
 	 */
 	public function getScheme(int $contextId, string $userId): ContextScheme {
 		$context = $this->contextMapper->findById($contextId);
-		$tableService = \OCP\Server::get(TableService::class);
-		$viewService = \OCP\Server::get(ViewService::class);
+		$tableService = $this->tableService();
+		$viewService = $this->viewService();
 		$nodes = $context->getNodes();
 		$tables = [];
 
@@ -1174,6 +1175,7 @@ class ContextService {
 			array_values($nodes),
 			$this->getPagesWithWidgets($context),
 			array_values($tables),
+			$this->contextSchemeService->exportMenuItems($context),
 		);
 	}
 
@@ -1194,7 +1196,7 @@ class ContextService {
 	public function compareSchemeChanges(int $contextId, array $updateScheme, string $userId): array {
 		$context = $this->contextMapper->findById($contextId);
 		$currentScheme = $this->getScheme($contextId, $userId);
-		$tableService = \OCP\Server::get(TableService::class);
+		$tableService = $this->tableService();
 
 		$changes = [
 			'name' => [
@@ -1247,15 +1249,10 @@ class ContextService {
 	}
 
 	/**
-	 * @param int $contextId
-	 * @param string $name
-	 * @param string $iconName
-	 * @param string $description
-	 * @param array $nodes
-	 * @param array $tables
-	 * @param string $userId
-	 *
-	 * @return Context
+	 * Imports a scheme into an application: its tables, then its nodes, then its pages, whose data
+	 * widgets show those nodes, then its menu, which opens those pages. A scheme without pages or
+	 * without a menu leaves those of the application as they are. The grid views of a scheme of an
+	 * older version become pages.
 	 *
 	 * @throws BadRequestError
 	 * @throws ContainerExceptionInterface
@@ -1267,16 +1264,32 @@ class ContextService {
 	 * @throws NotFoundExceptionInterface
 	 * @throws PermissionError
 	 */
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId, ?array $pages = null): Context {
-		// Validate the structure of the columns and views arrays
-		if (!isset($tables['addTables']) || !is_array($tables['addTables'])
-			|| !isset($tables['modifyTables']) || !is_array($tables['modifyTables'])) {
-			throw new BadRequestError('Invalid tables structure provided.');
-		}
+	public function importScheme(int $contextId, ContextScheme $scheme, string $userId): Context {
+		$tables = $scheme->getTables() ?? ['addTables' => [], 'modifyTables' => []];
+		$nodes = $scheme->getNodes() ?? [];
+		$pages = $scheme->getPages();
+		$schemeService = $this->contextSchemeService;
 
-		$tableService = \OCP\Server::get(TableService::class);
-		$viewService = \OCP\Server::get(ViewService::class);
-		$columnService = \OCP\Server::get(ColumnService::class);
+		$gridViewPages = ['pages' => [], 'nodes' => [], 'technicalNames' => []];
+		if ($scheme->getGridViews() !== []) {
+			$reserved = [];
+			foreach ($pages ?? [] as $page) {
+				$name = $page['technical_name'] ?? $page['technicalName'] ?? null;
+				if (is_string($name)) {
+					$reserved[$name] = true;
+				}
+			}
+			$gridViewPages = $schemeService->pagesFromGridViews($scheme->getGridViews(), $nodes, $reserved, $userId);
+			$pages = array_merge($pages ?? [], $gridViewPages['pages']);
+		}
+		// A node of an older scheme that pointed at a grid view is that grid view's page now
+		$gridViewUuids = array_column($scheme->getGridViews(), 'uuid');
+		$nodes = array_values(array_filter($nodes, static fn (array $node): bool => !in_array($node['node_uuid'] ?? null, $gridViewUuids, true)));
+		$nodes = array_merge($nodes, $gridViewPages['nodes']);
+
+		$tableService = $this->tableService();
+		$viewService = $this->viewService();
+		$columnService = $this->columnService();
 
 		foreach ($tables['addTables'] as $tableScheme) {
 			$tableService->validateTableScheme($tableScheme);
@@ -1319,6 +1332,9 @@ class ContextService {
 				];
 			} elseif ($node['node_type'] === Application::NODE_TYPE_VIEW) {
 				$view = $this->viewMapper->findByUuid($node['node_uuid']);
+				if ($view === null) {
+					throw new DoesNotExistException('View ' . $node['node_uuid'] . ' does not exist');
+				}
 				$resolvedNodes[] = [
 					'id' => $view->getId(),
 					'type' => $node['node_type'],
@@ -1327,12 +1343,35 @@ class ContextService {
 			}
 		}
 
-		$context = $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes);
+		$this->update($contextId, $userId, $scheme->getName(), $scheme->getIcon() ?? '', $scheme->getDescription() ?? '', $resolvedNodes);
 		if ($pages !== null) {
 			$this->importSchemePages($contextId, $nodes, $pages);
-			$context = $this->contextMapper->findById($contextId, $userId);
+		}
+		if ($scheme->getMenuItems() !== null) {
+			$pageIds = [];
+			foreach ($this->contextMapper->findById($contextId, $userId)->getPages() ?? [] as $pageId => $page) {
+				$pageIds[$page['technical_name']] = (int)$pageId;
+			}
+			$menuItems = $schemeService->resolveMenuItems($scheme->getMenuItems(), $userId, $pageIds, $gridViewPages['technicalNames']);
+			$this->update($contextId, $userId, null, null, null, null, $menuItems);
 		}
 
-		return $context;
+		return $this->contextMapper->findById($contextId, $userId);
+	}
+
+	/**
+	 * The table, view and column services of the scheme export and import. They come from the server
+	 * container because they depend on this service themselves; a test can replace them here.
+	 */
+	protected function tableService(): TableService {
+		return \OCP\Server::get(TableService::class);
+	}
+
+	protected function viewService(): ViewService {
+		return \OCP\Server::get(ViewService::class);
+	}
+
+	protected function columnService(): ColumnService {
+		return \OCP\Server::get(ColumnService::class);
 	}
 }
