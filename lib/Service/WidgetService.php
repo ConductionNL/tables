@@ -13,14 +13,15 @@ use OCA\Tables\Db\Widget;
 use OCA\Tables\Db\WidgetMapper;
 use OCA\Tables\Db\WidgetSettingMapper;
 use OCA\Tables\Db\WidgetSourceMapper;
+use OCA\Tables\ResponseDefinitions;
 use OCP\DB\Exception;
 
 /**
  * Stores the widgets of grid pages together with their settings and the node a
  * data widget shows. Callers check permissions and run writes in a transaction.
  *
- * @psalm-import-type TablesWidgetSettingValue from WidgetSettingMapper
- * @psalm-type TablesWidgetRecord = array{id: int, type: string, title: ?string, gridX: int, gridY: int, gridWidth: int, gridHeight: int, settings: array<string, TablesWidgetSettingValue>, source: ?array{nodeRelId: int}}
+ * @psalm-import-type TablesWidget from ResponseDefinitions
+ * @psalm-import-type TablesWidgetValue from ResponseDefinitions
  */
 class WidgetService {
 	public function __construct(
@@ -32,7 +33,7 @@ class WidgetService {
 
 	/**
 	 * @param int[] $pageIds
-	 * @return array<int, list<TablesWidgetRecord>> widgets by page id, in grid order
+	 * @return array<int, list<TablesWidget>> widgets by page id, in grid order
 	 * @throws Exception
 	 */
 	public function findByPageIds(array $pageIds): array {
@@ -61,7 +62,7 @@ class WidgetService {
 
 	/**
 	 * @param array{gridX: int, gridY: int, gridWidth: int, gridHeight: int} $position
-	 * @param array<string, TablesWidgetSettingValue> $settings
+	 * @param array<string, TablesWidgetValue> $settings
 	 * @throws Exception
 	 * @throws \JsonException
 	 */
@@ -74,6 +75,41 @@ class WidgetService {
 		$this->widgetSettingMapper->replaceSettings($widget->getId(), $settings);
 		$this->widgetSourceMapper->setSource($widget->getId(), $nodeRelId);
 		return $widget;
+	}
+
+	/**
+	 * @return int[]
+	 * @throws Exception
+	 */
+	public function findIdsByPageId(int $pageId): array {
+		return $this->widgetMapper->findIdsByPageId($pageId);
+	}
+
+	/**
+	 * Makes the widgets of a page match the given list: widgets with an id are updated,
+	 * widgets without one are inserted and widgets of the page that are not listed are
+	 * deleted. The ids must belong to the page.
+	 *
+	 * @param list<array{id: ?int, type: string, title: ?string, position: array{gridX: int, gridY: int, gridWidth: int, gridHeight: int}, settings: array<string, TablesWidgetValue>, nodeRelId: ?int}> $widgets
+	 * @throws Exception
+	 * @throws \JsonException
+	 */
+	public function syncPage(int $pageId, array $widgets): void {
+		$listedIds = array_filter(array_column($widgets, 'id'), static fn (?int $id): bool => $id !== null);
+		$this->deleteByIds(array_values(array_diff($this->widgetMapper->findIdsByPageId($pageId), $listedIds)));
+
+		foreach ($widgets as $data) {
+			if ($data['id'] === null) {
+				$this->insert($pageId, $data['type'], $data['title'], $data['position'], $data['settings'], $data['nodeRelId']);
+				continue;
+			}
+			$widget = new Widget();
+			$widget->setId($data['id']);
+			$this->applyFields($widget, $data['type'], $data['title'], $data['position']);
+			$this->widgetMapper->update($widget);
+			$this->widgetSettingMapper->replaceSettings($data['id'], $data['settings']);
+			$this->widgetSourceMapper->setSource($data['id'], $data['nodeRelId']);
+		}
 	}
 
 	/**

@@ -130,6 +130,36 @@ class WidgetServiceTest extends DatabaseTestCase {
 		}
 	}
 
+	public function testSyncUpdatesListedInsertsNewAndDeletesMissingWidgets(): void {
+		$kept = $this->service->insert(self::PAGE, 'header', null, $this->position(0, 0, 12, 2), ['heading' => 'Old', 'subheading' => 'Gone'], null);
+		$removed = $this->service->insert(self::PAGE, 'data', null, $this->position(0, 2, 12, 5), [], 61);
+		$other = $this->service->insert(self::OTHER_PAGE, 'text', null, $this->position(0, 0, 6, 2), ['text' => 'Stays'], null);
+
+		$this->service->syncPage(self::PAGE, [
+			['id' => $kept->getId(), 'type' => 'header', 'title' => 'Intro', 'position' => $this->position(0, 0, 6, 3), 'settings' => ['heading' => 'New'], 'nodeRelId' => null],
+			['id' => null, 'type' => 'data', 'title' => null, 'position' => $this->position(6, 0, 6, 5), 'settings' => [], 'nodeRelId' => 62],
+		]);
+
+		$widgets = $this->service->findByPageIds([self::PAGE, self::OTHER_PAGE]);
+		$this->assertCount(2, $widgets[self::PAGE]);
+		[$header, $data] = $widgets[self::PAGE];
+		$this->assertSame($kept->getId(), $header['id']);
+		$this->assertSame(['Intro', 0, 0, 6, 3], [$header['title'], $header['gridX'], $header['gridY'], $header['gridWidth'], $header['gridHeight']]);
+		$this->assertSame(['heading' => 'New'], $header['settings']);
+		$this->assertNotSame($removed->getId(), $data['id']);
+		$this->assertSame(['nodeRelId' => 62], $data['source']);
+		$this->assertSame([], (new WidgetSourceMapper($this->connectionAdapter))->findNodeRelIdsByWidgetIds([$removed->getId()]));
+		$this->assertSame($other->getId(), $widgets[self::OTHER_PAGE][0]['id']);
+	}
+
+	public function testSyncWithNoWidgetsEmptiesThePage(): void {
+		$this->service->insert(self::PAGE, 'text', null, $this->position(0, 0, 6, 2), ['text' => 'A'], null);
+
+		$this->service->syncPage(self::PAGE, []);
+
+		$this->assertSame([], $this->service->findByPageIds([self::PAGE]));
+	}
+
 	/**
 	 * @return array{gridX: int, gridY: int, gridWidth: int, gridHeight: int}
 	 */

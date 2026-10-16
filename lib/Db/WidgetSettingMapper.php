@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Db;
 
+use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Db\QBMapper;
 use OCP\DB\Exception;
 use OCP\DB\QueryBuilder\IQueryBuilder;
@@ -18,7 +19,7 @@ use OCP\IDBConnection;
  * Reads and writes widget settings as name => value maps. Values are stored JSON
  * encoded, one row per setting.
  *
- * @psalm-type TablesWidgetSettingValue = string|int|float|bool|null
+ * @psalm-import-type TablesWidgetValue from ResponseDefinitions
  * @template-extends QBMapper<WidgetSetting>
  */
 class WidgetSettingMapper extends QBMapper {
@@ -30,7 +31,7 @@ class WidgetSettingMapper extends QBMapper {
 
 	/**
 	 * @param int[] $widgetIds
-	 * @return array<int, array<string, TablesWidgetSettingValue>> settings by widget id
+	 * @return array<int, array<string, TablesWidgetValue>> settings by widget id
 	 * @throws Exception
 	 */
 	public function findSettingsByWidgetIds(array $widgetIds): array {
@@ -57,7 +58,7 @@ class WidgetSettingMapper extends QBMapper {
 	/**
 	 * Replaces all settings of a widget.
 	 *
-	 * @param array<string, TablesWidgetSettingValue> $settings
+	 * @param array<string, TablesWidgetValue> $settings
 	 * @throws Exception
 	 * @throws \JsonException
 	 */
