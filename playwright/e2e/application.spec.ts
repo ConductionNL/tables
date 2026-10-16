@@ -6,6 +6,7 @@
 import type { APIRequestContext, Page } from '@playwright/test'
 import { test, expect } from '../support/fixtures'
 import { ocsRequest, type TestUser } from '../support/api'
+import { createContext, ensureNavigationOpen } from '../support/commands'
 
 test.use({ viewport: { width: 1600, height: 1000 } })
 
@@ -198,6 +199,22 @@ test.describe('Applications', () => {
 		await page.goto('/index.php/apps/tables/app/' + technicalName)
 		await expect(page.locator('[data-cy="application-nav-header"]')).toContainText('named application')
 		await expect(page).toHaveURL(/\/menu\/dashboard$/)
+	})
+
+	test('All applications are listed on one page that opens each of them', async ({ userPage: { page } }) => {
+		await page.goto('/index.php/apps/tables')
+		await createContext(page, 'listed application')
+
+		// Opening the new application collapses the Tables navigation
+		await ensureNavigationOpen(page)
+		await page.locator('[data-cy="navigationAllApplications"] a').first().click()
+		const card = page.locator('[data-cy="application-card"]').filter({ hasText: 'listed application' })
+		await expect(card).toBeVisible()
+		await expect(card).toContainText('1 menu item')
+		await card.click()
+
+		await expect(page).toHaveURL(/\/application\/\d+\/overview$/)
+		await expect(page.locator('[data-cy="context-title"]')).toContainText('listed application')
 	})
 
 	test('The overview lists the pages; a page added there gets a menu entry and opens in edit mode', async ({ userPage: { page, user } }) => {
