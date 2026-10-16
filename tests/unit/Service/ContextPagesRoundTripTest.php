@@ -26,11 +26,13 @@ use OCA\Tables\Db\WidgetSourceMapper;
 use OCA\Tables\Helper\GroupHelper;
 use OCA\Tables\Helper\UserHelper;
 use OCA\Tables\Service\ContextService;
+use OCA\Tables\Service\GridWidgetTypes;
 use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\ShareService;
 use OCA\Tables\Service\WidgetService;
 use OCA\Tables\Tests\Unit\Database\DatabaseTestCase;
 use OCP\EventDispatcher\IEventDispatcher;
+use OCP\IL10N;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
@@ -53,6 +55,8 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
 		$userHelper = $this->createMock(UserHelper::class);
 		$userHelper->method('getGroupIdsForUser')->willReturn([]);
 		$this->contextMapper = new ContextMapper($this->connectionAdapter, $userHelper, $this->createMock(GroupHelper::class));
@@ -80,6 +84,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 			$this->createMock(TableMapper::class),
 			$this->createMock(ViewMapper::class),
 			$this->widgetService,
+			new GridWidgetTypes($l10n),
 		);
 	}
 
@@ -135,7 +140,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 		$widgets = $this->widgetService->findByPageIds([$gridPageId])[$gridPageId];
 		$this->assertCount(2, $widgets);
 		$this->assertNull($widgets[1]['source']);
-		$this->assertSame(['pageSize' => 25], $widgets[1]['settings']);
+		$this->assertSame('data', $widgets[1]['type']);
 
 		$this->service->delete($context->getId(), self::OWNER);
 
@@ -160,8 +165,8 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 		$page->setDescription('At a glance');
 		$page = $this->pageMapper->insert($page);
 
-		$this->widgetService->insert($page->getId(), 'header', 'Welcome', ['gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2], ['text' => 'Projects', 'showTitle' => false], null);
-		$this->widgetService->insert($page->getId(), 'data', null, ['gridX' => 0, 'gridY' => 2, 'gridWidth' => 12, 'gridHeight' => 5], ['pageSize' => 25], $relation->getId());
+		$this->widgetService->insert($page->getId(), 'header', 'Welcome', ['gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2], ['heading' => 'Projects', 'subheading' => '', 'textAlign' => 'center', 'backgroundColor' => '#123456', 'textColor' => ''], null);
+		$this->widgetService->insert($page->getId(), 'data', null, ['gridX' => 0, 'gridY' => 2, 'gridWidth' => 12, 'gridHeight' => 5], [], $relation->getId());
 
 		return [$context, $relation, $page->getId()];
 	}
