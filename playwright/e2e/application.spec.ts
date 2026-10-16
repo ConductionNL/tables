@@ -131,4 +131,95 @@ test.describe('Applications', () => {
 		await expect(startPage).toContainText('Dashboard')
 		await expect(page.locator('h1', { hasText: tableTitle })).toBeVisible({ timeout: 30000 })
 	})
+
+	test('The overview lists the pages; a page added there gets a menu entry and opens in edit mode', async ({ userPage: { page, user } }) => {
+		const contextResponse = await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts?format=json`, data: { name: 'overview application', iconName: 'star' } })
+		const contextId = (await contextResponse.json()).ocs.data.id
+
+		await page.goto(`/index.php/apps/tables/#/application/${contextId}`)
+		await page.locator('[data-cy="context-overview-link"]').click()
+		await expect(page).toHaveURL(new RegExp(`/application/${contextId}/overview$`))
+
+		const cards = page.locator('[data-cy="page-card"]')
+		await expect(cards).toHaveCount(1)
+		await expect(cards.first()).toContainText('Dashboard')
+		await expect(cards.first()).toContainText('Start page')
+		await expect(cards.first()).toContainText('0 widgets')
+
+		await page.locator('[data-cy="context-add-page"]').getByRole('button').first().click()
+		await page.getByRole('menuitem', { name: 'Page with widgets' }).click()
+		const form = page.getByRole('dialog', { name: 'Add page' })
+		await form.getByRole('textbox', { name: 'Title' }).fill('Intake home')
+		await form.getByRole('textbox', { name: 'Description' }).fill('Where new requests come in')
+		await page.locator('[data-cy="contextPageSubmit"]').click()
+
+		await expect(page).toHaveURL(/\/application\/\d+\/page\/\d+\?edit=1$/)
+		await expect(page.locator('[data-cy="gridPageTitle"]')).toContainText('Intake home')
+		await expect(page.locator('[data-cy="gridPageSave"]')).toBeVisible()
+
+		await page.locator('[data-cy="gridPageCancel"]').click()
+		await page.locator('[data-cy="context-overview-link"]').click()
+		const intake = cards.filter({ hasText: 'Intake home' })
+		await expect(intake).toContainText('Page with widgets')
+		await expect(page.locator('[data-cy="context-menu-preview-item"]').filter({ hasText: 'Intake home' })).toBeVisible()
+
+		const menu = (await (await ocsRequest(page.request, user, { method: 'GET', url: `${API}/contexts/${contextId}?format=json` })).json()).ocs.data.menuItems
+		expect(menu.map((item: { label: string, technicalName: string }) => [item.label, item.technicalName])).toEqual([['Dashboard', 'dashboard'], ['Intake home', 'intake_home']])
+	})
+
+	test('A menu entry is reordered with its buttons, sits under another one and keeps its place after a reload', async ({ userPage: { page, user } }) => {
+		const contextResponse = await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts?format=json`, data: { name: 'nested menu application', iconName: 'star' } })
+		const contextId = (await contextResponse.json()).ocs.data.id
+		await page.goto(`/index.php/apps/tables/#/application/${contextId}/overview`)
+
+		await page.locator('[data-cy="context-menu-edit"]').click()
+		for (const [label, url] of [['Handbook', 'https://docs.nextcloud.com'], ['Forum', 'https://help.nextcloud.com']]) {
+			await page.locator('[data-cy="menuItemAdd"]').click()
+			const row = page.locator('[data-cy="menuItemRow"]').last()
+			await row.getByRole('textbox', { name: 'Label' }).fill(label)
+			await row.getByRole('textbox', { name: 'Link' }).fill(url)
+		}
+
+		// Without a pointer: move Forum above Handbook, then put Handbook under it
+		const rows = page.locator('[data-cy="menuItemRow"]')
+		await rows.nth(2).locator('[data-cy="menuItemMoveUp"]').click()
+		await expect(rows.nth(1).getByRole('textbox', { name: 'Label' })).toHaveValue('Forum')
+		await rows.nth(2).locator('[data-cy="menuItemIndent"]').click()
+		await expect(rows.nth(2).locator('[data-cy="menuItemOutdent"]')).toBeVisible()
+
+		const saveResponse = page.waitForResponse(response => response.url().includes('/apps/tables/api/2/contexts/') && response.request().method() === 'PUT')
+		await page.locator('[data-cy="context-menu-save"]').click()
+		expect((await saveResponse).status()).toBe(200)
+
+		await page.reload()
+		const items = page.locator('[data-cy="context-menu-preview-item"]')
+		await expect(items).toHaveCount(3)
+		await expect(items.nth(0)).toContainText('Dashboard')
+		await expect(items.nth(1)).toContainText('Forum')
+		await expect(items.nth(2)).toContainText('2.1')
+		await expect(items.nth(2)).toContainText('Handbook')
+	})
+
+	test('A menu entry can be pointed at a page of the application', async ({ userPage: { page, user } }) => {
+		const { contextId } = await createApplicationWithMenu(page.request, user, 'page target application')
+		await ocsRequest(page.request, user, { method: 'POST', url: `${API}/contexts/${contextId}/pages?format=json`, data: { title: 'Reports' } })
+
+		await page.goto(`/index.php/apps/tables/#/application/${contextId}/overview`)
+		await page.locator('[data-cy="context-menu-edit"]').click()
+		await page.locator('[data-cy="menuItemAdd"]').click()
+		const row = page.locator('[data-cy="menuItemRow"]').last()
+		await row.locator('[data-cy="menuItemTarget"] input').click()
+		await page.locator('.vs__dropdown-menu li').filter({ hasText: 'Reports (page)' }).click()
+		await expect(row.getByRole('textbox', { name: 'Label' })).toHaveValue('Reports')
+
+		const saveResponse = page.waitForResponse(response => response.url().includes('/apps/tables/api/2/contexts/') && response.request().method() === 'PUT')
+		await page.locator('[data-cy="context-menu-save"]').click()
+		expect((await saveResponse).status()).toBe(200)
+		await expect(page.locator('[data-cy="context-menu-preview-item"]').filter({ hasText: 'Reports' }).last()).toBeVisible()
+
+		await page.goto(`/index.php/apps/tables/app/${contextId}`)
+		await page.locator('[data-cy="application-nav-item"]').filter({ hasText: 'Reports' }).getByRole('link').click()
+		await expect(page).toHaveURL(/\/menu\/reports$/)
+		await expect(page.locator('[data-cy="gridPage"]')).toBeVisible()
+	})
 })
