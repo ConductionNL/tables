@@ -5,6 +5,8 @@
 import { ColumnTypes } from './columnHandler.js'
 import { ALLOWED_PROTOCOLS } from '../../../constants.ts'
 import Moment from '@nextcloud/moment'
+import { translate as t } from '@nextcloud/l10n'
+import { findFormatFailure } from '../../../utils/formatValidation.js'
 
 export default {
 	methods: {
@@ -105,6 +107,31 @@ export default {
 				}
 			})
 			return mandatoryFieldsEmpty
+		},
+
+		/**
+		 * The message the server would refuse the value with, or null when it satisfies the column's format
+		 *
+		 * @param {object} column a parsed column
+		 * @param {unknown} value the value as the form holds it
+		 * @return {string|null}
+		 */
+		formatErrorFor(column, value) {
+			const failure = findFormatFailure(column, value)
+			if (failure === 'pattern') {
+				return t('tables', 'Validation failed: {field} did not match the pattern {pattern}', { field: column.title, pattern: column.textAllowedPattern }, undefined, { escape: false })
+			}
+			if (failure === 'format' && column.format.example) {
+				return t('tables', 'Validation failed: {field} did not match the criteria for {label}, such as {example}', { field: column.title, label: column.format.label, example: column.format.example }, undefined, { escape: false })
+			}
+			if (failure === 'format') {
+				return t('tables', 'Validation failed: {field} did not match the criteria for {label}', { field: column.title, label: column.format.label }, undefined, { escape: false })
+			}
+			return null
+		},
+
+		hasFormatErrors(row) {
+			return (this.columns ?? []).some(col => this.formatErrorFor(col, row[col.id]) !== null)
 		},
 
 		isValidUrlProtocol(value) {

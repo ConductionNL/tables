@@ -11,14 +11,19 @@ namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\Activity\ActivityManager;
 use OCA\Tables\Db\Column;
+use OCA\Tables\Db\Format;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
+use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\RowValidationError;
+use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCA\Tables\Helper\InstanceTimezone;
 use OCA\Tables\Model\RowDataInput;
 use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Notification\NotificationHelper;
+use OCA\Tables\Service\FormatService;
+use OCA\Tables\Service\FormatValueValidator;
 use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowObjectSerializer;
@@ -29,6 +34,7 @@ use OCA\Tables\Tests\Unit\Db\Row2MapperTestDependencies;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IConfig;
 use OCP\IDBConnection;
+use OCP\IL10N;
 
 /**
  * Writes and reads rows of the shared Row2Mapper test table in the object shape, through
@@ -93,6 +99,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			$this->createMock(IDBConnection::class),
 			new RowQueryResolver(),
 			new RowObjectInputConverter($this->mapper, $instanceTimezone),
+			$this->createFormatValueValidator(),
 		);
 		$this->serializer = new RowObjectSerializer($this->columnMapper, $this->rowSleeveMapper, $instanceTimezone, $this->logger);
 	}
@@ -159,6 +166,74 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$readAgain = $this->readObject($created->getId());
 		unset($read['@self'], $readAgain['@self']);
 		$this->assertSame($read, $readAgain);
+	}
+
+	public function testAValueThatFailsTheFormatIsReportedOnItsProperty(): void {
+		$this->columnsByName['surname']->setSubtype('email');
+
+		$errors = $this->errorsOfCreating(['name' => 'Zed', 'surname' => 'not an address']);
+
+		$this->assertSame(['surname' => 'Validation failed: Surname did not match the criteria for Email address, such as jane@example.org'], $errors);
+	}
+
+	public function testAValueThatFailsTheFormatIsRefusedInCells(): void {
+		$this->columnsByName['surname']->setSubtype('email');
+
+		$this->expectException(BadRequestError::class);
+		$this->expectExceptionMessage('Validation failed: Surname did not match the criteria for Email address, such as jane@example.org');
+
+		$this->rowService->create(self::$testTableId, null, (new RowDataInput())
+			->add($this->columnsByName['surname']->getId(), 'not an address'));
+	}
+
+	public function testAValueThatMatchesTheFormatIsStored(): void {
+		$this->columnsByName['surname']->setSubtype('email');
+
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['surname' => 'zed@example.org']));
+
+		$this->assertSame('zed@example.org', $this->readObject($created->getId())['surname']);
+	}
+
+	public function testTheAllowedPatternIsEnforcedOnAFormattedColumn(): void {
+		$this->columnsByName['surname']->setSubtype('email');
+		$this->columnsByName['surname']->setTextAllowedPattern('@example\\.org$');
+
+		$errors = $this->errorsOfCreating(['surname' => 'zed@example.com']);
+
+		$this->assertSame(['surname' => 'Validation failed: Surname did not match the pattern @example\\.org$'], $errors);
+	}
+
+	public function testTheAllowedPatternIsNotEnforcedOnABuiltInSubtype(): void {
+		$this->columnsByName['surname']->setTextAllowedPattern('^[0-9]+$');
+
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['surname' => 'Smith']));
+
+		$this->assertSame('Smith', $this->readObject($created->getId())['surname']);
+	}
+
+	public function testABrokenColumnStoresValuesUnchecked(): void {
+		$this->columnsByName['surname']->setSubtype('nl_bsn');
+
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['surname' => 'anything']));
+
+		$this->assertSame('anything', $this->readObject($created->getId())['surname']);
+	}
+
+	private function createFormatValueValidator(): FormatValueValidator {
+		$email = new Format();
+		$email->setTechnicalName('email');
+		$email->setLabel('Email address');
+		$email->setExample('jane@example.org');
+		$email->setType(Column::TYPE_TEXT);
+		$email->setRule('{"match":[{"var":"value"},"^[^@ ]+@[^@ ]+$"]}');
+		$formatService = $this->createMock(FormatService::class);
+		$formatService->method('findUsableFormat')->willReturnCallback(
+			static fn (string $technicalName, string $columnType): ?Format => $technicalName === 'email' && $columnType === Column::TYPE_TEXT ? $email : null,
+		);
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnCallback(static fn (string $text, array $parameters = []): string => vsprintf($text, $parameters));
+
+		return new FormatValueValidator($formatService, new FormatRuleEvaluator(), $this->mapper, $l10n, $this->logger);
 	}
 
 	/**

@@ -188,6 +188,9 @@ namespace OCA\Tables;
  *  lastEditAt: string,
  *  type: string,
  *  subtype: string,
+ *  baseSubtype: string,
+ *  broken: bool,
+ *  failingValuesCount?: int,
  *  mandatory: bool,
  *  description: string,
  *  orderWeight: int,
@@ -231,6 +234,8 @@ namespace OCA\Tables;
  *   lastEditAt: string,
  *   type: string,
  *   subtype: string,
+ *   baseSubtype: string,
+ *   broken: bool,
  *   mandatory: bool,
  *   description: string,
  *   orderWeight: int,
@@ -274,6 +279,7 @@ namespace OCA\Tables;
  *  updated_rows_count: int,
  *  errors_parsing_count: int,
  *  errors_count: int,
+ *  row_errors: list<array{row: int, message: string}>,
  * }
  *
  * @psalm-type TablesContext = array{
@@ -296,6 +302,21 @@ namespace OCA\Tables;
  *     notify-assigned: bool,
  *     notify-column: bool,
  *     notify-row: bool,
+ * }
+ *
+ * @psalm-type TablesFormat = array{
+ *     id: int,
+ *     technicalName: string,
+ *     label: string,
+ *     example: ?string,
+ *     type: string,
+ *     rule: array<string, mixed>,
+ *     enabled: bool,
+ *     version: string,
+ *     createdAt: string,
+ *     createdBy: ?string,
+ *     updatedAt: string,
+ *     updatedBy: ?string,
  * }
  */
 class ResponseDefinitions {

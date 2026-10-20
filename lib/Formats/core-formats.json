@@ -1,0 +1,85 @@
+[
+	{
+		"technicalName": "email",
+		"label": "Email address",
+		"example": "jane@example.org",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"]}
+	},
+	{
+		"technicalName": "uri",
+		"label": "URI",
+		"example": "https://example.org/path",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^[a-zA-Z][a-zA-Z0-9+.-]*:[a-zA-Z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]+$"]}
+	},
+	{
+		"technicalName": "url",
+		"label": "URL",
+		"example": "https://example.org/path",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^[a-zA-Z][a-zA-Z0-9+.-]*:[a-zA-Z0-9._~:/?#\\[\\]@!$&'()*+,;=%-]+$"]}
+	},
+	{
+		"technicalName": "uuid",
+		"label": "UUID",
+		"example": "0192a6e4-3b7c-7d2e-9f10-5a6b7c8d9e0f",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"]}
+	},
+	{
+		"technicalName": "iban",
+		"label": "IBAN",
+		"example": "NL91 ABNA 0417 1643 00",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"and": [
+			{"match": [{"var": "value"}, "^[A-Z]{2}[0-9]{2}(?: ?[A-Z0-9]){11,30}$"]},
+			{"===": [
+				{"reduce": [
+					{"merge": [
+						{"chars": [{"substr": [{"var": "value"}, 4]}]},
+						{"chars": [{"substr": [{"var": "value"}, 0, 4]}]}
+					]},
+					{"if": [
+						{"<": [{"indexOf": ["0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", {"var": "current"}]}, 0]},
+						{"var": "accumulator"},
+						{"<": [{"indexOf": ["0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", {"var": "current"}]}, 10]},
+						{"%": [{"+": [{"*": [{"var": "accumulator"}, 10]}, {"indexOf": ["0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", {"var": "current"}]}]}, 97]},
+						{"%": [{"+": [{"*": [{"var": "accumulator"}, 100]}, {"indexOf": ["0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", {"var": "current"}]}]}, 97]}
+					]},
+					0
+				]},
+				1
+			]}
+		]}
+	},
+	{
+		"technicalName": "color",
+		"label": "Color",
+		"example": "#0082c9",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"]}
+	},
+	{
+		"technicalName": "semver",
+		"label": "Semantic version",
+		"example": "1.4.2",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)\\.(?:0|[1-9]\\d*)(?:-(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*)?(?:\\+[0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*)?$"]}
+	},
+	{
+		"technicalName": "duration",
+		"label": "Duration",
+		"example": "P1DT12H",
+		"type": "text",
+		"version": "1.0.0",
+		"rule": {"match": [{"var": "value"}, "^P(?!$)(?:(?:\\d+Y)?(?:\\d+M)?(?:\\d+D)?(?:T(?=\\d)(?:\\d+H)?(?:\\d+M)?(?:\\d+S)?)?|\\d+W)$"]}
+	}
+]

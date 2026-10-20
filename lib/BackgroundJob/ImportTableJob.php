@@ -90,12 +90,15 @@ class ImportTableJob extends QueuedJob {
 		}
 
 		if ($importSuccess) {
+			// the activity keeps the counts; the reasons per row are too long to store with it
+			$activityStats = clone $importStats;
+			$activityStats->rowErrors = [];
 			$this->activityManager->triggerEvent(
 				objectType: ActivityManager::TABLES_OBJECT_TABLE,
 				object: $table,
 				subject: ActivityManager::SUBJECT_IMPORT_FINISHED,
 				additionalParams: [
-					'importStats' => $importStats,
+					'importStats' => $activityStats,
 				],
 				author: $userId
 			);

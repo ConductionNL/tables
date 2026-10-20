@@ -18,9 +18,14 @@ import TextLongColumn from './columnsTypes/textLong.js'
 import TextRichColumn from './columnsTypes/textRich.js'
 import UsergroupColumn from './columnsTypes/usergroup.js'
 import RelationColumn from './columnsTypes/relation.js'
+import { getBaseSubtype, getFormatName } from '../../../utils/columnSubtypes.js'
+import { getFormatDefinition } from '../../../utils/formatDefinitions.js'
 
 export function parseCol(col) {
-	const columnType = col.type + (col.subtype === '' ? '' : '-' + col.subtype)
+	const baseSubtype = getBaseSubtype(col)
+	const columnType = col.type + (baseSubtype === '' ? '' : '-' + baseSubtype)
+	const formatName = getFormatName(col)
+	col = { ...col, formatName, format: formatName === null ? null : getFormatDefinition(formatName) }
 	switch (columnType) {
 	case ColumnTypes.TextLine: return new TextLineColumn(col)
 	case ColumnTypes.TextLink: return new TextLinkColumn(col)

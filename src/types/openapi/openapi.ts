@@ -910,6 +910,43 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/ocs/v2.php/apps/tables/api/2/formats": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * [api v2] List the formats
+         * @description Administrators also get the disabled formats.
+         */
+        readonly get: operations["format-index"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/ocs/v2.php/apps/tables/api/2/formats/{id}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /** [api v2] Get a format */
+        readonly get: operations["format-show"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/ocs/v2.php/apps/tables/api/2/config/table/{id}": {
         readonly parameters: {
             readonly query?: never;
@@ -1104,6 +1141,10 @@ export type components = {
             readonly lastEditAt: string;
             readonly type: string;
             readonly subtype: string;
+            readonly baseSubtype: string;
+            readonly broken: boolean;
+            /** Format: int64 */
+            readonly failingValuesCount?: number;
             readonly mandatory: boolean;
             readonly description: string;
             /** Format: int64 */
@@ -1167,6 +1208,23 @@ export type components = {
             readonly displayMode: number;
             readonly userId: string;
         };
+        readonly Format: {
+            /** Format: int64 */
+            readonly id: number;
+            readonly technicalName: string;
+            readonly label: string;
+            readonly example: string | null;
+            readonly type: string;
+            readonly rule: {
+                readonly [key: string]: Record<string, never>;
+            };
+            readonly enabled: boolean;
+            readonly version: string;
+            readonly createdAt: string;
+            readonly createdBy: string | null;
+            readonly updatedAt: string;
+            readonly updatedBy: string | null;
+        };
         readonly ImportState: {
             /** Format: int64 */
             readonly found_columns_count: number;
@@ -1182,6 +1240,11 @@ export type components = {
             readonly errors_parsing_count: number;
             /** Format: int64 */
             readonly errors_count: number;
+            readonly row_errors: readonly {
+                /** Format: int64 */
+                readonly row: number;
+                readonly message: string;
+            }[];
         };
         readonly Index: {
             readonly tables: readonly components["schemas"]["Table"][];
@@ -1212,6 +1275,8 @@ export type components = {
             readonly lastEditAt: string;
             readonly type: string;
             readonly subtype: string;
+            readonly baseSubtype: string;
+            readonly broken: boolean;
             readonly mandatory: boolean;
             readonly description: string;
             /** Format: int64 */
@@ -7898,6 +7963,139 @@ export interface operations {
                 };
             };
             /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "format-index": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Formats returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: readonly components["schemas"]["Format"][];
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "format-show": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description ID of the format */
+                readonly id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Format returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["Format"];
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description Format not found, or disabled and the requester is no administrator */
             readonly 404: {
                 headers: {
                     readonly [name: string]: unknown;

@@ -1,0 +1,83 @@
+{
+	"formats": {
+		"email": {
+			"valid": ["jane@example.org", "j.doe+tag@sub.example.co.uk", "user@localhost", "o'brien@example.ie"],
+			"invalid": ["jane@", "@example.org", "jane doe@example.org", "jane@example.org\n", "jane@-example.org", "jane@exa_mple.org", "", 42, null]
+		},
+		"uri": {
+			"valid": ["https://example.org/path?q=1#top", "mailto:jane@example.org", "urn:isbn:0451450523", "ftp://ftp.example.org/file.txt", "https://example.org/a%20b", "https://[2001:db8::1]:8080/"],
+			"invalid": ["example.org", "https://example.org/a b", "https://exämple.org", "https://example.org/a b", "1http://example.org", "https://example.org/\n", "", 42]
+		},
+		"url": {
+			"valid": ["https://example.org/path?q=1#top", "mailto:jane@example.org", "urn:isbn:0451450523", "ftp://ftp.example.org/file.txt", "https://example.org/a%20b", "https://[2001:db8::1]:8080/"],
+			"invalid": ["example.org", "https://example.org/a b", "https://exämple.org", "https://example.org/a b", "1http://example.org", "https://example.org/\n", "", 42]
+		},
+		"uuid": {
+			"valid": ["0192a6e4-3b7c-7d2e-9f10-5a6b7c8d9e0f", "123E4567-E89B-12D3-A456-426614174000", "00000000-0000-0000-0000-000000000000"],
+			"invalid": ["0192a6e4-3b7c-7d2e-9f10-5a6b7c8d9e0", "0192a6e43b7c7d2e9f105a6b7c8d9e0f", "{0192a6e4-3b7c-7d2e-9f10-5a6b7c8d9e0f}", "0192a6e4-3b7c-7d2e-9f10-5a6b7c8d9e0g", "", 42]
+		},
+		"iban": {
+			"valid": ["NL91 ABNA 0417 1643 00", "NL91ABNA0417164300", "DE89370400440532013000", "GB82 WEST 1234 5698 7654 32", "BE68539007547034", "FR1420041010050500013M02606", "CH9300762011623852957"],
+			"invalid": ["NL91ABNA0417164301", "GB82WEST12345698765433", "nl91abna0417164300", "NL91  ABNA0417164300", "NL9 1ABNA0417164300", "NL91 ABNA 0417 1643 00 ", "NL91ABNA", "", 42, null]
+		},
+		"color": {
+			"valid": ["#0082c9", "#FFF", "#a1B2c3"],
+			"invalid": ["#ffff", "0082c9", "red", "#0082c9 ", "#gggggg", "", 42]
+		},
+		"semver": {
+			"valid": ["1.4.2", "0.0.0", "1.0.0-alpha.1+build.5", "10.20.30", "1.0.0-0A.is.legal", "1.0.0+20261020"],
+			"invalid": ["01.0.0", "1.0", "1.0.0-", "1.0.0+", "v1.0.0", "1.0.0-01", "1.0.0\n", "", 42]
+		},
+		"duration": {
+			"valid": ["P1DT12H", "P3W", "P1Y2M10DT2H30M", "PT0S", "PT36H", "P1M"],
+			"invalid": ["P", "P1DT", "PT", "PT0.5S", "1D", "P1W2D", "p1d", "P1D\n", "", 42]
+		}
+	},
+	"operations": [
+		{"description": "chars splits a string", "rule": {"chars": [{"var": "value"}]}, "value": "abc", "result": ["a", "b", "c"]},
+		{"description": "chars keeps a character outside the BMP whole", "rule": {"chars": [{"var": "value"}]}, "value": "😀a", "result": ["😀", "a"]},
+		{"description": "chars of an empty string is empty", "rule": {"chars": [{"var": "value"}]}, "value": "", "result": []},
+		{"description": "chars of a number is empty", "rule": {"chars": [{"var": "value"}]}, "value": 12, "result": []},
+		{"description": "indexOf finds a character", "rule": {"indexOf": ["0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ", {"var": "value"}]}, "value": "B", "result": 11},
+		{"description": "indexOf counts code points", "rule": {"indexOf": [{"var": "value"}, "a"]}, "value": "😀ab", "result": 1},
+		{"description": "indexOf finds a longer needle", "rule": {"indexOf": [{"var": "value"}, "cd"]}, "value": "äbcd", "result": 2},
+		{"description": "indexOf of an empty needle is 0", "rule": {"indexOf": [{"var": "value"}, ""]}, "value": "abc", "result": 0},
+		{"description": "indexOf of a missing needle is -1", "rule": {"indexOf": [{"var": "value"}, "z"]}, "value": "abc", "result": -1},
+		{"description": "indexOf searches a list", "rule": {"indexOf": [["a", "b"], {"var": "value"}]}, "value": "b", "result": 1},
+		{"description": "indexOf in a list treats an integer as the same float", "rule": {"indexOf": [[1, 2.0, 3], {"var": "value"}]}, "value": 2, "result": 1},
+		{"description": "indexOf in a list does not equate a number and a string", "rule": {"indexOf": [["1", "2"], {"var": "value"}]}, "value": 2, "result": -1},
+		{"description": "indexOf of a number in a string is -1", "rule": {"indexOf": ["123", {"var": "value"}]}, "value": 2, "result": -1},
+		{"description": "indexOf in a number is -1", "rule": {"indexOf": [{"var": "value"}, "1"]}, "value": 123, "result": -1},
+		{"description": "match is unanchored", "rule": {"match": [{"var": "value"}, "b"]}, "value": "abc", "result": true},
+		{"description": "match does not let $ match before a trailing newline", "rule": {"match": [{"var": "value"}, "^abc$"]}, "value": "abc\n", "result": false},
+		{"description": "match with m lets ^ and $ match at line breaks", "rule": {"match": [{"var": "value"}, "^abc$", "m"]}, "value": "x\nabc", "result": true},
+		{"description": "match with i ignores case", "rule": {"match": [{"var": "value"}, "^abc$", "i"]}, "value": "ABC", "result": true},
+		{"description": "match with s lets . match a newline", "rule": {"match": [{"var": "value"}, "^a.c$", "s"]}, "value": "a\nc", "result": true},
+		{"description": "match with i ignores case outside ASCII", "rule": {"match": [{"var": "value"}, "^ä$", "i"]}, "value": "Ä", "result": true},
+		{"description": "match keeps \\w to ASCII word characters", "rule": {"match": [{"var": "value"}, "^\\w$"]}, "value": "é", "result": false},
+		{"description": "match treats a character outside the BMP as one character", "rule": {"match": [{"var": "value"}, "^.$"]}, "value": "😀", "result": true},
+		{"description": "match keeps \\d to ASCII digits", "rule": {"match": [{"var": "value"}, "^\\d$"]}, "value": "٣", "result": false},
+		{"description": "match does not match a number", "rule": {"match": [{"var": "value"}, "5"]}, "value": 5, "result": false},
+		{"description": "match does not match null", "rule": {"match": [{"var": "value"}, ".*"]}, "value": null, "result": false},
+		{"description": "substr counts code points", "rule": {"substr": [{"var": "value"}, 1]}, "value": "😀bc", "result": "bc"},
+		{"description": "substr with a negative start counts from the end", "rule": {"substr": [{"var": "value"}, -2]}, "value": "abcdef", "result": "ef"},
+		{"description": "substr takes a length", "rule": {"substr": [{"var": "value"}, 1, 2]}, "value": "abcdef", "result": "bc"},
+		{"description": "substr with a negative length leaves characters off the end", "rule": {"substr": [{"var": "value"}, 0, -2]}, "value": "abcdef", "result": "abcd"},
+		{"description": "substr does not split a multibyte character", "rule": {"substr": [{"var": "value"}, 0, 1]}, "value": "äbc", "result": "ä"},
+		{"description": "substr past the end is empty", "rule": {"substr": [{"var": "value"}, 9]}, "value": "abc", "result": ""},
+		{"description": "substr of a number uses its digits", "rule": {"substr": [{"var": "value"}, 1]}, "value": 12345, "result": "2345"},
+		{"description": "substr of null is empty", "rule": {"substr": [{"var": "value"}, 0]}, "value": null, "result": ""},
+		{"description": "=== treats an integer as the same float", "rule": {"===": [{"var": "value"}, 3.0]}, "value": 3, "result": true},
+		{"description": "=== treats a float as the same integer", "rule": {"===": [{"var": "value"}, 3]}, "value": 3.0, "result": true},
+		{"description": "=== does not equate a number and a string", "rule": {"===": [{"var": "value"}, "1"]}, "value": 1, "result": false},
+		{"description": "!== treats an integer as the same float", "rule": {"!==": [{"var": "value"}, 1.0]}, "value": 1, "result": false},
+		{"description": "an empty list is not valid", "rule": {"var": "value"}, "value": [], "valid": false},
+		{"description": "the string 0 is valid", "rule": {"var": "value"}, "value": "0", "valid": true},
+		{"description": "an unknown operation is an error", "rule": {"nope": [1]}, "value": "abc", "error": true},
+		{"description": "the method operation of json-logic-js is an error", "rule": {"method": [{"var": "value"}, "toUpperCase"]}, "value": "abc", "error": true},
+		{"description": "an invalid pattern is an error", "rule": {"match": [{"var": "value"}, "("]}, "value": "abc", "error": true},
+		{"description": "a pattern that is not a string is an error", "rule": {"match": [{"var": "value"}, 1]}, "value": "abc", "error": true},
+		{"description": "an unsupported flag is an error", "rule": {"match": [{"var": "value"}, "a", "g"]}, "value": "abc", "error": true},
+		{"description": "a repeated flag is an error", "rule": {"match": [{"var": "value"}, "a", "ii"]}, "value": "abc", "error": true}
+	]
+}

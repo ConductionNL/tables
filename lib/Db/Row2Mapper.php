@@ -976,6 +976,20 @@ class Row2Mapper {
 		}
 	}
 
+	/**
+	 * The stored values of a column as the API returns them, read one at a time.
+	 *
+	 * @return \Generator<int, mixed>
+	 * @throws Exception
+	 * @throws InternalError
+	 */
+	public function findStoredValues(Column $column): \Generator {
+		$cellMapper = $this->getCellMapper($column);
+		foreach ($cellMapper->findRawValuesForColumn($column->getId()) as $cell) {
+			yield $cellMapper->formatRowData($column, $cell);
+		}
+	}
+
 	private function getCellMapper(Column $column): RowCellMapperSuper {
 		return $this->getCellMapperFromType($column->getType());
 	}

@@ -11,6 +11,7 @@ namespace OCA\Tables\Controller;
 use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Db\Share;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Service\FormatService;
 use OCA\Tables\Service\NodeService;
 use OCA\Tables\Service\ShareService;
 use OCA\Tables\Service\ValueObject\ShareToken;
@@ -44,6 +45,7 @@ class PublicSharePageController extends AuthPublicShareController {
 		private readonly NodeService $nodeService,
 		private readonly IInitialState $initialState,
 		private readonly IEventDispatcher $eventDispatcher,
+		private readonly FormatService $formatService,
 	) {
 		parent::__construct($appName, $request, $session, $urlGenerator);
 		$token = $request->getParam('token');
@@ -79,6 +81,7 @@ class PublicSharePageController extends AuthPublicShareController {
 		$this->initialState->provideInitialState('shareToken', (string)$this->shareToken);
 		$this->initialState->provideInitialState('nodeType', $this->share->getNodeType());
 		$this->initialState->provideInitialState('nodeData', $nodeData);
+		$this->initialState->provideLazyInitialState('formats', fn () => $this->formatService->getEnabledDefinitions());
 		$this->initialState->provideInitialState('sharePermissions', [
 			'read' => $this->share->getPermissionRead(),
 			'create' => $this->share->getPermissionCreate(),

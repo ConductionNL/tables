@@ -65,6 +65,7 @@ class RowService extends SuperService {
 		private readonly IDBConnection $connection,
 		private readonly RowQueryResolver $rowQueryResolver,
 		private readonly RowObjectInputConverter $rowObjectInputConverter,
+		private readonly FormatValueValidator $formatValueValidator,
 	) {
 		parent::__construct($logger, $userId, $permissionsService);
 
@@ -633,6 +634,18 @@ class RowService extends SuperService {
 				$errors[RowObjectInputConverter::nameOf($column)] = 'The value cannot be stored in a column of type ' . $column->getType() . ($column->getSubtype() ? '/' . $column->getSubtype() : '') . '.';
 				continue;
 			}
+			try {
+				$this->formatValueValidator->validate($column, $parsedValue);
+			} catch (BadRequestError $e) {
+				if (!$isStrict) {
+					throw $e;
+				}
+				$errors[RowObjectInputConverter::nameOf($column)] = $e->translatedMessage ?: $e->getMessage();
+				continue;
+			} catch (Exception $e) {
+				$this->logger->error($e->getMessage(), ['exception' => $e]);
+				throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
+			}
 			$out->add((int)$entry['columnId'], $parsedValue);
 		}
 
@@ -735,7 +748,7 @@ class RowService extends SuperService {
 	}
 
 	private function isValueValidForMandatoryColumn($value, Column $column, IColumnTypeBusiness $columnBusiness): bool {
-		if ($column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK) {
+		if ($column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK) {
 			return true;
 		}
 

@@ -68,6 +68,8 @@ class ImportService extends SuperService {
 	private int $countUpdatedRows = 0;
 	private int $countErrors = 0;
 	private int $countParsingErrors = 0;
+	/** @var list<array{row: int, message: string}> */
+	private array $rowErrors = [];
 
 	private array $rawColumnTitles = [];
 	private array $rawColumnDataTypes = [];
@@ -79,6 +81,7 @@ class ImportService extends SuperService {
 
 	private const MAX_ROWS_FOR_IMMEDIATE_IMPORT = 200;
 	private const MAX_COLUMNS_FOR_IMMEDIATE_IMPORT = 20;
+	private const MAX_REPORTED_ROW_ERRORS = 100;
 
 	public function __construct(
 		PermissionsService $permissionsService,
@@ -383,6 +386,7 @@ class ImportService extends SuperService {
 			'updated_rows_count' => $this->countUpdatedRows,
 			'errors_parsing_count' => $this->countParsingErrors,
 			'errors_count' => $this->countErrors,
+			'row_errors' => $this->rowErrors,
 		];
 	}
 
@@ -521,7 +525,8 @@ class ImportService extends SuperService {
 			$this->countInsertedRows,
 			$this->countUpdatedRows,
 			$this->countParsingErrors,
-			$this->countErrors
+			$this->countErrors,
+			$this->rowErrors,
 		);
 	}
 
@@ -677,7 +682,11 @@ class ImportService extends SuperService {
 		} catch (PermissionError $e) {
 			$this->logger->error('Could not create/update row while importing, no permission.', ['exception' => $e]);
 			$this->countErrors++;
-		} catch (BadRequestError|InternalError $e) {
+		} catch (BadRequestError $e) {
+			$this->logger->info('Row ' . $row->getRowIndex() . ' was not imported: ' . $e->getMessage());
+			$this->countErrors++;
+			$this->reportRowError($row->getRowIndex(), $e->translatedMessage ?: $e->getMessage());
+		} catch (InternalError $e) {
 			$this->logger->error('Error while creating/updating  new row for import.', ['exception' => $e]);
 			$this->countErrors++;
 		} catch (NotFoundError $e) {
@@ -686,6 +695,16 @@ class ImportService extends SuperService {
 		} catch (\Throwable $e) {
 			$this->countErrors++;
 			$this->logger->error('Error while creating/updating new row for import.', ['exception' => $e]);
+		}
+	}
+
+	/**
+	 * Lists why a row of the file was refused, so the rows that were stored can be told apart from
+	 * the ones that need fixing. The list is capped; the error count covers every row.
+	 */
+	private function reportRowError(int $rowIndex, string $message): void {
+		if (count($this->rowErrors) < self::MAX_REPORTED_ROW_ERRORS) {
+			$this->rowErrors[] = ['row' => $rowIndex, 'message' => $message];
 		}
 	}
 

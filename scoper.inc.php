@@ -25,4 +25,14 @@ return [
 	'prefix' => 'OCA\\Tables\\Vendor',
 	'output-dir' => 'lib/Vendor/',
 	'finders' => [$depFinder],
+	'patchers' => [
+		// JsonLogic passes the global substr() as a string callable, which the scoper would otherwise prefix
+		static function (string $filePath, string $prefix, string $contents): string {
+			if (!str_ends_with($filePath, 'jwadhams/json-logic-php/src/JWadhams/JsonLogic.php')) {
+				return $contents;
+			}
+			$scopedSubstr = "'" . str_replace('\\', '\\\\', $prefix) . "\\\\substr'";
+			return str_replace($scopedSubstr, "'substr'", $contents);
+		},
+	],
 ];

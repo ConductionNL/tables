@@ -92,13 +92,13 @@ class ColumnsHelper {
 	}
 
 	public function getColumnBusinessObject(Column $column): IColumnTypeBusiness {
-		$cacheKey = implode(':', [$column->getType(), $column->getSubtype()]);
+		$cacheKey = implode(':', [$column->getType(), $column->getBaseSubtype()]);
 		if (isset($this->columnBusinesses[$cacheKey])) {
 			return $this->columnBusinesses[$cacheKey];
 		}
 
 		$businessClassName = 'OCA\Tables\Service\ColumnTypes\\';
-		$businessClassName .= ucfirst($column->getType()) . ucfirst($column->getSubtype()) . 'Business';
+		$businessClassName .= ucfirst($column->getType()) . ucfirst($column->getBaseSubtype()) . 'Business';
 		/** @var IColumnTypeBusiness $columnBusiness */
 		$columnBusiness = Server::get($businessClassName);
 

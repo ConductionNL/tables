@@ -6,3 +6,4 @@ markbaker/matrix
 psr/simple-cache
 symfony/uid
 symfony/polyfill-uuid
+jwadhams/json-logic-php

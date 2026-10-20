@@ -17,6 +17,7 @@ use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Helper\ColumnsHelper;
 use OCA\Tables\Notification\NotificationHelper;
+use OCA\Tables\Service\FormatValueValidator;
 use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowQueryResolver;
@@ -50,6 +51,7 @@ class RowServiceImportRowTest extends DatabaseTestCase {
 			$this->connectionAdapter,
 			new RowQueryResolver(),
 			$this->createMock(RowObjectInputConverter::class),
+			$this->createMock(FormatValueValidator::class),
 		);
 		$this->table = new Table();
 		$this->table->setId($this->createTestTable()['id']);
