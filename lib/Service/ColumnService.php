@@ -55,6 +55,7 @@ class ColumnService extends SuperService {
 		private readonly UserHelper $userHelper,
 		private readonly ColumnDtoValidator $columnDtoValidator,
 		private readonly FormatService $formatService,
+		private readonly FormatValueValidator $formatValueValidator,
 	) {
 		parent::__construct($logger, $userId, $permissionsService);
 	}
@@ -227,6 +228,7 @@ class ColumnService extends SuperService {
 		}
 		$this->columnDtoValidator->validate($columnDto, true);
 		$this->assertSubtypeIsKnown($columnDto->getType(), $columnDto->getSubtype() ?? '');
+		$this->assertAllowedPatternIsUsable($columnDto->getType(), $columnDto->getSubtype() ?? '', $columnDto->getTextAllowedPattern());
 		$columnTitle = $this->normalizeTitle($columnDto->getTitle(), true);
 		if ($columnTitle === null) {
 			throw new BadRequestError('Title is missing.');
@@ -377,6 +379,7 @@ class ColumnService extends SuperService {
 			$title = $this->normalizeTitle($columnDto->getTitle(), false);
 			$previousType = $item->getType();
 			$previousSubtype = $item->getSubtype();
+			$previousAllowedPattern = $item->getTextAllowedPattern();
 
 			if ($title !== null) {
 				$item->setTitle($title);
@@ -432,10 +435,20 @@ class ColumnService extends SuperService {
 			$item->setShowUserStatus($columnDto->getShowUserStatus());
 			$this->validateCustomSettings($columnDto->getCustomSettings());
 			$item->setCustomSettings($columnDto->getCustomSettings());
+			$checksValuesDifferently = $item->getType() !== $previousType
+				|| $item->getSubtype() !== $previousSubtype
+				|| (string)$item->getTextAllowedPattern() !== (string)$previousAllowedPattern;
+			if ($checksValuesDifferently) {
+				$this->assertAllowedPatternIsUsable($item->getType(), $item->getSubtype(), $item->getTextAllowedPattern());
+			}
 
 			$this->updateMetadata($item, $userId);
 			try {
 				$updatedColumn = $this->mapper->update($item);
+				// stored values are kept when they fail the new criteria; the count tells how many do
+				if ($checksValuesDifferently) {
+					$updatedColumn->setFailingValuesCount($this->formatValueValidator->countFailingValues($updatedColumn));
+				}
 
 				$this->activityManager->triggerEvent(
 					objectType: ActivityManager::TABLES_OBJECT_COLUMN,
@@ -534,6 +547,18 @@ class ColumnService extends SuperService {
 			$translatedMessage = $this->l->t('There is no format %1$s for columns of type %2$s.', [$formatName, $type]);
 			throw new BadRequestError($translatedMessage, 0, null, $translatedMessage);
 		}
+	}
+
+	/**
+	 * Text columns with a format check values against their allowed pattern, so it has to compile.
+	 *
+	 * @throws BadRequestError
+	 */
+	private function assertAllowedPatternIsUsable(string $type, string $subtype, ?string $allowedPattern): void {
+		if ($type !== Column::TYPE_TEXT || Column::formatNameOf($type, $subtype) === null || $allowedPattern === null || $allowedPattern === '') {
+			return;
+		}
+		$this->formatValueValidator->assertPatternIsUsable($allowedPattern);
 	}
 
 	private function normalizeTitle(?string $title, bool $required): ?string {

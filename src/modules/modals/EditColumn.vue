@@ -24,6 +24,9 @@
 					<component :is="getColumnForm" v-model:can-save="canSave"
 						:column="editColumn"
 						@update:custom-settings="onUpdateCustomSettings" />
+					<NcNoteCard v-if="formatNotice" :type="column.broken ? 'warning' : 'info'" data-cy="editColumnFormatNotice">
+						{{ formatNotice }}
+					</NcNoteCard>
 				</div>
 			</div>
 			<div class="buttons">
@@ -51,7 +54,8 @@
 </template>
 
 <script>
-import { NcDialog, NcActions, NcActionButton, NcButton, NcUserBubble } from '@nextcloud/vue'
+import { NcDialog, NcActions, NcActionButton, NcButton, NcNoteCard, NcUserBubble } from '@nextcloud/vue'
+import { translate as t, translatePlural as n } from '@nextcloud/l10n'
 import { showError, showSuccess } from '@nextcloud/dialogs'
 import '@nextcloud/dialogs/style.css'
 import ColumnInfoPopover from '../main/partials/ColumnInfoPopover.vue'
@@ -75,6 +79,7 @@ import { ColumnTypes } from '../../shared/components/ncTable/mixins/columnHandle
 import moment from '@nextcloud/moment'
 import { mapActions } from 'pinia'
 import { useDataStore } from '../../store/data.js'
+import { findFormatFailure } from '../../shared/utils/formatValidation.js'
 import {
 	COLUMN_WIDTH_MAX,
 	COLUMN_WIDTH_MIN,
@@ -104,6 +109,7 @@ export default {
 		NcActionButton,
 		ColumnInfoPopover,
 		NcButton,
+		NcNoteCard,
 		NcUserBubble,
 		UsergroupForm,
 		RelationForm,
@@ -147,6 +153,26 @@ export default {
 			} else {
 				throw Error('Form ' + form + ' does not exist')
 			}
+		},
+		/**
+		 * How the column's format applies: missing, or how many of the loaded values fail it with the
+		 * allowed pattern as currently edited. The server keeps failing values, but refuses new ones.
+		 */
+		formatNotice() {
+			if (!this.column.formatName) {
+				return null
+			}
+			if (this.column.broken) {
+				return t('tables', 'The format {format} is not installed or not enabled, so values in this column are not checked.', { format: this.column.formatName })
+			}
+			if (!this.column.format) {
+				return null
+			}
+			const editedColumn = { ...this.column, textAllowedPattern: this.editColumn.textAllowedPattern }
+			const failingCount = useDataStore().getRows(this.isView, this.elementId)
+				.filter(row => findFormatFailure(editedColumn, row.data?.find(cell => cell.columnId === this.column.id)?.value) !== null)
+				.length
+			return n('tables', '%n current value does not match {label}.', '%n current values do not match {label}.', failingCount, { label: this.column.format.label })
 		},
 		updateTime() {
 			return (this.column && this.column.lastEditAt) ? this.relativeDateTime(this.column.lastEditAt) : ''

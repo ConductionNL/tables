@@ -18,6 +18,7 @@ use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Notification\NotificationHelper;
+use OCA\Tables\Service\FormatValueValidator;
 use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowQueryResolver;
@@ -80,6 +81,7 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 			$this->createMock(IDBConnection::class),
 			new RowQueryResolver(),
 			$this->createMock(RowObjectInputConverter::class),
+			$this->createMock(FormatValueValidator::class),
 		);
 	}
 

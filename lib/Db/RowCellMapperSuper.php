@@ -64,6 +64,26 @@ class RowCellMapperSuper extends QBMapper {
 	}
 
 	/**
+	 * @return \Generator<int, array<string, mixed>> the value of each cell of the column
+	 * @throws Exception
+	 */
+	public function findRawValuesForColumn(int $columnId): \Generator {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('value')
+			->from($this->tableName)
+			->where($qb->expr()->eq('column_id', $qb->createNamedParameter($columnId, IQueryBuilder::PARAM_INT)));
+
+		$result = $qb->executeQuery();
+		try {
+			while ($cell = $result->fetchAssociative()) {
+				yield $cell;
+			}
+		} finally {
+			$result->closeCursor();
+		}
+	}
+
+	/**
 	 * @throws Exception
 	 */
 	public function deleteAllForRow(int $rowId): void {

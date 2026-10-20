@@ -68,6 +68,39 @@ class FormatRuleEvaluatorTest extends TestCase {
 		}
 	}
 
+	public function testEveryCoreRuleIsAValidRule(): void {
+		foreach (self::coreRules() as $rule) {
+			$this->evaluator->assertValidRule($rule);
+		}
+		$this->addToAssertionCount(1);
+	}
+
+	/**
+	 * @param array<array-key, mixed> $rule
+	 * @dataProvider invalidRules
+	 */
+	public function testRefusesAnInvalidRule(array $rule): void {
+		$this->expectException(FormatRuleError::class);
+
+		$this->evaluator->assertValidRule($rule);
+	}
+
+	/**
+	 * @return array<string, array{array<array-key, mixed>}>
+	 */
+	public static function invalidRules(): array {
+		return [
+			'a list instead of an operation' => [[['var' => 'value']]],
+			'two operations' => [['match' => [['var' => 'value'], 'a'], 'chars' => [['var' => 'value']]]],
+			'an unknown operation' => [['nope' => [1]]],
+			'log, which has side effects' => [['!!' => [['log' => [['var' => 'value']]]]]],
+			'method, which calls methods in the browser' => [['method' => [['var' => 'value'], 'toUpperCase']]],
+			'a nested forbidden operation' => [['and' => [true, ['if' => [true, ['method' => ['x', 'y']], false]]]]],
+			'an invalid pattern' => [['match' => [['var' => 'value'], '(']]],
+			'an invalid flag' => [['match' => [['var' => 'value'], 'a', 'g']]],
+		];
+	}
+
 	/**
 	 * @return iterable<string, array{string, mixed, bool}>
 	 */

@@ -12,7 +12,7 @@ SPDX-FileCopyrightText = "2021 Nextcloud GmbH and Nextcloud contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 [[annotations]]
-path = [".devcontainer/devcontainer.json", ".github/CODEOWNERS", "openapi.json", "renovate.json", "screenshots/sh-tables-1-small.png", "screenshots/sh-tables-1.png", "screenshots/sh-tables-2.png", "screenshots/sh-tables-3.png", "screenshots/sh-tables-4.png", "screenshots/sh-tables-5.png", "screenshots/sh-tables-6.png","screenshots/sh-tables-7.png"]
+path = [".devcontainer/devcontainer.json", ".github/CODEOWNERS", "openapi.json", "openapi-administration.json", "openapi-full.json", "renovate.json", "screenshots/sh-tables-1-small.png", "screenshots/sh-tables-1.png", "screenshots/sh-tables-2.png", "screenshots/sh-tables-3.png", "screenshots/sh-tables-4.png", "screenshots/sh-tables-5.png", "screenshots/sh-tables-6.png","screenshots/sh-tables-7.png"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2023 Nextcloud GmbH and Nextcloud contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"

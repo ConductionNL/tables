@@ -51,6 +51,7 @@ class Capabilities implements ICapability {
 				'features' => [
 					'favorite',
 					'archive',
+					'formats',
 				],
 				'isCirclesEnabled' => $this->circleHelper->isCirclesEnabled(),
 				'column_types' => [

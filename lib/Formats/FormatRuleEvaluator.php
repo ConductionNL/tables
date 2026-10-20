@@ -24,6 +24,17 @@ use Throwable;
 class FormatRuleEvaluator {
 	private const PATTERN_DELIMITER = "\x01";
 	private const ALLOWED_PATTERN_FLAGS = '/^(?!.*(.).*\1)[ims]*$/';
+	/**
+	 * Operations a stored rule may use. log has side effects, and the method operation of
+	 * json-logic-js calls arbitrary methods in the browser, so neither is allowed.
+	 */
+	private const ALLOWED_OPERATIONS = [
+		'==', '===', '!=', '!==', '>', '>=', '<', '<=', '!!', '!', 'and', 'or', 'if', '?:',
+		'+', '-', '*', '/', '%', 'min', 'max',
+		'var', 'missing', 'missing_some', 'in', 'cat', 'substr', 'merge',
+		'map', 'filter', 'reduce', 'all', 'none', 'some',
+		'match', 'chars', 'indexOf',
+	];
 
 	private static bool $operationsRegistered = false;
 
@@ -51,6 +62,46 @@ class FormatRuleEvaluator {
 			throw $e;
 		} catch (Throwable $e) {
 			throw new FormatRuleError('The format rule cannot be evaluated: ' . $e->getMessage(), 0, $e);
+		}
+	}
+
+	/**
+	 * A rule has to be a JSON Logic object that only uses allowed operations, with patterns
+	 * that compile. Whether it accepts the right values is up to its author.
+	 *
+	 * @param array<array-key, mixed> $rule
+	 * @throws FormatRuleError
+	 */
+	public function assertValidRule(array $rule): void {
+		if (!JsonLogic::is_logic($rule)) {
+			throw new FormatRuleError('A rule has to be an object with exactly one operation.');
+		}
+		$this->assertValidLogic($rule);
+	}
+
+	/**
+	 * @throws FormatRuleError
+	 */
+	private function assertValidLogic(mixed $logic): void {
+		if (!is_array($logic)) {
+			return;
+		}
+		if (!JsonLogic::is_logic($logic)) {
+			foreach ($logic as $item) {
+				$this->assertValidLogic($item);
+			}
+			return;
+		}
+		$operation = (string)array_key_first($logic);
+		if (!in_array($operation, self::ALLOWED_OPERATIONS, true)) {
+			throw new FormatRuleError('The operation ' . $operation . ' cannot be used in a rule.');
+		}
+		$arguments = is_array($logic[$operation]) && !JsonLogic::is_logic($logic[$operation]) ? $logic[$operation] : [$logic[$operation]];
+		if ($operation === 'match' && isset($arguments[1]) && is_string($arguments[1])) {
+			self::matchPattern('', $arguments[1], is_string($arguments[2] ?? null) ? $arguments[2] : '');
+		}
+		foreach ($arguments as $argument) {
+			$this->assertValidLogic($argument);
 		}
 	}
 

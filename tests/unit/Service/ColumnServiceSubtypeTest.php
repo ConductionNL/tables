@@ -21,6 +21,7 @@ use OCA\Tables\Helper\UserHelper;
 use OCA\Tables\Notification\NotificationHelper;
 use OCA\Tables\Service\ColumnService;
 use OCA\Tables\Service\FormatService;
+use OCA\Tables\Service\FormatValueValidator;
 use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\ViewService;
@@ -62,6 +63,14 @@ class ColumnServiceSubtypeTest extends TestCase {
 			static fn (string $technicalName, string $columnType): ?Format => $technicalName === 'email' && $columnType === Column::TYPE_TEXT ? $email : null,
 		);
 
+		$formatValueValidator = $this->createMock(FormatValueValidator::class);
+		$formatValueValidator->method('countFailingValues')->willReturn(3);
+		$formatValueValidator->method('assertPatternIsUsable')->willReturnCallback(static function (string $pattern): void {
+			if ($pattern === '(') {
+				throw new BadRequestError('The allowed pattern ( cannot be used');
+			}
+		});
+
 		$this->service = new ColumnService(
 			$permissionsService,
 			$this->createMock(LoggerInterface::class),
@@ -76,6 +85,7 @@ class ColumnServiceSubtypeTest extends TestCase {
 			$this->createMock(UserHelper::class),
 			new ColumnDtoValidator(),
 			$formatService,
+			$formatValueValidator,
 		);
 	}
 
@@ -139,6 +149,28 @@ class ColumnServiceSubtypeTest extends TestCase {
 
 		$this->assertSame('email', $column->getSubtype());
 		$this->assertFalse($column->isBroken());
+	}
+
+	public function testChangingToAFormatReportsHowManyStoredValuesFailIt(): void {
+		$this->givenStoredColumn(Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE);
+
+		$column = $this->service->update(1, 'alice', new ColumnDto(subtype: 'email'));
+
+		$this->assertSame(3, $column->jsonSerialize()['failingValuesCount']);
+	}
+
+	public function testAnUpdateThatKeepsTheCriteriaReportsNoCount(): void {
+		$this->givenStoredColumn(Column::TYPE_TEXT, 'email');
+
+		$column = $this->service->update(1, 'alice', new ColumnDto(title: 'Mail', subtype: 'email'));
+
+		$this->assertArrayNotHasKey('failingValuesCount', $column->jsonSerialize());
+	}
+
+	public function testRefusesAnAllowedPatternThatCannotBeUsed(): void {
+		$this->expectException(BadRequestError::class);
+
+		$this->service->create('alice', self::TABLE_ID, null, new ColumnDto(title: 'Contact', technicalName: 'contact', type: Column::TYPE_TEXT, subtype: 'email', textAllowedPattern: '('));
 	}
 
 	public function testRefusesToChangeTheTypeWhenTheSubtypeDoesNotFitIt(): void {

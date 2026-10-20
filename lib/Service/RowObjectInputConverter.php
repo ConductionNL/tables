@@ -91,7 +91,7 @@ class RowObjectInputConverter {
 			$column->getType() === Column::TYPE_NUMBER => $this->number($value),
 			$column->getType() === Column::TYPE_RELATION => $this->relation($value),
 			$column->getType() === Column::TYPE_USERGROUP => $this->usergroups($value),
-			$column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK && is_bool($value) => ['value' => $value ? 'true' : 'false', 'error' => null],
+			$column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK && is_bool($value) => ['value' => $value ? 'true' : 'false', 'error' => null],
 			default => $this->scalarOrList($value),
 		};
 	}

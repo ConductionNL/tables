@@ -92,6 +92,7 @@ use ValueError;
  * @method setCustomSettings(?string $customSettings)
  * @method isBroken(): bool
  * @method setBroken(bool $broken)
+ * @method setFailingValuesCount(?int $failingValuesCount)
  */
 class Column extends EntitySuper implements JsonSerializable {
 	// Meta column types
@@ -195,8 +196,10 @@ class Column extends EntitySuper implements JsonSerializable {
 	protected ?ViewColumnInformation $viewColumnInformation = null;
 	// a column that names a format that is not installed, enabled and meant for its type
 	protected bool $broken = false;
+	// how many stored values fail the format, reported when a change makes the column check them
+	protected ?int $failingValuesCount = null;
 
-	protected const VIRTUAL_PROPERTIES = ['createdByDisplayName', 'lastEditByDisplayName', 'viewColumnInformation', 'broken'];
+	protected const VIRTUAL_PROPERTIES = ['createdByDisplayName', 'lastEditByDisplayName', 'viewColumnInformation', 'broken', 'failingValuesCount'];
 
 	public function __construct() {
 		$this->addType('id', 'integer');
@@ -226,6 +229,7 @@ class Column extends EntitySuper implements JsonSerializable {
 		$this->addType('selectionOptions', 'string');
 
 		$this->addType('broken', 'boolean');
+		$this->addType('failingValuesCount', 'integer');
 	}
 
 	public static function isValidMetaTypeId(int $metaTypeId): bool {
@@ -240,6 +244,18 @@ class Column extends EntitySuper implements JsonSerializable {
 
 	public static function isBuiltInSubtype(string $type, string $subtype): bool {
 		return in_array($subtype, self::BUILT_IN_SUBTYPES[$type] ?? [], true);
+	}
+
+	/**
+	 * Whether any column type implements this subtype itself, which a format cannot be named after.
+	 */
+	public static function isBuiltInSubtypeOfAnyType(string $subtype): bool {
+		foreach (self::BUILT_IN_SUBTYPES as $subtypes) {
+			if (in_array($subtype, $subtypes, true)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	public static function supportsFormats(string $type): bool {
@@ -363,7 +379,7 @@ class Column extends EntitySuper implements JsonSerializable {
 	 * @psalm-return TablesColumn
 	 */
 	public function jsonSerialize(): array {
-		return [
+		$serialized = [
 			'id' => $this->id,
 			'uuid' => $this->uuid,
 			'tableId' => $this->tableId,
@@ -413,6 +429,10 @@ class Column extends EntitySuper implements JsonSerializable {
 			'showUserStatus' => $this->showUserStatus,
 			'customSettings' => $this->getCustomSettingsArray() ?: [],
 		];
+		if ($this->failingValuesCount !== null) {
+			$serialized['failingValuesCount'] = $this->failingValuesCount;
+		}
+		return $serialized;
 	}
 
 	public function getCustomSettingsArray(): array {

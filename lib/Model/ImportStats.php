@@ -16,6 +16,8 @@ final class ImportStats {
 		public int $updatedRowsCount,
 		public int $errorsParsingCount,
 		public int $errorsCount,
+		/** @var list<array{row: int, message: string}> the first rows that were refused, by row number in the file */
+		public array $rowErrors = [],
 	) {
 	}
 }

@@ -21,6 +21,10 @@
 					type="error">
 					{{ t('tables', 'Invalid protocol. Allowed: {allowed}', {allowed: allowedProtocols.join(', ')}) }}
 				</NcNoteCard>
+				<NcNoteCard v-if="formatErrorFor(column, row[column.id])"
+					type="error">
+					{{ formatErrorFor(column, row[column.id]) }}
+				</NcNoteCard>
 			</div>
 			<div class="row">
 				<div class="fix-col-4 space-T end">
@@ -29,7 +33,7 @@
 							{{ addMoreLabel }}
 						</NcCheckboxRadioSwitch>
 					</div>
-					<NcButton v-if="!localLoading" class="primary" :aria-label="t('tables', 'Save row')" :disabled="hasEmptyMandatoryRows || hasInvalidUrlProtocol" data-cy="createRowSaveButton" @click="actionConfirm()">
+					<NcButton v-if="!localLoading" class="primary" :aria-label="t('tables', 'Save row')" :disabled="hasEmptyMandatoryRows || hasInvalidUrlProtocol || hasInvalidFormatValues" data-cy="createRowSaveButton" @click="actionConfirm()">
 						{{ saveButtonLabel }}
 					</NcButton>
 				</div>
@@ -105,6 +109,9 @@ export default {
 		},
 		hasInvalidUrlProtocol() {
 			return this.nonMetaColumns.some(col => col.type === 'text-link' && !this.isValidUrlProtocol(this.row[col.id]))
+		},
+		hasInvalidFormatValues() {
+			return this.hasFormatErrors(this.row)
 		},
 		dialogTitle() {
 			return this.isFormMode ? t('tables', 'Fill form') : t('tables', 'Create row')

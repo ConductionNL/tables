@@ -47,6 +47,10 @@
 						type="error">
 						{{ t('tables', 'Invalid protocol. Allowed: {allowed}', {allowed: allowedProtocols.join(', ')}) }}
 					</NcNoteCard>
+					<NcNoteCard v-if="formatErrorFor(column, localRow[column.id])"
+						type="error">
+						{{ formatErrorFor(column, localRow[column.id]) }}
+					</NcNoteCard>
 				</div>
 				<div class="row">
 					<div class="fix-col-4 space-T" :class="{'justify-between': showDeleteButton, 'end': !showDeleteButton}">
@@ -65,7 +69,7 @@
 						</div>
 						<NcButton v-if="canUpdateData(element) && !localLoading" :aria-label="t('tables', 'Save')" type="primary"
 							data-cy="editRowSaveButton"
-							:disabled="hasEmptyMandatoryRows || hasInvalidUrlProtocol"
+							:disabled="hasEmptyMandatoryRows || hasInvalidUrlProtocol || hasInvalidFormatValues"
 							@click="actionConfirm">
 							{{ t('tables', 'Save') }}
 						</NcButton>
@@ -163,6 +167,9 @@ export default {
 		},
 		hasInvalidUrlProtocol() {
 			return this.nonMetaColumns.some(col => col.type === 'text-link' && !this.isValidUrlProtocol(this.localRow[col.id]))
+		},
+		hasInvalidFormatValues() {
+			return this.hasFormatErrors(this.localRow)
 		},
 	},
 	watch: {
