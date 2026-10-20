@@ -1104,6 +1104,8 @@ export type components = {
             readonly lastEditAt: string;
             readonly type: string;
             readonly subtype: string;
+            readonly baseSubtype: string;
+            readonly broken: boolean;
             readonly mandatory: boolean;
             readonly description: string;
             /** Format: int64 */
@@ -1212,6 +1214,8 @@ export type components = {
             readonly lastEditAt: string;
             readonly type: string;
             readonly subtype: string;
+            readonly baseSubtype: string;
+            readonly broken: boolean;
             readonly mandatory: boolean;
             readonly description: string;
             /** Format: int64 */

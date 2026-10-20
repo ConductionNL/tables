@@ -90,6 +90,8 @@ use ValueError;
  * @method setViewColumnInformation(ViewColumnInformation $viewColumnInformation)
  * @method getCustomSettings(): ?string
  * @method setCustomSettings(?string $customSettings)
+ * @method isBroken(): bool
+ * @method setBroken(bool $broken)
  */
 class Column extends EntitySuper implements JsonSerializable {
 	// Meta column types
@@ -122,6 +124,26 @@ class Column extends EntitySuper implements JsonSerializable {
 	public const RELATION_TYPE = 'relationType';
 	public const RELATION_TARGET_ID = 'targetId';
 	public const RELATION_LABEL_COLUMN = 'labelColumn';
+
+	/**
+	 * Subtypes the app implements itself. They always win over a format with the same name.
+	 */
+	private const BUILT_IN_SUBTYPES = [
+		self::TYPE_TEXT => [self::SUBTYPE_TEXT_LINE, 'long', 'rich', self::SUBTYPE_TEXT_LINK],
+		self::TYPE_NUMBER => ['', 'stars', 'progress'],
+		self::TYPE_SELECTION => ['', 'multi', self::SUBTYPE_SELECTION_CHECK],
+		self::TYPE_DATETIME => ['', self::SUBTYPE_DATETIME_DATE, self::SUBTYPE_DATETIME_TIME],
+		self::TYPE_USERGROUP => [''],
+		self::TYPE_RELATION => [''],
+	];
+
+	/**
+	 * The subtype whose behaviour a format subtype builds on, per column type that supports formats.
+	 */
+	private const FORMAT_BASE_SUBTYPES = [
+		self::TYPE_TEXT => self::SUBTYPE_TEXT_LINE,
+		self::TYPE_NUMBER => '',
+	];
 
 	protected ?string $uuid = null;
 	protected ?string $title = null;
@@ -171,8 +193,10 @@ class Column extends EntitySuper implements JsonSerializable {
 	protected ?string $createdByDisplayName = null;
 	protected ?string $lastEditByDisplayName = null;
 	protected ?ViewColumnInformation $viewColumnInformation = null;
+	// a column that names a format that is not installed, enabled and meant for its type
+	protected bool $broken = false;
 
-	protected const VIRTUAL_PROPERTIES = ['createdByDisplayName', 'lastEditByDisplayName', 'viewColumnInformation'];
+	protected const VIRTUAL_PROPERTIES = ['createdByDisplayName', 'lastEditByDisplayName', 'viewColumnInformation', 'broken'];
 
 	public function __construct() {
 		$this->addType('id', 'integer');
@@ -200,6 +224,8 @@ class Column extends EntitySuper implements JsonSerializable {
 		$this->addType('customSettings', 'string');
 
 		$this->addType('selectionOptions', 'string');
+
+		$this->addType('broken', 'boolean');
 	}
 
 	public static function isValidMetaTypeId(int $metaTypeId): bool {
@@ -210,6 +236,42 @@ class Column extends EntitySuper implements JsonSerializable {
 			self::TYPE_META_CREATED_AT,
 			self::TYPE_META_UPDATED_AT,
 		], true);
+	}
+
+	public static function isBuiltInSubtype(string $type, string $subtype): bool {
+		return in_array($subtype, self::BUILT_IN_SUBTYPES[$type] ?? [], true);
+	}
+
+	public static function supportsFormats(string $type): bool {
+		return isset(self::FORMAT_BASE_SUBTYPES[$type]);
+	}
+
+	/**
+	 * The format a subtype names, which is any subtype of a text or number column that the app
+	 * does not implement itself.
+	 */
+	public static function formatNameOf(string $type, string $subtype): ?string {
+		if (!self::supportsFormats($type) || $subtype === '' || self::isBuiltInSubtype($type, $subtype)) {
+			return null;
+		}
+		return $subtype;
+	}
+
+	public function getFormatName(): ?string {
+		return self::formatNameOf((string)$this->type, (string)$this->subtype);
+	}
+
+	/**
+	 * The built-in subtype this column behaves as: its own subtype, or the one a format builds on.
+	 * Other column types keep an unknown subtype, as it decides how their values are stored.
+	 */
+	public function getBaseSubtype(): string {
+		$type = (string)$this->type;
+		$subtype = (string)$this->subtype;
+		if (self::isBuiltInSubtype($type, $subtype)) {
+			return $subtype;
+		}
+		return self::FORMAT_BASE_SUBTYPES[$type] ?? $subtype;
 	}
 
 	public function setter(string $name, array $args): void {
@@ -316,6 +378,8 @@ class Column extends EntitySuper implements JsonSerializable {
 			'viewColumnInformation' => $this->viewColumnInformation?->jsonSerialize(),
 			'type' => $this->type,
 			'subtype' => $this->subtype,
+			'baseSubtype' => $this->getBaseSubtype(),
+			'broken' => $this->broken,
 			'mandatory' => $this->mandatory,
 			'description' => $this->description,
 

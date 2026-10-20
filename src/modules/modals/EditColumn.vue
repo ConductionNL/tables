@@ -222,6 +222,9 @@ export default {
 			delete data.createdBy
 			delete data.lastEditAt
 			delete data.lastEditBy
+			delete data.formatName
+			delete data.format
+			delete data.broken
 
 			data.technicalName = this.normalizeTechnicalName(data.technicalName)
 			data.customSettings = { ...data.customSettings, width: data.customSettings.width }

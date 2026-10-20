@@ -1,0 +1,22 @@
+[
+	{"type": "text", "subtype": "line", "baseSubtype": "line", "formatName": null},
+	{"type": "text", "subtype": "long", "baseSubtype": "long", "formatName": null},
+	{"type": "text", "subtype": "rich", "baseSubtype": "rich", "formatName": null},
+	{"type": "text", "subtype": "link", "baseSubtype": "link", "formatName": null},
+	{"type": "text", "subtype": "email", "baseSubtype": "line", "formatName": "email"},
+	{"type": "text", "subtype": "nl_bsn", "baseSubtype": "line", "formatName": "nl_bsn"},
+	{"type": "text", "subtype": "", "baseSubtype": "line", "formatName": null},
+	{"type": "number", "subtype": "", "baseSubtype": "", "formatName": null},
+	{"type": "number", "subtype": "stars", "baseSubtype": "stars", "formatName": null},
+	{"type": "number", "subtype": "progress", "baseSubtype": "progress", "formatName": null},
+	{"type": "number", "subtype": "percentage", "baseSubtype": "", "formatName": "percentage"},
+	{"type": "selection", "subtype": "", "baseSubtype": "", "formatName": null},
+	{"type": "selection", "subtype": "multi", "baseSubtype": "multi", "formatName": null},
+	{"type": "selection", "subtype": "check", "baseSubtype": "check", "formatName": null},
+	{"type": "selection", "subtype": "email", "baseSubtype": "email", "formatName": null},
+	{"type": "datetime", "subtype": "date", "baseSubtype": "date", "formatName": null},
+	{"type": "datetime", "subtype": "duration", "baseSubtype": "duration", "formatName": null},
+	{"type": "usergroup", "subtype": "", "baseSubtype": "", "formatName": null},
+	{"type": "usergroup", "subtype": "email", "baseSubtype": "email", "formatName": null},
+	{"type": "relation", "subtype": "", "baseSubtype": "", "formatName": null}
+]

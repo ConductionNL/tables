@@ -84,6 +84,8 @@
                     "lastEditAt",
                     "type",
                     "subtype",
+                    "baseSubtype",
+                    "broken",
                     "mandatory",
                     "description",
                     "orderWeight",
@@ -150,6 +152,12 @@
                     },
                     "subtype": {
                         "type": "string"
+                    },
+                    "baseSubtype": {
+                        "type": "string"
+                    },
+                    "broken": {
+                        "type": "boolean"
                     },
                     "mandatory": {
                         "type": "boolean"
@@ -461,6 +469,8 @@
                     "lastEditAt",
                     "type",
                     "subtype",
+                    "baseSubtype",
+                    "broken",
                     "mandatory",
                     "description",
                     "orderWeight",
@@ -508,6 +518,12 @@
                     },
                     "subtype": {
                         "type": "string"
+                    },
+                    "baseSubtype": {
+                        "type": "string"
+                    },
+                    "broken": {
+                        "type": "boolean"
                     },
                     "mandatory": {
                         "type": "boolean"

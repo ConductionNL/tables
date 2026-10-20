@@ -54,6 +54,7 @@ class ColumnService extends SuperService {
 		private readonly IL10N $l,
 		private readonly UserHelper $userHelper,
 		private readonly ColumnDtoValidator $columnDtoValidator,
+		private readonly FormatService $formatService,
 	) {
 		parent::__construct($logger, $userId, $permissionsService);
 	}
@@ -225,6 +226,7 @@ class ColumnService extends SuperService {
 			throw new BadRequestError('Column type ' . $columnDto->getType() . ' does not exist.');
 		}
 		$this->columnDtoValidator->validate($columnDto, true);
+		$this->assertSubtypeIsKnown($columnDto->getType(), $columnDto->getSubtype() ?? '');
 		$columnTitle = $this->normalizeTitle($columnDto->getTitle(), true);
 		if ($columnTitle === null) {
 			throw new BadRequestError('Title is missing.');
@@ -373,6 +375,8 @@ class ColumnService extends SuperService {
 			}
 			$this->columnDtoValidator->validate($columnDto);
 			$title = $this->normalizeTitle($columnDto->getTitle(), false);
+			$previousType = $item->getType();
+			$previousSubtype = $item->getSubtype();
 
 			if ($title !== null) {
 				$item->setTitle($title);
@@ -385,6 +389,10 @@ class ColumnService extends SuperService {
 			}
 			if ($columnDto->getSubtype() !== null) {
 				$item->setSubtype($columnDto->getSubtype());
+			}
+			// a column whose format went missing can still be edited, as long as it keeps its subtype
+			if ($item->getType() !== $previousType || $item->getSubtype() !== $previousSubtype) {
+				$this->assertSubtypeIsKnown($item->getType(), $item->getSubtype());
 			}
 			if ($columnDto->getNumberPrefix() !== null) {
 				$item->setNumberPrefix($columnDto->getNumberPrefix());
@@ -504,6 +512,27 @@ class ColumnService extends SuperService {
 					$translatedMessage
 				);
 			}
+		}
+	}
+
+	/**
+	 * A subtype has to be built in or name a usable format. Text and number columns may leave it
+	 * empty, which makes them behave as their base subtype.
+	 *
+	 * @throws BadRequestError
+	 */
+	private function assertSubtypeIsKnown(string $type, string $subtype): void {
+		if (Column::isBuiltInSubtype($type, $subtype) || ($subtype === '' && Column::supportsFormats($type))) {
+			return;
+		}
+		$formatName = Column::formatNameOf($type, $subtype);
+		if ($formatName === null) {
+			$translatedMessage = $this->l->t('Columns of type %1$s have no subtype %2$s.', [$type, $subtype]);
+			throw new BadRequestError($translatedMessage, 0, null, $translatedMessage);
+		}
+		if ($this->formatService->findUsableFormat($formatName, $type) === null) {
+			$translatedMessage = $this->l->t('There is no format %1$s for columns of type %2$s.', [$formatName, $type]);
+			throw new BadRequestError($translatedMessage, 0, null, $translatedMessage);
 		}
 	}
 
@@ -710,6 +739,8 @@ class ColumnService extends SuperService {
 		// add created by display name for UI usage
 		$column->setCreatedByDisplayName($this->userHelper->getUserDisplayName($column->getCreatedBy()));
 		$column->setLastEditByDisplayName($this->userHelper->getUserDisplayName($column->getLastEditBy()));
+		$formatName = $column->getFormatName();
+		$column->setBroken($formatName !== null && $this->formatService->findUsableFormat($formatName, $column->getType()) === null);
 
 		if ($viewColumnInformation) {
 			$column->setViewColumnInformation($viewColumnInformation);

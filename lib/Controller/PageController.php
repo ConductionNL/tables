@@ -8,6 +8,7 @@
 namespace OCA\Tables\Controller;
 
 use OCA\Tables\AppInfo\Application;
+use OCA\Tables\Service\FormatService;
 use OCA\Tables\Service\NodeService;
 use OCA\Tables\Service\ShareService;
 use OCA\Text\Event\LoadEditor;
@@ -32,6 +33,7 @@ class PageController extends Controller {
 		protected IInitialState $initialState,
 		protected ShareService $shareService,
 		protected NodeService $nodeService,
+		protected FormatService $formatService,
 	) {
 		parent::__construct(Application::APP_ID, $request);
 	}
@@ -45,6 +47,7 @@ class PageController extends Controller {
 	public function index(): TemplateResponse {
 		Util::addScript(Application::APP_ID, 'tables-main');
 		$this->loadStyles();
+		$this->initialState->provideLazyInitialState('formats', fn () => $this->formatService->getEnabledDefinitions());
 
 		if (class_exists(LoadViewer::class)) {
 			$this->eventDispatcher->dispatchTyped(new LoadViewer());
