@@ -43,6 +43,7 @@ class SeedCoreFormatsTest extends DatabaseTestCase {
 		foreach ($formats as $format) {
 			$this->assertTrue($format->isEnabled());
 			$this->assertNull($format->getCreatedBy());
+			$this->assertSame(Format::SOURCE_CORE, $format->getSource());
 			$this->assertSame('text', $format->getType());
 			$this->assertSame('1.0.0', $format->getVersion());
 			$this->assertMatchesRegularExpression('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/', $format->getCreatedAt());
@@ -71,21 +72,18 @@ class SeedCoreFormatsTest extends DatabaseTestCase {
 		$this->assertSame('1.0.0', $email->getVersion());
 		$this->assertArrayHasKey('match', $email->getRuleAsArray());
 		$this->assertFalse($email->isEnabled(), 'refreshing a definition keeps whether it is enabled');
+		$this->assertSame(Format::SOURCE_CORE, $email->getSource());
 	}
 
-	public function testLeavesACoreFormatAnAdministratorChanged(): void {
+	public function testMarksCoreFormatsSeededBeforeTheSourceColumnExisted(): void {
 		$this->runSeeder();
 		$email = $this->formatsByName()['email'];
-		$email->setVersion('0.9.0');
-		$email->setRule('{"==":[1,1]}');
-		$email->setUpdatedBy('admin');
+		$email->setSource(Format::SOURCE_CUSTOM);
 		$this->mapper->update($email);
 
 		$this->runSeeder();
 
-		$email = $this->formatsByName()['email'];
-		$this->assertSame('0.9.0', $email->getVersion());
-		$this->assertSame(['==' => [1, 1]], $email->getRuleAsArray());
+		$this->assertSame(Format::SOURCE_CORE, $this->formatsByName()['email']->getSource());
 	}
 
 	public function testLeavesFormatsAnAdministratorCreated(): void {
@@ -95,6 +93,7 @@ class SeedCoreFormatsTest extends DatabaseTestCase {
 		$custom->setType('text');
 		$custom->setRule('{"match":[{"var":"value"},"^[0-9]{4}$"]}');
 		$custom->setEnabled(true);
+		$custom->setSource(Format::SOURCE_CUSTOM);
 		$custom->setVersion('1');
 		$custom->setCreatedAt('2026-10-01 12:00:00');
 		$custom->setCreatedBy('admin');

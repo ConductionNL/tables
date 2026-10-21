@@ -31,6 +31,8 @@ use OCP\AppFramework\Db\Entity;
  * @method setRule(string $rule): void
  * @method setEnabled(bool $enabled): void
  * @method isEnabled(): bool
+ * @method getSource(): string
+ * @method setSource(string $source): void
  * @method getVersion(): string
  * @method setVersion(string $version): void
  * @method getCreatedAt(): string
@@ -43,12 +45,20 @@ use OCP\AppFramework\Db\Entity;
  * @method setUpdatedBy(?string $updatedBy): void
  */
 class Format extends Entity implements JsonSerializable {
+	/** Shipped with Tables, and read-only apart from being enabled */
+	public const SOURCE_CORE = 'core';
+	/** Defined by an administrator */
+	public const SOURCE_CUSTOM = 'custom';
+	/** Installed from the format pack with the name that follows */
+	public const SOURCE_PACK_PREFIX = 'pack:';
+
 	protected ?string $technicalName = null;
 	protected ?string $label = null;
 	protected ?string $example = null;
 	protected ?string $type = null;
 	protected ?string $rule = null;
 	protected ?bool $enabled = null;
+	protected ?string $source = null;
 	protected ?string $version = null;
 	protected ?string $createdAt = null;
 	protected ?string $createdBy = null;
@@ -58,6 +68,10 @@ class Format extends Entity implements JsonSerializable {
 	public function __construct() {
 		$this->addType('id', 'integer');
 		$this->addType('enabled', 'boolean');
+	}
+
+	public function isShippedWithTables(): bool {
+		return $this->getSource() === self::SOURCE_CORE;
 	}
 
 	/**
@@ -79,6 +93,7 @@ class Format extends Entity implements JsonSerializable {
 			'type' => $this->getType(),
 			'rule' => $this->getRuleAsArray(),
 			'enabled' => $this->isEnabled(),
+			'source' => $this->getSource(),
 			'version' => $this->getVersion(),
 			'createdAt' => $this->getCreatedAt(),
 			'createdBy' => $this->getCreatedBy(),

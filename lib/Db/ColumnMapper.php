@@ -227,6 +227,22 @@ class ColumnMapper extends QBMapper {
 		return $this->findEntities($qb);
 	}
 
+	/**
+	 * The columns whose subtype names this format, in every table.
+	 *
+	 * @return Column[]
+	 * @throws Exception
+	 */
+	public function findAllUsingFormat(string $type, string $technicalName): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->table)
+			->where($qb->expr()->eq('type', $qb->createNamedParameter($type)))
+			->andWhere($qb->expr()->eq('subtype', $qb->createNamedParameter($technicalName)));
+
+		return $this->findEntities($qb);
+	}
+
 	public function findByUuid(string $uuid): ?Column {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')

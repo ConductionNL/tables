@@ -165,6 +165,7 @@ return [
 		['name' => 'Format#show', 'url' => '/api/2/formats/{id}', 'verb' => 'GET', 'requirements' => ['id' => '(\d+)']],
 		['name' => 'Format#create', 'url' => '/api/2/formats', 'verb' => 'POST'],
 		['name' => 'Format#update', 'url' => '/api/2/formats/{id}', 'verb' => 'PUT', 'requirements' => ['id' => '(\d+)']],
+		['name' => 'Format#previewUpdate', 'url' => '/api/2/formats/{id}/preview', 'verb' => 'POST', 'requirements' => ['id' => '(\d+)']],
 		['name' => 'Format#destroy', 'url' => '/api/2/formats/{id}', 'verb' => 'DELETE', 'requirements' => ['id' => '(\d+)']],
 
 		['name' => 'Config#getTableConfig', 'url' => '/api/2/config/table/{id}', 'verb' => 'GET'],

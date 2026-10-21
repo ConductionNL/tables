@@ -10,10 +10,12 @@ declare(strict_types=1);
 namespace OCA\Tables\Service;
 
 use OCA\Tables\Db\Column;
+use OCA\Tables\Db\ColumnMapper;
 use OCA\Tables\Db\Format;
 use OCA\Tables\Db\Row2Mapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\FormatRuleError;
+use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCP\DB\Exception;
 use OCP\IL10N;
@@ -29,6 +31,7 @@ class FormatValueValidator {
 		private readonly FormatService $formatService,
 		private readonly FormatRuleEvaluator $evaluator,
 		private readonly Row2Mapper $row2Mapper,
+		private readonly ColumnMapper $columnMapper,
 		private readonly IL10N $l,
 		private readonly LoggerInterface $logger,
 	) {
@@ -50,18 +53,27 @@ class FormatValueValidator {
 	 * is not checked against a format.
 	 *
 	 * @throws Exception
+	 * @throws InternalError
 	 */
 	public function countFailingValues(Column $column): ?int {
-		if ($this->findFormat($column) === null) {
-			return null;
+		$format = $this->findFormat($column);
+		return $format === null ? null : $this->countFailingValuesAgainst($column, $format);
+	}
+
+	/**
+	 * What a changed definition, not yet stored, would mean for the columns that use the format.
+	 *
+	 * @return array{columnsCount: int, failingValuesCount: int}
+	 * @throws Exception
+	 * @throws InternalError
+	 */
+	public function previewFormatChange(Format $changedFormat): array {
+		$columns = $this->columnMapper->findAllUsingFormat($changedFormat->getType(), $changedFormat->getTechnicalName());
+		$failingValuesCount = 0;
+		foreach ($columns as $column) {
+			$failingValuesCount += $this->countFailingValuesAgainst($column, $changedFormat);
 		}
-		$count = 0;
-		foreach ($this->row2Mapper->findStoredValues($column) as $value) {
-			if ($this->findFailure($column, $value) !== null) {
-				$count++;
-			}
-		}
-		return $count;
+		return ['columnsCount' => count($columns), 'failingValuesCount' => $failingValuesCount];
 	}
 
 	/**
@@ -78,13 +90,31 @@ class FormatValueValidator {
 
 	/**
 	 * @throws Exception
+	 * @throws InternalError
+	 */
+	private function countFailingValuesAgainst(Column $column, Format $format): int {
+		$count = 0;
+		foreach ($this->row2Mapper->findStoredValues($column) as $value) {
+			if ($this->findFailureAgainst($column, $format, $value) !== null) {
+				$count++;
+			}
+		}
+		return $count;
+	}
+
+	/**
+	 * @throws Exception
 	 */
 	private function findFailure(Column $column, mixed $value): ?BadRequestError {
 		if ($value === null || $value === '') {
 			return null;
 		}
 		$format = $this->findFormat($column);
-		if ($format === null) {
+		return $format === null ? null : $this->findFailureAgainst($column, $format, $value);
+	}
+
+	private function findFailureAgainst(Column $column, Format $format, mixed $value): ?BadRequestError {
+		if ($value === null || $value === '') {
 			return null;
 		}
 

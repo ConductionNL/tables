@@ -1219,6 +1219,7 @@ export type components = {
                 readonly [key: string]: Record<string, never>;
             };
             readonly enabled: boolean;
+            readonly source: string;
             readonly version: string;
             readonly createdAt: string;
             readonly createdBy: string | null;

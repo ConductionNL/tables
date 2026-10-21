@@ -312,6 +312,7 @@ namespace OCA\Tables;
  *     type: string,
  *     rule: array<string, mixed>,
  *     enabled: bool,
+ *     source: string,
  *     version: string,
  *     createdAt: string,
  *     createdBy: ?string,

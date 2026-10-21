@@ -12,7 +12,9 @@ namespace OCA\Tables\Tests\Unit\Controller;
 use OCA\Tables\Controller\FormatController;
 use OCA\Tables\Db\Format;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\FormatInUseError;
 use OCA\Tables\Service\FormatService;
+use OCA\Tables\Service\FormatValueValidator;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\IGroupManager;
@@ -43,6 +45,7 @@ class FormatControllerTest extends TestCase {
 			'show' => ['show', true],
 			'create' => ['create', false],
 			'update' => ['update', false],
+			'previewUpdate' => ['previewUpdate', false],
 			'destroy' => ['destroy', false],
 		];
 	}
@@ -66,6 +69,16 @@ class FormatControllerTest extends TestCase {
 		$this->assertSame(['message' => 'A format named email already exists.'], $response->getData());
 	}
 
+	public function testDeletingAFormatInUseAnswersWithTheNumberOfBrokenColumns(): void {
+		$formatService = $this->createMock(FormatService::class);
+		$formatService->method('delete')->willThrowException(new FormatInUseError(3));
+
+		$response = $this->createController($formatService, true)->destroy(5);
+
+		$this->assertSame(Http::STATUS_CONFLICT, $response->getStatus());
+		$this->assertSame(3, $response->getData()['brokenColumnsCount']);
+	}
+
 	private function format(): Format {
 		$format = new Format();
 		$format->setRule('{"match":[{"var":"value"},"@"]}');
@@ -81,6 +94,7 @@ class FormatControllerTest extends TestCase {
 			$this->createMock(IL10N::class),
 			'alice',
 			$formatService,
+			$this->createMock(FormatValueValidator::class),
 			$groupManager,
 		);
 	}

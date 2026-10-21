@@ -352,6 +352,7 @@
                     "type",
                     "rule",
                     "enabled",
+                    "source",
                     "version",
                     "createdAt",
                     "createdBy",
@@ -384,6 +385,9 @@
                     },
                     "enabled": {
                         "type": "boolean"
+                    },
+                    "source": {
+                        "type": "string"
                     },
                     "version": {
                         "type": "string"

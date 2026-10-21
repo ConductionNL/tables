@@ -10,9 +10,11 @@ declare(strict_types=1);
 namespace OCA\Tables\Service;
 
 use OCA\Tables\Db\Column;
+use OCA\Tables\Db\ColumnMapper;
 use OCA\Tables\Db\Format;
 use OCA\Tables\Db\FormatMapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\FormatInUseError;
 use OCA\Tables\Errors\FormatRuleError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Formats\FormatRuleEvaluator;
@@ -33,7 +35,8 @@ use OCP\IL10N;
  * }
  */
 class FormatService {
-	private const TECHNICAL_NAME_PATTERN = '/^[a-z][a-z0-9_]*$/';
+	// dots separate a namespace, such as the pack in nl.bsn
+	private const TECHNICAL_NAME_PATTERN = '/^[a-z][a-z0-9_-]*(?:\.[a-z][a-z0-9_-]*)*$/';
 	private const TECHNICAL_NAME_MAX_LENGTH = 64;
 	private const LABEL_MAX_LENGTH = 255;
 	private const EXAMPLE_MAX_LENGTH = 255;
@@ -44,6 +47,7 @@ class FormatService {
 
 	public function __construct(
 		private readonly FormatMapper $formatMapper,
+		private readonly ColumnMapper $columnMapper,
 		private readonly FormatRuleEvaluator $evaluator,
 		private readonly ITimeFactory $timeFactory,
 		private readonly IL10N $l,
@@ -118,6 +122,7 @@ class FormatService {
 		$format->setType($type);
 		$this->applyDefinition($format, $label, $rule, $example, $version);
 		$format->setEnabled($enabled);
+		$format->setSource(Format::SOURCE_CUSTOM);
 		$now = $this->now();
 		$format->setCreatedAt($now);
 		$format->setCreatedBy($userId);
@@ -130,6 +135,7 @@ class FormatService {
 
 	/**
 	 * The technical name and type stay as they are, so columns keep referring to the same format.
+	 * Formats shipped with Tables can only be enabled or disabled.
 	 *
 	 * @param array<array-key, mixed>|null $rule
 	 * @throws BadRequestError
@@ -138,13 +144,11 @@ class FormatService {
 	 */
 	public function update(int $id, ?string $label, ?array $rule, ?string $example, ?bool $enabled, ?string $version, string $userId): Format {
 		$format = $this->find($id, true);
-		$this->applyDefinition(
-			$format,
-			$label ?? $format->getLabel(),
-			$rule ?? $format->getRuleAsArray(),
-			$example ?? $format->getExample(),
-			$version ?? $format->getVersion(),
-		);
+		$changesDefinition = $label !== null || $rule !== null || $example !== null || $version !== null;
+		if ($format->isShippedWithTables() && $changesDefinition) {
+			throw $this->badRequest($this->l->t('Formats shipped with Tables cannot be changed, but they can be enabled or disabled.'));
+		}
+		$this->applyChanges($format, $label, $rule, $example, $version);
 		if ($enabled !== null) {
 			$format->setEnabled($enabled);
 		}
@@ -156,21 +160,56 @@ class FormatService {
 	}
 
 	/**
-	 * Columns that use a deleted format keep their values and are reported as broken. Formats
-	 * shipped with the app can only be disabled, as an upgrade would install them again.
+	 * The format as it would be after the changes, without storing it, to see what they affect.
 	 *
+	 * @param array<array-key, mixed>|null $rule
 	 * @throws BadRequestError
 	 * @throws NotFoundError
 	 * @throws Exception
 	 */
-	public function delete(int $id): Format {
+	public function previewUpdate(int $id, ?string $label, ?array $rule, ?string $example, ?string $version): Format {
+		$format = clone $this->find($id, true);
+		$this->applyChanges($format, $label, $rule, $example, $version);
+		return $format;
+	}
+
+	/**
+	 * Columns that use a deleted format keep their values and are reported as broken, so removing
+	 * a format that is in use needs the number of those columns confirmed. Formats shipped with
+	 * the app can only be disabled, as an upgrade would install them again.
+	 *
+	 * @param int|null $confirmedBrokenColumnsCount how many columns the caller was told will break
+	 * @throws BadRequestError
+	 * @throws FormatInUseError when columns use the format and their number was not confirmed
+	 * @throws NotFoundError
+	 * @throws Exception
+	 */
+	public function delete(int $id, ?int $confirmedBrokenColumnsCount): Format {
 		$format = $this->find($id, true);
-		if ($format->getCreatedBy() === null) {
+		if ($format->isShippedWithTables()) {
 			throw $this->badRequest($this->l->t('Formats shipped with Tables cannot be deleted, but they can be disabled.'));
+		}
+		$brokenColumnsCount = count($this->columnMapper->findAllUsingFormat($format->getType(), $format->getTechnicalName()));
+		if ($brokenColumnsCount > 0 && $confirmedBrokenColumnsCount !== $brokenColumnsCount) {
+			throw new FormatInUseError($brokenColumnsCount);
 		}
 
 		$this->enabledFormats = null;
 		return $this->formatMapper->delete($format);
+	}
+
+	/**
+	 * @param array<array-key, mixed>|null $rule
+	 * @throws BadRequestError
+	 */
+	private function applyChanges(Format $format, ?string $label, ?array $rule, ?string $example, ?string $version): void {
+		$this->applyDefinition(
+			$format,
+			$label ?? $format->getLabel(),
+			$rule ?? $format->getRuleAsArray(),
+			$example ?? $format->getExample(),
+			$version ?? $format->getVersion(),
+		);
 	}
 
 	/**
@@ -224,7 +263,7 @@ class FormatService {
 	 */
 	private function assertValidTechnicalName(string $technicalName): void {
 		if (strlen($technicalName) > self::TECHNICAL_NAME_MAX_LENGTH || preg_match(self::TECHNICAL_NAME_PATTERN, $technicalName) !== 1) {
-			throw $this->badRequest($this->l->t('The technical name must start with a letter, contain only lowercase letters, digits and underscores, and be at most %1$s characters long.', [self::TECHNICAL_NAME_MAX_LENGTH]));
+			throw $this->badRequest($this->l->t('The technical name must start with a letter, contain only lowercase letters, digits, underscores, hyphens and dots that separate a namespace, and be at most %1$s characters long.', [self::TECHNICAL_NAME_MAX_LENGTH]));
 		}
 		if (Column::isBuiltInSubtypeOfAnyType($technicalName)) {
 			throw $this->badRequest($this->l->t('The technical name %1$s is a built-in column subtype.', [$technicalName]));

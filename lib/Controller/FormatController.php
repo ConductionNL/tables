@@ -11,9 +11,12 @@ namespace OCA\Tables\Controller;
 
 use OCA\Tables\Db\Format;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\FormatInUseError;
+use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\FormatService;
+use OCA\Tables\Service\FormatValueValidator;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
 use OCP\AppFramework\Http\Attribute\UserRateLimit;
@@ -37,6 +40,7 @@ class FormatController extends AOCSController {
 		IL10N $n,
 		string $userId,
 		private readonly FormatService $formatService,
+		private readonly FormatValueValidator $formatValueValidator,
 		private readonly IGroupManager $groupManager,
 	) {
 		parent::__construct($request, $logger, $n, $userId);
@@ -138,22 +142,62 @@ class FormatController extends AOCSController {
 	}
 
 	/**
-	 * [api v2] Delete a format
+	 * [api v2] Preview a change to a format
 	 *
-	 * Columns that use it keep their values and are reported as broken. Formats shipped with
-	 * Tables cannot be deleted, only disabled.
+	 * Shows how many columns use the format and how many of their stored values would fail the
+	 * changed definition, without storing it. Stored values stay readable after the change, but
+	 * writes of failing values are refused.
 	 *
 	 * @param int $id ID of the format
-	 * @return DataResponse<Http::STATUS_OK, TablesFormat, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @param string|null $label Name shown to people
+	 * @param array<string, mixed>|null $rule JSON Logic rule a value has to satisfy
+	 * @param string|null $example Value that satisfies the rule
+	 * @param string|null $version Version of the definition
+	 * @return DataResponse<Http::STATUS_OK, array{columnsCount: int, failingValuesCount: int}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 *
+	 * 200: Effect of the change returned
+	 * 400: Invalid definition
+	 * 404: Format not found
+	 */
+	#[UserRateLimit(limit: 20, period: 60)]
+	public function previewUpdate(int $id, ?string $label = null, ?array $rule = null, ?string $example = null, ?string $version = null): DataResponse {
+		try {
+			$changedFormat = $this->formatService->previewUpdate($id, $label, $rule, $example, $version);
+			return new DataResponse($this->formatValueValidator->previewFormatChange($changedFormat));
+		} catch (BadRequestError $e) {
+			return $this->handleBadRequestError($e);
+		} catch (NotFoundError $e) {
+			return $this->handleNotFoundError($e);
+		} catch (Exception|InternalError $e) {
+			return $this->handleError($e);
+		}
+	}
+
+	/**
+	 * [api v2] Delete a format
+	 *
+	 * Columns that use it keep their values and are reported as broken. When columns use the
+	 * format, the request has to confirm how many: without that number it answers 409 with it.
+	 * Formats shipped with Tables cannot be deleted, only disabled.
+	 *
+	 * @param int $id ID of the format
+	 * @param int|null $confirmBrokenColumns Number of columns that will break, as the 409 response gave it
+	 * @return DataResponse<Http::STATUS_OK, TablesFormat, array{}>|DataResponse<Http::STATUS_CONFLICT, array{message: string, brokenColumnsCount: int}, array{}>|DataResponse<Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Format deleted
 	 * 400: Format is shipped with Tables
 	 * 404: Format not found
+	 * 409: Columns use the format and their number was not confirmed
 	 */
 	#[UserRateLimit(limit: 20, period: 60)]
-	public function destroy(int $id): DataResponse {
+	public function destroy(int $id, ?int $confirmBrokenColumns = null): DataResponse {
 		try {
-			return new DataResponse($this->formatService->delete($id)->jsonSerialize());
+			return new DataResponse($this->formatService->delete($id, $confirmBrokenColumns)->jsonSerialize());
+		} catch (FormatInUseError $e) {
+			return new DataResponse([
+				'message' => $this->n->n('Removing this format breaks %n column.', 'Removing this format breaks %n columns.', $e->brokenColumnsCount),
+				'brokenColumnsCount' => $e->brokenColumnsCount,
+			], Http::STATUS_CONFLICT);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
