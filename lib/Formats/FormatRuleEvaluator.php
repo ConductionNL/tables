@@ -80,6 +80,19 @@ class FormatRuleEvaluator {
 	}
 
 	/**
+	 * A pattern has to mean the same in the browser and on the server, and compile in both.
+	 *
+	 * @throws FormatRuleError
+	 */
+	public function assertPortablePattern(string $pattern, string $flags = ''): void {
+		$incompatibility = PortablePatternCheck::findIncompatibility($pattern);
+		if ($incompatibility !== null) {
+			throw new FormatRuleError('The pattern ' . $pattern . ' uses ' . $incompatibility . ', which browsers cannot run the same way.');
+		}
+		self::matchPattern('', $pattern, $flags);
+	}
+
+	/**
 	 * @throws FormatRuleError
 	 */
 	private function assertValidLogic(mixed $logic): void {
@@ -98,7 +111,7 @@ class FormatRuleEvaluator {
 		}
 		$arguments = is_array($logic[$operation]) && !JsonLogic::is_logic($logic[$operation]) ? $logic[$operation] : [$logic[$operation]];
 		if ($operation === 'match' && isset($arguments[1]) && is_string($arguments[1])) {
-			self::matchPattern('', $arguments[1], is_string($arguments[2] ?? null) ? $arguments[2] : '');
+			$this->assertPortablePattern($arguments[1], is_string($arguments[2] ?? null) ? $arguments[2] : '');
 		}
 		foreach ($arguments as $argument) {
 			$this->assertValidLogic($argument);

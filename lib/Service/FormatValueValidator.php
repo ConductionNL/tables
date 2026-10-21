@@ -81,7 +81,7 @@ class FormatValueValidator {
 	 */
 	public function assertPatternIsUsable(string $pattern): void {
 		try {
-			$this->evaluator->evaluate(self::patternRule($pattern), '');
+			$this->evaluator->assertPortablePattern($pattern);
 		} catch (FormatRuleError $e) {
 			$translatedMessage = $this->l->t('The allowed pattern %1$s cannot be used: %2$s', [$pattern, $e->getMessage()]);
 			throw new BadRequestError($translatedMessage, 0, $e, $translatedMessage);
