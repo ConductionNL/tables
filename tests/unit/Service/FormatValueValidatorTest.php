@@ -14,6 +14,7 @@ use OCA\Tables\Db\ColumnMapper;
 use OCA\Tables\Db\Format;
 use OCA\Tables\Db\Row2Mapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCA\Tables\Service\FormatService;
 use OCA\Tables\Service\FormatValueValidator;
@@ -41,6 +42,7 @@ class FormatValueValidatorTest extends TestCase {
 			new FormatRuleEvaluator(),
 			$this->createMock(Row2Mapper::class),
 			$this->createMock(ColumnMapper::class),
+			new FormatLabelTranslator($l10n),
 			$l10n,
 			$this->createMock(LoggerInterface::class),
 		);

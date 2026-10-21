@@ -1,0 +1,1385 @@
+{
+	"pack": "de",
+	"version": "1.0.0",
+	"label": "Germany",
+	"formats": {
+		"de.postcode": {
+			"label": "Postal code (DE)",
+			"example": "10115",
+			"type": "text",
+			"version": "1.0.0",
+			"rule": {
+				"match": [
+					{
+						"var": "value"
+					},
+					"^(?!00)[0-9]{5}$"
+				]
+			}
+		},
+		"de.phone": {
+			"label": "Phone number (DE)",
+			"example": "030123456",
+			"type": "text",
+			"version": "1.0.0",
+			"rule": {
+				"match": [
+					{
+						"var": "value"
+					},
+					"^(\\+49|0049|0)[1-9][0-9]{4,13}$"
+				]
+			}
+		},
+		"de.steuer-id": {
+			"label": "Tax identification number (DE)",
+			"example": "86095742719",
+			"type": "text",
+			"version": "1.0.0",
+			"rule": {
+				"and": [
+					{
+						"match": [
+							{
+								"var": "value"
+							},
+							"^[1-9][0-9]{10}$"
+						]
+					},
+					{
+						"===": [
+							{
+								"+": [
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"0"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"1"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"2"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"3"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"4"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"5"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"6"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"7"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"8"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									},
+									{
+										"if": [
+											{
+												">": [
+													{
+														"reduce": [
+															{
+																"chars": [
+																	{
+																		"substr": [
+																			{
+																				"var": "value"
+																			},
+																			0,
+																			10
+																		]
+																	}
+																]
+															},
+															{
+																"if": [
+																	{
+																		"===": [
+																			{
+																				"var": "current"
+																			},
+																			"9"
+																		]
+																	},
+																	{
+																		"+": [
+																			{
+																				"var": "accumulator"
+																			},
+																			1
+																		]
+																	},
+																	{
+																		"var": "accumulator"
+																	}
+																]
+															},
+															0
+														]
+													},
+													1
+												]
+											},
+											1,
+											0
+										]
+									}
+								]
+							},
+							1
+						]
+					},
+					{
+						"<=": [
+							{
+								"max": [
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"0"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"1"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"2"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"3"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"4"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"5"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"6"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"7"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"8"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									},
+									{
+										"reduce": [
+											{
+												"chars": [
+													{
+														"substr": [
+															{
+																"var": "value"
+															},
+															0,
+															10
+														]
+													}
+												]
+											},
+											{
+												"if": [
+													{
+														"===": [
+															{
+																"var": "current"
+															},
+															"9"
+														]
+													},
+													{
+														"+": [
+															{
+																"var": "accumulator"
+															},
+															1
+														]
+													},
+													{
+														"var": "accumulator"
+													}
+												]
+											},
+											0
+										]
+									}
+								]
+							},
+							3
+						]
+					},
+					{
+						"===": [
+							{
+								"%": [
+									{
+										"-": [
+											11,
+											{
+												"reduce": [
+													{
+														"chars": [
+															{
+																"substr": [
+																	{
+																		"var": "value"
+																	},
+																	0,
+																	10
+																]
+															}
+														]
+													},
+													{
+														"%": [
+															{
+																"*": [
+																	2,
+																	{
+																		"if": [
+																			{
+																				"===": [
+																					{
+																						"%": [
+																							{
+																								"+": [
+																									{
+																										"*": [
+																											1,
+																											{
+																												"var": "current"
+																											}
+																										]
+																									},
+																									{
+																										"var": "accumulator"
+																									}
+																								]
+																							},
+																							10
+																						]
+																					},
+																					0
+																				]
+																			},
+																			10,
+																			{
+																				"%": [
+																					{
+																						"+": [
+																							{
+																								"*": [
+																									1,
+																									{
+																										"var": "current"
+																									}
+																								]
+																							},
+																							{
+																								"var": "accumulator"
+																							}
+																						]
+																					},
+																					10
+																				]
+																			}
+																		]
+																	}
+																]
+															},
+															11
+														]
+													},
+													10
+												]
+											}
+										]
+									},
+									10
+								]
+							},
+							{
+								"*": [
+									1,
+									{
+										"substr": [
+											{
+												"var": "value"
+											},
+											10,
+											1
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		},
+		"de.ust-idnr": {
+			"label": "VAT identification number (DE)",
+			"example": "DE136695976",
+			"type": "text",
+			"version": "1.0.0",
+			"rule": {
+				"and": [
+					{
+						"match": [
+							{
+								"var": "value"
+							},
+							"^DE[0-9]{9}$"
+						]
+					},
+					{
+						"===": [
+							{
+								"%": [
+									{
+										"-": [
+											11,
+											{
+												"reduce": [
+													{
+														"chars": [
+															{
+																"substr": [
+																	{
+																		"var": "value"
+																	},
+																	2,
+																	8
+																]
+															}
+														]
+													},
+													{
+														"%": [
+															{
+																"*": [
+																	2,
+																	{
+																		"if": [
+																			{
+																				"===": [
+																					{
+																						"%": [
+																							{
+																								"+": [
+																									{
+																										"*": [
+																											1,
+																											{
+																												"var": "current"
+																											}
+																										]
+																									},
+																									{
+																										"var": "accumulator"
+																									}
+																								]
+																							},
+																							10
+																						]
+																					},
+																					0
+																				]
+																			},
+																			10,
+																			{
+																				"%": [
+																					{
+																						"+": [
+																							{
+																								"*": [
+																									1,
+																									{
+																										"var": "current"
+																									}
+																								]
+																							},
+																							{
+																								"var": "accumulator"
+																							}
+																						]
+																					},
+																					10
+																				]
+																			}
+																		]
+																	}
+																]
+															},
+															11
+														]
+													},
+													10
+												]
+											}
+										]
+									},
+									10
+								]
+							},
+							{
+								"*": [
+									1,
+									{
+										"substr": [
+											{
+												"var": "value"
+											},
+											10,
+											1
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		},
+		"de.handelsregister": {
+			"label": "Commercial register number (DE)",
+			"example": "HRB 12345",
+			"type": "text",
+			"version": "1.0.0",
+			"rule": {
+				"match": [
+					{
+						"var": "value"
+					},
+					"^(HRA|HRB|GnR|PR|VR) ?[0-9]{1,6}( ?[A-Z]{1,2})?$"
+				]
+			},
+			"note": "loose shape only; the register court is not part of the number"
+		},
+		"de.w-idnr": {
+			"label": "Business identification number (DE)",
+			"example": "DE136695976-00001",
+			"type": "text",
+			"version": "1.0.0",
+			"rule": {
+				"and": [
+					{
+						"match": [
+							{
+								"var": "value"
+							},
+							"^DE[0-9]{9}-[0-9]{5}$"
+						]
+					},
+					{
+						"!==": [
+							{
+								"substr": [
+									{
+										"var": "value"
+									},
+									12,
+									5
+								]
+							},
+							"00000"
+						]
+					},
+					{
+						"===": [
+							{
+								"%": [
+									{
+										"-": [
+											11,
+											{
+												"reduce": [
+													{
+														"chars": [
+															{
+																"substr": [
+																	{
+																		"var": "value"
+																	},
+																	2,
+																	8
+																]
+															}
+														]
+													},
+													{
+														"%": [
+															{
+																"*": [
+																	2,
+																	{
+																		"if": [
+																			{
+																				"===": [
+																					{
+																						"%": [
+																							{
+																								"+": [
+																									{
+																										"*": [
+																											1,
+																											{
+																												"var": "current"
+																											}
+																										]
+																									},
+																									{
+																										"var": "accumulator"
+																									}
+																								]
+																							},
+																							10
+																						]
+																					},
+																					0
+																				]
+																			},
+																			10,
+																			{
+																				"%": [
+																					{
+																						"+": [
+																							{
+																								"*": [
+																									1,
+																									{
+																										"var": "current"
+																									}
+																								]
+																							},
+																							{
+																								"var": "accumulator"
+																							}
+																						]
+																					},
+																					10
+																				]
+																			}
+																		]
+																	}
+																]
+															},
+															11
+														]
+													},
+													10
+												]
+											}
+										]
+									},
+									10
+								]
+							},
+							{
+								"*": [
+									1,
+									{
+										"substr": [
+											{
+												"var": "value"
+											},
+											10,
+											1
+										]
+									}
+								]
+							}
+						]
+					}
+				]
+			},
+			"note": "Format from the BZSt notice, BStBl 2024 I p. 1269: DE + 9 digits (structured like the USt-IdNr) + '-' + 5-digit Unterscheidungsmerkmal (first 00001). The MOD 11,10 check on the 9 digits is inferred from 'entspricht im Aufbau der USt-IdNr'; certain for W-IdNrs derived from a USt-IdNr, not stated for newly issued ones."
+		}
+	}
+}

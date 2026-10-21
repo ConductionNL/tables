@@ -17,6 +17,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\FormatInUseError;
 use OCA\Tables\Errors\FormatRuleError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
@@ -49,6 +50,7 @@ class FormatService {
 		private readonly FormatMapper $formatMapper,
 		private readonly ColumnMapper $columnMapper,
 		private readonly FormatRuleEvaluator $evaluator,
+		private readonly FormatLabelTranslator $labelTranslator,
 		private readonly ITimeFactory $timeFactory,
 		private readonly IL10N $l,
 	) {
@@ -71,9 +73,9 @@ class FormatService {
 	 * @throws Exception
 	 */
 	public function getEnabledDefinitions(): array {
-		return array_values(array_map(static fn (Format $format): array => [
+		return array_values(array_map(fn (Format $format): array => [
 			'technicalName' => $format->getTechnicalName(),
-			'label' => $format->getLabel(),
+			'label' => $this->labelTranslator->translateFormat($format),
 			'example' => $format->getExample(),
 			'type' => $format->getType(),
 			'rule' => $format->getRuleAsArray(),

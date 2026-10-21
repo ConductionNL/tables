@@ -16,6 +16,7 @@ use OCA\Tables\Db\Row2Mapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\FormatRuleError;
 use OCA\Tables\Errors\InternalError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCP\DB\Exception;
 use OCP\IL10N;
@@ -32,6 +33,7 @@ class FormatValueValidator {
 		private readonly FormatRuleEvaluator $evaluator,
 		private readonly Row2Mapper $row2Mapper,
 		private readonly ColumnMapper $columnMapper,
+		private readonly FormatLabelTranslator $labelTranslator,
 		private readonly IL10N $l,
 		private readonly LoggerInterface $logger,
 	) {
@@ -154,9 +156,10 @@ class FormatValueValidator {
 
 	private function formatMismatch(Column $column, Format $format): BadRequestError {
 		$example = $format->getExample();
+		$label = $this->labelTranslator->translateFormat($format);
 		$translatedMessage = $example === null || $example === ''
-			? $this->l->t('Validation failed: %1$s did not match the criteria for %2$s', [$column->getTitle(), $format->getLabel()])
-			: $this->l->t('Validation failed: %1$s did not match the criteria for %2$s, such as %3$s', [$column->getTitle(), $format->getLabel(), $example]);
+			? $this->l->t('Validation failed: %1$s did not match the criteria for %2$s', [$column->getTitle(), $label])
+			: $this->l->t('Validation failed: %1$s did not match the criteria for %2$s, such as %3$s', [$column->getTitle(), $label, $example]);
 		return new BadRequestError($translatedMessage, 0, null, $translatedMessage);
 	}
 

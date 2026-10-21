@@ -17,6 +17,7 @@ use OCA\Tables\Db\FormatMapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\FormatInUseError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCA\Tables\Service\FormatService;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -64,7 +65,7 @@ class FormatServiceTest extends TestCase {
 			static fn (string $type, string $technicalName): array => $technicalName === 'percentage' ? [new Column(), new Column()] : [],
 		);
 
-		$this->service = new FormatService($this->mapper, $columnMapper, new FormatRuleEvaluator(), $timeFactory, $l10n);
+		$this->service = new FormatService($this->mapper, $columnMapper, new FormatRuleEvaluator(), new FormatLabelTranslator($l10n), $timeFactory, $l10n);
 	}
 
 	public function testFindsAnEnabledFormatForItsType(): void {

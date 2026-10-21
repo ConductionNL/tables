@@ -139,6 +139,16 @@ namespace Symfony\Component\Console\Input {
 		const VALUE_NONE = 1;
 		const VALUE_REQUIRED = 1;
 		const VALUE_OPTIONAL = 1;
+		const VALUE_IS_ARRAY = 8;
+	}
+}
+
+namespace Symfony\Component\Console\Helper {
+	class Table {
+		public function __construct(\Symfony\Component\Console\Output\OutputInterface $output) {}
+		public function setHeaders(array $headers): static {}
+		public function addRow(array $row): static {}
+		public function render(): void {}
 	}
 }
 

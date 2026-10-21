@@ -1213,6 +1213,7 @@ export type components = {
             readonly id: number;
             readonly technicalName: string;
             readonly label: string;
+            readonly displayLabel: string;
             readonly example: string | null;
             readonly type: string;
             readonly rule: {

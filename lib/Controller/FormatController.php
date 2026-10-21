@@ -14,6 +14,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\FormatInUseError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\FormatService;
 use OCA\Tables\Service\FormatValueValidator;
@@ -42,6 +43,7 @@ class FormatController extends AOCSController {
 		private readonly FormatService $formatService,
 		private readonly FormatValueValidator $formatValueValidator,
 		private readonly IGroupManager $groupManager,
+		private readonly FormatLabelTranslator $labelTranslator,
 	) {
 		parent::__construct($request, $logger, $n, $userId);
 	}
@@ -59,7 +61,7 @@ class FormatController extends AOCSController {
 	public function index(): DataResponse {
 		try {
 			$formats = $this->formatService->findAll($this->isAdmin());
-			return new DataResponse(array_map(static fn (Format $format): array => $format->jsonSerialize(), $formats));
+			return new DataResponse(array_map($this->serialize(...), $formats));
 		} catch (Exception $e) {
 			return $this->handleError($e);
 		}
@@ -77,7 +79,7 @@ class FormatController extends AOCSController {
 	#[NoAdminRequired]
 	public function show(int $id): DataResponse {
 		try {
-			return new DataResponse($this->formatService->find($id, $this->isAdmin())->jsonSerialize());
+			return new DataResponse($this->serialize($this->formatService->find($id, $this->isAdmin())));
 		} catch (NotFoundError $e) {
 			return $this->handleNotFoundError($e);
 		} catch (Exception $e) {
@@ -103,7 +105,7 @@ class FormatController extends AOCSController {
 	#[UserRateLimit(limit: 20, period: 60)]
 	public function create(string $technicalName, string $label, string $type, array $rule, ?string $example = null, bool $enabled = true, string $version = '1.0.0'): DataResponse {
 		try {
-			return new DataResponse($this->formatService->create($technicalName, $label, $type, $rule, $example, $enabled, $version, $this->userId)->jsonSerialize());
+			return new DataResponse($this->serialize($this->formatService->create($technicalName, $label, $type, $rule, $example, $enabled, $version, $this->userId)));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (Exception $e) {
@@ -131,7 +133,7 @@ class FormatController extends AOCSController {
 	#[UserRateLimit(limit: 20, period: 60)]
 	public function update(int $id, ?string $label = null, ?array $rule = null, ?string $example = null, ?bool $enabled = null, ?string $version = null): DataResponse {
 		try {
-			return new DataResponse($this->formatService->update($id, $label, $rule, $example, $enabled, $version, $this->userId)->jsonSerialize());
+			return new DataResponse($this->serialize($this->formatService->update($id, $label, $rule, $example, $enabled, $version, $this->userId)));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -192,7 +194,7 @@ class FormatController extends AOCSController {
 	#[UserRateLimit(limit: 20, period: 60)]
 	public function destroy(int $id, ?int $confirmBrokenColumns = null): DataResponse {
 		try {
-			return new DataResponse($this->formatService->delete($id, $confirmBrokenColumns)->jsonSerialize());
+			return new DataResponse($this->serialize($this->formatService->delete($id, $confirmBrokenColumns)));
 		} catch (FormatInUseError $e) {
 			return new DataResponse([
 				'message' => $this->n->n('Removing this format breaks %n column.', 'Removing this format breaks %n columns.', $e->brokenColumnsCount),
@@ -205,6 +207,15 @@ class FormatController extends AOCSController {
 		} catch (Exception $e) {
 			return $this->handleError($e);
 		}
+	}
+
+	/**
+	 * The stored label is what an administrator edits; the display label is what people read.
+	 *
+	 * @return TablesFormat
+	 */
+	private function serialize(Format $format): array {
+		return [...$format->jsonSerialize(), 'displayLabel' => $this->labelTranslator->translateFormat($format)];
 	}
 
 	private function isAdmin(): bool {

@@ -13,6 +13,7 @@ use OCA\Tables\Controller\FormatController;
 use OCA\Tables\Db\Format;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\FormatInUseError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Service\FormatService;
 use OCA\Tables\Service\FormatValueValidator;
 use OCP\AppFramework\Http;
@@ -96,6 +97,7 @@ class FormatControllerTest extends TestCase {
 			$formatService,
 			$this->createMock(FormatValueValidator::class),
 			$groupManager,
+			$this->createMock(FormatLabelTranslator::class),
 		);
 	}
 }

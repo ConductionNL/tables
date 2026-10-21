@@ -161,6 +161,10 @@ return [
 		['name' => 'Context#transfer', 'url' => '/api/2/contexts/{contextId}/transfer', 'verb' => 'PUT'],
 		['name' => 'Context#updateContentOrder', 'url' => '/api/2/contexts/{contextId}/pages/{pageId}', 'verb' => 'PUT'],
 
+		['name' => 'FormatPack#index', 'url' => '/api/2/formats/packs', 'verb' => 'GET'],
+		['name' => 'FormatPack#preview', 'url' => '/api/2/formats/packs/{name}/preview', 'verb' => 'GET', 'requirements' => ['name' => '[a-z][a-z0-9_-]*']],
+		['name' => 'FormatPack#import', 'url' => '/api/2/formats/packs/{name}/import', 'verb' => 'POST', 'requirements' => ['name' => '[a-z][a-z0-9_-]*']],
+		['name' => 'FormatPack#destroy', 'url' => '/api/2/formats/packs/{name}', 'verb' => 'DELETE', 'requirements' => ['name' => '[a-z][a-z0-9_-]*']],
 		['name' => 'Format#index', 'url' => '/api/2/formats', 'verb' => 'GET'],
 		['name' => 'Format#show', 'url' => '/api/2/formats/{id}', 'verb' => 'GET', 'requirements' => ['id' => '(\d+)']],
 		['name' => 'Format#create', 'url' => '/api/2/formats', 'verb' => 'POST'],

@@ -1,0 +1,100 @@
+{
+	"nl.bsn": {
+		"111222333": true,
+		"123456782": true,
+		"123456789": false,
+		"12345678": false,
+		"12345678a": false
+	},
+	"nl.rsin": {
+		"123456782": true,
+		"111222333": true,
+		"123456789": false,
+		"002300159": false,
+		"12345678": false
+	},
+	"nl.kvk": {
+		"69599084": true,
+		"6959908": false,
+		"6959908a": false
+	},
+	"nl.postcode": {
+		"1234 AB": true,
+		"1234AB": true,
+		"0123 AB": false,
+		"1234 SS": false,
+		"1234 ab": false
+	},
+	"nl.phone": {
+		"0201234567": true,
+		"+31201234567": true,
+		"020123456": false,
+		"+49301234567": false
+	},
+	"de.postcode": {
+		"10115": true,
+		"01067": true,
+		"00123": false,
+		"1011": false
+	},
+	"de.phone": {
+		"030123456": true,
+		"+4930123456": true,
+		"+31201234567": false,
+		"0301": false
+	},
+	"de.steuer-id": {
+		"86095742719": true,
+		"47036892816": true,
+		"65929970489": true,
+		"86095742718": false,
+		"06095742719": false,
+		"12345678911": true,
+		"12345678114": true,
+		"12345611110": false,
+		"12345611224": false,
+		"12345678903": false,
+		"02345678910": false
+	},
+	"de.ust-idnr": {
+		"DE136695976": true,
+		"DE811569869": true,
+		"DE260543043": true,
+		"DE123456789": false,
+		"DE13669597": false,
+		"NL136695976": false
+	},
+	"de.handelsregister": {
+		"HRB 12345": true,
+		"HRA12345 B": true,
+		"HRC 12345": false
+	},
+	"nl.btw-id": {
+		"NL004495445B01": true,
+		"NL123456782B01": true,
+		"NL063781865B73": true,
+		"NL063781865B74": false,
+		"NL816289374B40": true,
+		"NL816289374B41": false,
+		"NL365715502B57": true,
+		"NL365715502B58": false,
+		"NL123456789B01": false,
+		"NL000000000B01": false,
+		"NL123456782B00": false,
+		"NL123456782X01": false,
+		"NL12345678B01": false,
+		"DE123456782B01": false
+	},
+	"de.w-idnr": {
+		"DE136695976-00001": true,
+		"DE811569869-00001": true,
+		"DE260543043-00002": true,
+		"DE136695976-00000": false,
+		"DE136695976": false,
+		"DE136695976-0001": false,
+		"DE13669597600001": false,
+		"DE136695977-00001": false,
+		"DE123456789-00001": false,
+		"NL136695976-00001": false
+	}
+}

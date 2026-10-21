@@ -10,14 +10,11 @@ declare(strict_types=1);
 namespace OCA\Tables\Db;
 
 use JsonSerializable;
-use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Db\Entity;
 
 /**
  * A named format that a text or number column can use as its subtype. The rule is a
  * JSON Logic expression evaluated against {"value": <cell value>}.
- *
- * @psalm-import-type TablesFormat from ResponseDefinitions
  *
  * @method getTechnicalName(): string
  * @method setTechnicalName(string $technicalName): void
@@ -82,7 +79,9 @@ class Format extends Entity implements JsonSerializable {
 	}
 
 	/**
-	 * @psalm-return TablesFormat
+	 * The format as stored; responses add the label people read, as only the controller can translate it.
+	 *
+	 * @return array{id: int, technicalName: string, label: string, example: ?string, type: string, rule: array<string, mixed>, enabled: bool, source: string, version: string, createdAt: string, createdBy: ?string, updatedAt: string, updatedBy: ?string}
 	 */
 	public function jsonSerialize(): array {
 		return [
