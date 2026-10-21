@@ -132,7 +132,7 @@ SPDX-FileCopyrightText = "2024 Apple Inc."
 SPDX-License-Identifier = "LicenseRef-AppleAppStoreBadge"
 
 [[annotations]]
-path = ["lib/Formats/core-formats.json", "tests/formats/format-vectors.json", "tests/formats/subtype-vectors.json"]
+path = ["lib/Formats/core-formats.json", "tests/formats/format-vectors.json", "tests/formats/subtype-vectors.json", "tests/formats/pattern-vectors.json", "tests/formats/pack-vectors.json", "lib/Formats/packs/nl.json", "lib/Formats/packs/de.json"]
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Nextcloud GmbH and Nextcloud contributors"
 SPDX-License-Identifier = "AGPL-3.0-or-later"

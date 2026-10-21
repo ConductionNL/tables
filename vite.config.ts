@@ -8,6 +8,7 @@ const config = createAppConfig({
 	reference: path.join(__dirname, 'src', 'reference.js'),
 	files: path.join(__dirname, 'src', 'file-actions.js'),
 	main: path.join(__dirname, 'src', 'main.js'),
+	'settings-admin': path.join(__dirname, 'src', 'settings-admin.js'),
 }, {
     inlineCSS: {
         jsAssetsFilterFunction: (chunk) => {
@@ -16,7 +17,8 @@ const config = createAppConfig({
                    chunk.fileName.includes('tables-main') ||
                    chunk.name === 'reference' ||
                    chunk.fileName.includes('reference') ||
-                   chunk.fileName.includes('SmartPicker');
+                   chunk.fileName.includes('SmartPicker') ||
+                   chunk.name === 'settings-admin';
         }
     },
 	config: {

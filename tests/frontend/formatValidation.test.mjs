@@ -46,6 +46,17 @@ describe('findFormatFailure', () => {
 		assert.equal(findFormatFailure({ type: 'number', format: even, broken: false }, '5'), 'format')
 	})
 
+	it('leaves values longer than the browser checks to the server', () => {
+		assert.equal(findFormatFailure(textColumn(), 'x'.repeat(256)), null)
+		assert.equal(findFormatFailure(textColumn(), 'x'.repeat(255)), 'format')
+	})
+
+	it('checks a uri up to 2048 characters', () => {
+		const uri = { technicalName: 'uri', type: 'text', rule: { match: [{ var: 'value' }, '^[a-z]+:.+$'] } }
+		assert.equal(findFormatFailure(textColumn({ format: uri }), ' '.repeat(2048)), 'format')
+		assert.equal(findFormatFailure(textColumn({ format: uri }), ' '.repeat(2049)), null)
+	})
+
 	it('treats a rule that cannot be evaluated as failing', () => {
 		assert.equal(findFormatFailure(textColumn({ textAllowedPattern: '(' }), 'zed@example.org'), 'pattern')
 	})

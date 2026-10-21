@@ -348,10 +348,12 @@
                     "id",
                     "technicalName",
                     "label",
+                    "displayLabel",
                     "example",
                     "type",
                     "rule",
                     "enabled",
+                    "source",
                     "version",
                     "createdAt",
                     "createdBy",
@@ -369,6 +371,9 @@
                     "label": {
                         "type": "string"
                     },
+                    "displayLabel": {
+                        "type": "string"
+                    },
                     "example": {
                         "type": "string",
                         "nullable": true
@@ -384,6 +389,9 @@
                     },
                     "enabled": {
                         "type": "boolean"
+                    },
+                    "source": {
+                        "type": "string"
                     },
                     "version": {
                         "type": "string"
@@ -18352,6 +18360,10 @@
         {
             "name": "navigation",
             "description": "This is a workaround until https://github.com/nextcloud/server/pull/49904 is settled in all covered NC versions; expected >= 31."
+        },
+        {
+            "name": "format_pack",
+            "description": "The format packs Tables ships, such as the formats of a country. Only administrators can see, install and remove them."
         },
         {
             "name": "format",

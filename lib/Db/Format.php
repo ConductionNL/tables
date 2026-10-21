@@ -10,14 +10,11 @@ declare(strict_types=1);
 namespace OCA\Tables\Db;
 
 use JsonSerializable;
-use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Db\Entity;
 
 /**
  * A named format that a text or number column can use as its subtype. The rule is a
  * JSON Logic expression evaluated against {"value": <cell value>}.
- *
- * @psalm-import-type TablesFormat from ResponseDefinitions
  *
  * @method getTechnicalName(): string
  * @method setTechnicalName(string $technicalName): void
@@ -31,6 +28,8 @@ use OCP\AppFramework\Db\Entity;
  * @method setRule(string $rule): void
  * @method setEnabled(bool $enabled): void
  * @method isEnabled(): bool
+ * @method getSource(): string
+ * @method setSource(string $source): void
  * @method getVersion(): string
  * @method setVersion(string $version): void
  * @method getCreatedAt(): string
@@ -43,12 +42,20 @@ use OCP\AppFramework\Db\Entity;
  * @method setUpdatedBy(?string $updatedBy): void
  */
 class Format extends Entity implements JsonSerializable {
+	/** Shipped with Tables, and read-only apart from being enabled */
+	public const SOURCE_CORE = 'core';
+	/** Defined by an administrator */
+	public const SOURCE_CUSTOM = 'custom';
+	/** Installed from the format pack with the name that follows */
+	public const SOURCE_PACK_PREFIX = 'pack:';
+
 	protected ?string $technicalName = null;
 	protected ?string $label = null;
 	protected ?string $example = null;
 	protected ?string $type = null;
 	protected ?string $rule = null;
 	protected ?bool $enabled = null;
+	protected ?string $source = null;
 	protected ?string $version = null;
 	protected ?string $createdAt = null;
 	protected ?string $createdBy = null;
@@ -60,6 +67,10 @@ class Format extends Entity implements JsonSerializable {
 		$this->addType('enabled', 'boolean');
 	}
 
+	public function isShippedWithTables(): bool {
+		return $this->getSource() === self::SOURCE_CORE;
+	}
+
 	/**
 	 * @return array<string, mixed>
 	 */
@@ -68,7 +79,9 @@ class Format extends Entity implements JsonSerializable {
 	}
 
 	/**
-	 * @psalm-return TablesFormat
+	 * The format as stored; responses add the label people read, as only the controller can translate it.
+	 *
+	 * @return array{id: int, technicalName: string, label: string, example: ?string, type: string, rule: array<string, mixed>, enabled: bool, source: string, version: string, createdAt: string, createdBy: ?string, updatedAt: string, updatedBy: ?string}
 	 */
 	public function jsonSerialize(): array {
 		return [
@@ -79,6 +92,7 @@ class Format extends Entity implements JsonSerializable {
 			'type' => $this->getType(),
 			'rule' => $this->getRuleAsArray(),
 			'enabled' => $this->isEnabled(),
+			'source' => $this->getSource(),
 			'version' => $this->getVersion(),
 			'createdAt' => $this->getCreatedAt(),
 			'createdBy' => $this->getCreatedBy(),

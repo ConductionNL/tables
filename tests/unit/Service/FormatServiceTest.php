@@ -10,10 +10,14 @@ declare(strict_types=1);
 namespace OCA\Tables\Tests\Unit\Service;
 
 use DateTime;
+use OCA\Tables\Db\Column;
+use OCA\Tables\Db\ColumnMapper;
 use OCA\Tables\Db\Format;
 use OCA\Tables\Db\FormatMapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\FormatInUseError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCA\Tables\Service\FormatService;
 use OCP\AppFramework\Utility\ITimeFactory;
@@ -33,15 +37,16 @@ class FormatServiceTest extends TestCase {
 	protected function setUp(): void {
 		$this->mapper = $this->createMock(FormatMapper::class);
 		$this->mapper->method('findAll')->willReturnCallback(fn (): array => [
-			self::format(1, 'email', 'text', true, null),
-			self::format(2, 'iban', 'text', false, null),
-			self::format(3, 'percentage', 'number', true, 'admin'),
+			self::format(1, 'email', 'text', true, Format::SOURCE_CORE),
+			self::format(2, 'iban', 'text', false, Format::SOURCE_CORE),
+			self::format(3, 'percentage', 'number', true, Format::SOURCE_CUSTOM),
 			...$this->inserted,
 		]);
 		$this->mapper->method('find')->willReturnCallback(fn (int $id): Format => match ($id) {
-			1 => self::format(1, 'email', 'text', true, null),
-			2 => self::format(2, 'iban', 'text', false, null),
-			3 => self::format(3, 'percentage', 'number', true, 'admin'),
+			1 => self::format(1, 'email', 'text', true, Format::SOURCE_CORE),
+			2 => self::format(2, 'iban', 'text', false, Format::SOURCE_CORE),
+			3 => self::format(3, 'percentage', 'number', true, Format::SOURCE_CUSTOM),
+			4 => self::format(4, 'nl.kvk', 'text', true, 'pack:nl'),
 		});
 		$this->mapper->method('insert')->willReturnCallback(function (Format $format): Format {
 			$this->inserted[] = $format;
@@ -55,7 +60,12 @@ class FormatServiceTest extends TestCase {
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(static fn (string $text, array $parameters = []): string => vsprintf($text, $parameters));
 
-		$this->service = new FormatService($this->mapper, new FormatRuleEvaluator(), $timeFactory, $l10n);
+		$columnMapper = $this->createMock(ColumnMapper::class);
+		$columnMapper->method('findAllUsingFormat')->willReturnCallback(
+			static fn (string $type, string $technicalName): array => $technicalName === 'percentage' ? [new Column(), new Column()] : [],
+		);
+
+		$this->service = new FormatService($this->mapper, $columnMapper, new FormatRuleEvaluator(), new FormatLabelTranslator($l10n), $timeFactory, $l10n);
 	}
 
 	public function testFindsAnEnabledFormatForItsType(): void {
@@ -94,9 +104,14 @@ class FormatServiceTest extends TestCase {
 		$format = $this->service->create('nl_postcode', 'Dutch postcode', 'text', self::POSTCODE_RULE, '1234 AB', true, '1.0.0', 'admin');
 
 		$this->assertSame('nl_postcode', $format->getTechnicalName());
+		$this->assertSame(Format::SOURCE_CUSTOM, $format->getSource());
 		$this->assertSame(self::POSTCODE_RULE, $format->getRuleAsArray());
 		$this->assertSame('admin', $format->getCreatedBy());
 		$this->assertSame(self::NOW, $format->getCreatedAt());
+	}
+
+	public function testANamespaceIsSeparatedByDots(): void {
+		$this->assertSame('nl.btw-id', $this->service->create('nl.btw-id', 'VAT number (NL)', 'text', self::POSTCODE_RULE, null, true, '1.0.0', 'admin')->getTechnicalName());
 	}
 
 	public function testCreatedFormatsAreUsableRightAway(): void {
@@ -124,6 +139,8 @@ class FormatServiceTest extends TestCase {
 	public static function invalidDefinitions(): array {
 		return [
 			'a name with capitals' => ['NlPostcode', 'text', self::POSTCODE_RULE, null, 'The technical name must start with a letter'],
+			'an empty namespace part' => ['nl..postcode', 'text', self::POSTCODE_RULE, null, 'The technical name must start with a letter'],
+			'a namespace part starting with a digit' => ['nl.1postcode', 'text', self::POSTCODE_RULE, null, 'The technical name must start with a letter'],
 			'the name of a built-in subtype' => ['check', 'text', self::POSTCODE_RULE, null, 'The technical name check is a built-in column subtype.'],
 			'a name that is taken' => ['email', 'text', self::POSTCODE_RULE, null, 'A format named email already exists.'],
 			'a type without formats' => ['nl_postcode', 'selection', self::POSTCODE_RULE, null, 'Formats can only be made for columns of type text or number.'],
@@ -146,10 +163,54 @@ class FormatServiceTest extends TestCase {
 		$this->assertSame('other_admin', $format->getUpdatedBy());
 	}
 
-	public function testDeletesAFormatAnAdministratorCreated(): void {
+	public function testOnlyEnablesOrDisablesAFormatShippedWithTables(): void {
+		$this->assertFalse($this->service->update(1, null, null, null, false, null, 'admin')->isEnabled());
+	}
+
+	public function testRefusesToChangeTheDefinitionOfAFormatShippedWithTables(): void {
+		$this->mapper->expects($this->never())->method('update');
+		$this->expectException(BadRequestError::class);
+		$this->expectExceptionMessage('Formats shipped with Tables cannot be changed, but they can be enabled or disabled.');
+
+		$this->service->update(1, 'Mail', null, null, null, null, 'admin');
+	}
+
+	public function testPreviewsAChangeWithoutStoringIt(): void {
+		$this->mapper->expects($this->never())->method('update');
+
+		$changed = $this->service->previewUpdate(3, 'Percent', null, null, '2.0.0');
+
+		$this->assertSame('Percent', $changed->getLabel());
+		$this->assertSame('Label of percentage', $this->service->find(3, true)->getLabel());
+	}
+
+	public function testDeletesAnUnusedFormat(): void {
 		$this->mapper->expects($this->once())->method('delete');
 
-		$this->assertSame('percentage', $this->service->delete(3)->getTechnicalName());
+		$this->service->delete(4, null);
+	}
+
+	public function testRefusesToDeleteAFormatInUseWithoutConfirmingTheBrokenColumns(): void {
+		$this->mapper->expects($this->never())->method('delete');
+
+		try {
+			$this->service->delete(3, null);
+			$this->fail('The format was deleted although two columns use it.');
+		} catch (FormatInUseError $e) {
+			$this->assertSame(2, $e->brokenColumnsCount);
+		}
+	}
+
+	public function testRefusesAConfirmationOfAnotherNumberOfColumns(): void {
+		$this->expectException(FormatInUseError::class);
+
+		$this->service->delete(3, 1);
+	}
+
+	public function testDeletesAFormatInUseOnceTheBrokenColumnsAreConfirmed(): void {
+		$this->mapper->expects($this->once())->method('delete');
+
+		$this->assertSame('percentage', $this->service->delete(3, 2)->getTechnicalName());
 	}
 
 	public function testRefusesToDeleteAFormatShippedWithTheApp(): void {
@@ -157,10 +218,10 @@ class FormatServiceTest extends TestCase {
 		$this->expectException(BadRequestError::class);
 		$this->expectExceptionMessage('Formats shipped with Tables cannot be deleted, but they can be disabled.');
 
-		$this->service->delete(1);
+		$this->service->delete(1, null);
 	}
 
-	private static function format(int $id, string $technicalName, string $type, bool $enabled, ?string $createdBy): Format {
+	private static function format(int $id, string $technicalName, string $type, bool $enabled, string $source): Format {
 		$format = new Format();
 		$format->setId($id);
 		$format->setTechnicalName($technicalName);
@@ -169,7 +230,7 @@ class FormatServiceTest extends TestCase {
 		$format->setRule('{"match":[{"var":"value"},"@"]}');
 		$format->setEnabled($enabled);
 		$format->setVersion('1.0.0');
-		$format->setCreatedBy($createdBy);
+		$format->setSource($source);
 		return $format;
 	}
 }

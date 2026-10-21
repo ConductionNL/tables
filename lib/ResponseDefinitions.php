@@ -308,15 +308,43 @@ namespace OCA\Tables;
  *     id: int,
  *     technicalName: string,
  *     label: string,
+ *     displayLabel: string,
  *     example: ?string,
  *     type: string,
  *     rule: array<string, mixed>,
  *     enabled: bool,
+ *     source: string,
  *     version: string,
  *     createdAt: string,
  *     createdBy: ?string,
  *     updatedAt: string,
  *     updatedBy: ?string,
+ * }
+ *
+ * @psalm-type TablesFormatPack = array{
+ *     name: string,
+ *     label: string,
+ *     version: string,
+ *     formatsCount: int,
+ *     installedCount: int,
+ *     updateAvailable: bool,
+ * }
+ * @psalm-type TablesFormatPackItem = array{
+ *     technicalName: string,
+ *     label: string,
+ *     status: 'new'|'unchanged'|'update'|'conflict'|'core',
+ *     version: string,
+ *     installedVersion: ?string,
+ *     installedSource: ?string,
+ *     columnsCount: int,
+ *     failingValuesCount: int,
+ * }
+ * @psalm-type TablesFormatPackImport = array{
+ *     created: list<string>,
+ *     replaced: list<string>,
+ *     kept: list<string>,
+ *     unchanged: list<string>,
+ *     skipped: list<string>,
  * }
  */
 class ResponseDefinitions {

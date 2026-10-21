@@ -75,7 +75,14 @@ Have a good time and manage whatever you want.
 		<command>OCA\Tables\Command\Clean</command>
 		<command>OCA\Tables\Command\CleanLegacy</command>
 		<command>OCA\Tables\Command\TransferLegacyRows</command>
+		<command>OCA\Tables\Command\ListFormatPacks</command>
+		<command>OCA\Tables\Command\ImportFormatPack</command>
+		<command>OCA\Tables\Command\RemoveFormatPack</command>
 	</commands>
+	<settings>
+		<admin>OCA\Tables\Settings\AdminSettings</admin>
+		<admin-section>OCA\Tables\Settings\AdminSection</admin-section>
+	</settings>
 	<activity>
 		<settings>
 			<setting>OCA\Tables\Activity\SettingChanges</setting>

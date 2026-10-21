@@ -1213,12 +1213,14 @@ export type components = {
             readonly id: number;
             readonly technicalName: string;
             readonly label: string;
+            readonly displayLabel: string;
             readonly example: string | null;
             readonly type: string;
             readonly rule: {
                 readonly [key: string]: Record<string, never>;
             };
             readonly enabled: boolean;
+            readonly source: string;
             readonly version: string;
             readonly createdAt: string;
             readonly createdBy: string | null;

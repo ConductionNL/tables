@@ -17,6 +17,7 @@ use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\RowValidationError;
+use OCA\Tables\Formats\FormatLabelTranslator;
 use OCA\Tables\Formats\FormatRuleEvaluator;
 use OCA\Tables\Helper\InstanceTimezone;
 use OCA\Tables\Model\RowDataInput;
@@ -233,7 +234,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(static fn (string $text, array $parameters = []): string => vsprintf($text, $parameters));
 
-		return new FormatValueValidator($formatService, new FormatRuleEvaluator(), $this->mapper, $l10n, $this->logger);
+		return new FormatValueValidator($formatService, new FormatRuleEvaluator(), $this->mapper, $this->columnMapper, new FormatLabelTranslator($l10n), $l10n, $this->logger);
 	}
 
 	/**

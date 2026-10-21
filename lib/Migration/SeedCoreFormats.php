@@ -17,8 +17,8 @@ use OCP\Migration\IRepairStep;
 use Override;
 
 /**
- * Installs the formats shipped with the app. A shipped format is refreshed when the app ships a
- * new version of it, unless an administrator has changed it since.
+ * Installs the formats shipped with the app, and refreshes them when the app ships a new version.
+ * Administrators can only enable or disable these formats, so a refresh keeps that choice.
  *
  * @psalm-type CoreFormatDefinition = array{
  *     technicalName: string,
@@ -57,12 +57,24 @@ class SeedCoreFormats implements IRepairStep {
 				$this->formatMapper->insert($this->createFormat($definition, $now));
 				continue;
 			}
-			if ($this->isUnmodifiedOutdatedCoreFormat($installedFormat, $definition)) {
+			if ($this->isCoreFormatWithoutSource($installedFormat)) {
+				$installedFormat->setSource(Format::SOURCE_CORE);
+			}
+			if ($installedFormat->isShippedWithTables() && $installedFormat->getVersion() !== $definition['version']) {
 				$this->applyDefinition($installedFormat, $definition);
+			}
+			if ($installedFormat->getUpdatedFields() !== []) {
 				$installedFormat->setUpdatedAt($now);
 				$this->formatMapper->update($installedFormat);
 			}
 		}
+	}
+
+	/**
+	 * Formats seeded before the source column existed have its default, custom, and no creator.
+	 */
+	private function isCoreFormatWithoutSource(Format $format): bool {
+		return $format->getSource() === Format::SOURCE_CUSTOM && $format->getCreatedBy() === null;
 	}
 
 	/**
@@ -73,6 +85,7 @@ class SeedCoreFormats implements IRepairStep {
 		$format->setTechnicalName($definition['technicalName']);
 		$this->applyDefinition($format, $definition);
 		$format->setEnabled(true);
+		$format->setSource(Format::SOURCE_CORE);
 		$format->setCreatedAt($now);
 		$format->setUpdatedAt($now);
 		return $format;
@@ -87,15 +100,6 @@ class SeedCoreFormats implements IRepairStep {
 		$format->setType($definition['type']);
 		$format->setRule(json_encode($definition['rule'], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 		$format->setVersion($definition['version']);
-	}
-
-	/**
-	 * @param CoreFormatDefinition $definition
-	 */
-	private function isUnmodifiedOutdatedCoreFormat(Format $format, array $definition): bool {
-		return $format->getCreatedBy() === null
-			&& $format->getUpdatedBy() === null
-			&& $format->getVersion() !== $definition['version'];
 	}
 
 	/**
