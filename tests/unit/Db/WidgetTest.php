@@ -21,12 +21,16 @@ class WidgetTest extends TestCase {
 		$this->assertSame(['text' => 'Projects', 'showTitle' => false, 'level' => 2, 'ratio' => 1.5, 'color' => null], $widget->getSettingsArray());
 	}
 
-	public function testNoSettingsAreStoredAsNoValue(): void {
+	public function testNoSettingsAreStoredAsAnEmptyObject(): void {
 		$widget = new Widget();
 		$widget->setSettingsArray([]);
 
-		$this->assertNull($widget->getSettings());
+		$this->assertSame('{}', $widget->getSettings());
 		$this->assertSame([], $widget->getSettingsArray());
+	}
+
+	public function testNoStoredValueReadsAsNoSettings(): void {
+		$this->assertSame([], (new Widget())->getSettingsArray());
 	}
 
 	/**

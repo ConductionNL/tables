@@ -87,7 +87,7 @@ class Version2400Date20261022000001 extends SimpleMigrationStep {
 
 		$count = 0;
 		foreach ($byWidget as $widgetId => $settings) {
-			$update->setParameter('settings', json_encode($settings, JSON_THROW_ON_ERROR));
+			$update->setParameter('settings', json_encode((object)$settings, JSON_THROW_ON_ERROR));
 			$update->setParameter('id', $widgetId, IQueryBuilder::PARAM_INT);
 			$count += $update->executeStatement();
 		}

@@ -108,7 +108,7 @@ class WidgetServiceTest extends DatabaseTestCase {
 		$data = $this->service->insert(self::PAGE, 'data', null, $this->position(0, 2, 12, 5), [], 61);
 
 		$this->assertSame('{"text":"A","level":2,"showTitle":false,"color":null}', $this->storedSettings($header->getId()));
-		$this->assertNull($this->storedSettings($data->getId()));
+		$this->assertSame('{}', $this->storedSettings($data->getId()));
 		$this->assertSame([], $this->service->findByPageIds([self::PAGE])[self::PAGE][1]['settings']);
 	}
 
