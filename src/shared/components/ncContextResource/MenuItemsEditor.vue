@@ -46,8 +46,8 @@
 				<NcSelect :model-value="targetOption(item)"
 					class="menu-items-editor__target"
 					:input-label="t('tables', 'Opens')"
-					:options="item.targetType === 'page' ? [targetOption(item)] : targetOptions"
-					:disabled="item.targetType === 'page'"
+					:options="opensNewStartPage(item) ? [targetOption(item)] : targetOptions"
+					:disabled="opensNewStartPage(item)"
 					:clearable="false"
 					:searchable="true"
 					:error="shownErrors[index].target"
@@ -156,6 +156,7 @@ import {
 	newMenuItem,
 	opensNewStartPage,
 	outdentItem,
+	pageTitle,
 	removeItem,
 } from '../../utils/menuItems.js'
 
@@ -164,7 +165,7 @@ const URL_OPTION_ID = 'url'
 /**
  * Edits the ordered menu of an application. Every item opens a view, a table, a page of the
  * application or a link, carries an icon, and can sit under the top-level item above it: one level
- * of nesting. A page item keeps its target. The list operations live in utils/menuItems.js.
+ * of nesting. The dashboard item of a new application keeps its target. The list operations live in utils/menuItems.js.
  */
 export default {
 	name: 'MenuItemsEditor',
@@ -189,6 +190,11 @@ export default {
 			type: Array,
 			default: () => ([]),
 		},
+		// The pages of the application an item can open; an application being created has none yet
+		pages: {
+			type: Array,
+			default: () => ([]),
+		},
 	},
 	emits: ['update:items'],
 	data() {
@@ -203,12 +209,23 @@ export default {
 	computed: {
 		...mapState(useTablesStore, ['tables', 'views']),
 		/**
-		 * The tables and views the menu can open: only those the user can manage, because the server
-		 * adds them to the application as resources, like the resource picker in the same dialog.
+		 * The pages of the application, and the tables and views the menu can open: only those the
+		 * user can manage, because the server adds them to the application as resources, like the
+		 * resource picker in the same dialog.
 		 *
 		 * @return {Array<object>} the options of the target select
 		 */
 		targetOptions() {
+			const pages = this.pages.map(page => {
+				const title = pageTitle(page)
+				return {
+					id: 'page-' + page.id,
+					targetType: 'page',
+					targetId: page.id,
+					title,
+					label: t('tables', '{title} (page)', { title }, undefined, { escape: false }),
+				}
+			})
 			const views = this.views.filter(view => this.canManageElement(view)).map(view => {
 				const title = (view.emoji ? view.emoji + ' ' : '') + view.title
 				return {
@@ -216,9 +233,7 @@ export default {
 					targetType: 'view',
 					targetId: view.id,
 					title,
-					label: view.type === 'grid'
-						? t('tables', '{title} (page with widgets)', { title }, undefined, { escape: false })
-						: t('tables', '{title} (view)', { title }, undefined, { escape: false }),
+					label: t('tables', '{title} (view)', { title }, undefined, { escape: false }),
 				}
 			})
 			const tables = this.tables.filter(table => this.canManageTable(table)).map(table => {
@@ -231,7 +246,7 @@ export default {
 					label: t('tables', '{title} (table)', { title }, undefined, { escape: false }),
 				}
 			})
-			return [...views, ...tables, { id: URL_OPTION_ID, targetType: 'url', targetId: null, title: '', label: t('tables', 'External link') }]
+			return [...pages, ...views, ...tables, { id: URL_OPTION_ID, targetType: 'url', targetId: null, title: '', label: t('tables', 'External link') }]
 		},
 		/**
 		 * What is missing or wrong in every item, by position.
@@ -257,6 +272,7 @@ export default {
 		indentItem,
 		moveItem,
 		newMenuItem,
+		opensNewStartPage,
 		outdentItem,
 		removeItem,
 		/**
@@ -275,7 +291,7 @@ export default {
 		 * @return {object|null} the selected option, or null when its target is not offered
 		 */
 		targetOption(item) {
-			if (item.targetType === 'page') {
+			if (item.targetType === 'page' && (opensNewStartPage(item) || !this.pages.some(page => page.id === item.targetId))) {
 				return {
 					id: 'page-' + (item.targetId ?? 'start'),
 					targetType: 'page',
@@ -313,7 +329,7 @@ export default {
 		 * @param {object|null} option the chosen option
 		 */
 		setTarget(index, option) {
-			if (!option || this.items[index].targetType === 'page') {
+			if (!option || opensNewStartPage(this.items[index])) {
 				return
 			}
 			const changes = { targetType: option.targetType, targetId: option.targetId }

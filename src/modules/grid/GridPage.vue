@@ -158,6 +158,11 @@ export default {
 			type: Boolean,
 			default: false,
 		},
+		// Opens the page in edit mode, for a "Design" link
+		startInEditMode: {
+			type: Boolean,
+			default: false,
+		},
 	},
 	emits: ['saved', 'edit-details', 'delete'],
 	setup(props) {
@@ -226,6 +231,9 @@ export default {
 	},
 	mounted() {
 		window.addEventListener('beforeunload', this.warnBeforeUnload)
+		if (this.startInEditMode && this.canEdit) {
+			this.startEditing()
+		}
 	},
 	beforeUnmount() {
 		window.removeEventListener('beforeunload', this.warnBeforeUnload)

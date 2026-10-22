@@ -29,12 +29,26 @@
 				</NcButton>
 			</div>
 
-			<div v-if="!isMenuRoute && !isStandalone" class="content context">
+			<ApplicationOverview v-if="isOverview"
+				:context="activeContext"
+				:icon="icon"
+				:can-manage="canManage" />
+
+			<div v-else-if="!isMenuRoute && !isStandalone" class="content context">
 				<div class="row first-row">
 					<h1 class="context__title" data-cy="context-title">
 						<NcIconSvgWrapper :svg="icon" :size="32" style="display: inline-block;" />&nbsp; {{
 							activeContext.name }}
 					</h1>
+					<NcButton variant="tertiary"
+						class="context__overview-link"
+						data-cy="context-overview-link"
+						@click="openRoute('/application/' + activeContext.id + '/overview')">
+						<template #icon>
+							<InformationOutline :size="20" />
+						</template>
+						{{ t('tables', 'Overview') }}
+					</NcButton>
 				</div>
 				<div class="row space-L context__description">
 					{{ activeContext.description }}
@@ -60,6 +74,7 @@
 					:context="activeContext"
 					:page="activePage"
 					:can-edit="canManage"
+					:start-in-edit-mode="$route.query.edit === '1'"
 					@saved="page => activePage = page"
 					@edit-details="openPageForm"
 					@delete="deletePage" />
@@ -72,6 +87,7 @@
 				:context="activeContext"
 				:page="startPage"
 				:can-edit="canManage"
+				:start-in-edit-mode="$route.query.edit === '1'"
 				is-start-page
 				@saved="page => startPage = page" />
 
@@ -111,6 +127,7 @@ import { NcButton, NcEmptyContent, NcIconSvgWrapper } from '@nextcloud/vue'
 import { loadState } from '@nextcloud/initial-state'
 import { generateUrl } from '@nextcloud/router'
 import ChevronLeft from 'vue-material-design-icons/ChevronLeft.vue'
+import InformationOutline from 'vue-material-design-icons/InformationOutline.vue'
 import OpenInNew from 'vue-material-design-icons/OpenInNew.vue'
 import TableWrapper from '../modules/main/sections/TableWrapper.vue'
 import CustomView from '../modules/main/sections/View.vue'
@@ -124,6 +141,7 @@ import ErrorMessage from '../modules/main/partials/ErrorMessage.vue'
 import ContextPageBar from '../modules/grid/ContextPageBar.vue'
 import GridPage from '../modules/grid/GridPage.vue'
 import DataWidget from '../modules/grid/widgets/DataWidget.vue'
+import ApplicationOverview from '../modules/main/sections/ApplicationOverview.vue'
 import ContextPageForm from '../modules/modals/ContextPageForm.vue'
 import permissionsMixin from '../shared/components/ncTable/mixins/permissionsMixin.js'
 import displayError, { getNotFoundError, getGenericLoadError } from '../shared/utils/displayError.js'
@@ -143,8 +161,10 @@ export default {
 		NcEmptyContent,
 		NcIconSvgWrapper,
 		ChevronLeft,
+		InformationOutline,
 		OpenInNew,
 		DataWidget,
+		ApplicationOverview,
 		ErrorMessage,
 		TableWrapper,
 		CustomView,
@@ -200,7 +220,7 @@ export default {
 		 * @return {boolean}
 		 */
 		showsStartPage() {
-			if (this.activePageId !== null) {
+			if (this.activePageId !== null || this.isOverview) {
 				return false
 			}
 			return !this.isMenuRoute || this.menuTarget?.startPage === true
@@ -221,6 +241,14 @@ export default {
 		},
 		isMenuRoute() {
 			return !!this.$route.params.itemName
+		},
+		/**
+		 * Whether the overview is shown, where the application is managed inside Tables.
+		 *
+		 * @return {boolean}
+		 */
+		isOverview() {
+			return this.$route.name === 'contextOverview' && !this.isStandalone
 		},
 		selectedMenuItem() {
 			const technicalName = this.$route.params.itemName
@@ -656,12 +684,18 @@ export default {
 		inset-inline-start: 0;
 		top: 0;
 		z-index: 15;
+		display: flex;
+		align-items: center;
 		background-color: var(--color-main-background);
 		width: var(--app-content-width, 100%);
 	}
 
 	&__title {
 		display: inline-flex;
+	}
+
+	&__overview-link {
+		margin-inline: auto calc(4 * var(--default-grid-baseline));
 	}
 
 	&__description {
