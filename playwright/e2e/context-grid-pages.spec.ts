@@ -179,6 +179,31 @@ test.describe('Grid pages of an application', () => {
 		await shareeContext.close()
 	})
 
+	test('A page gets a technical name from its title, and a taken one is refused', async ({ userPage: { page, user } }) => {
+		const table = await createTableViaApi(page.request, user, 'grid name table')
+		const contextId = await createApplicationViaApi(page.request, user, 'grid name app', [table])
+		await openApplication(page, contextId)
+
+		await page.locator('[data-cy="contextPageAdd"]').click()
+		await page.locator('[data-cy="contextPageForm"]').getByRole('textbox', { name: 'Title' }).fill('Open cases')
+		await page.locator('[data-cy="contextPageSubmit"]').click()
+		await expect(page).toHaveURL(/\/application\/\d+\/page\/\d+/)
+
+		const pages = Object.values((await getApplication(page.request, user, contextId)).pages as Record<string, { technical_name: string }>)
+		expect(pages.map(entry => entry.technical_name).sort()).toEqual(['dashboard', 'open_cases'])
+
+		await page.locator('[data-cy="gridPageActions"] button').first().click()
+		await page.locator('[data-cy="gridPageEditDetails"]').click()
+		const technicalName = page.locator('[data-cy="contextPageForm"]').getByRole('textbox', { name: 'Technical name' })
+		await expect(technicalName).toHaveValue('open_cases')
+		await technicalName.fill('')
+		await expect(page.locator('[data-cy="contextPageSubmit"]')).toBeDisabled()
+		await technicalName.fill('dashboard')
+		const renamed = page.waitForResponse(r => /\/pages\/\d+/.test(r.url()) && r.request().method() === 'PATCH')
+		await page.locator('[data-cy="contextPageSubmit"]').click()
+		expect((await renamed).status()).toBe(400)
+	})
+
 	test('A table removed from the application leaves its widget asking for a new one', async ({ userPage: { page, user } }) => {
 		const table = await createTableViaApi(page.request, user, 'grid removed table')
 		const contextId = await createApplicationViaApi(page.request, user, 'grid removal app', [table])

@@ -61,10 +61,10 @@ class ContextMapperTest extends DatabaseTestCase {
 		$context = $this->createContext();
 		$first = $this->addNode($context, 11);
 		$second = $this->addNode($context, 12);
-		$startPage = $this->addPage($context, Page::TYPE_STARTPAGE, null, null, null);
+		$startPage = $this->addPage($context, Page::TYPE_STARTPAGE, null, null, null, 'dashboard');
 		$firstContent = $this->addContent($startPage, $first, 10);
 		$secondContent = $this->addContent($startPage, $second, 20);
-		$gridPage = $this->addPage($context, Page::TYPE_GRID, 'Overview', '📊', 'Open work at a glance');
+		$gridPage = $this->addPage($context, Page::TYPE_GRID, 'Overview', '📊', 'Open work at a glance', 'overview');
 
 		$pages = $this->mapper->findById($context->getId(), self::OWNER)->getPages();
 
@@ -76,6 +76,7 @@ class ContextMapperTest extends DatabaseTestCase {
 			'title' => 'Overview',
 			'emoji' => '📊',
 			'description' => 'Open work at a glance',
+			'technical_name' => 'overview',
 		], $pages[$gridPage->getId()]);
 		$this->assertNull($pages[$startPage->getId()]['title']);
 		$this->assertSame([$firstContent->getId(), $secondContent->getId()], array_keys($pages[$startPage->getId()]['content']));
@@ -102,13 +103,14 @@ class ContextMapperTest extends DatabaseTestCase {
 		return $this->nodeRelMapper->insert($relation);
 	}
 
-	private function addPage(Context $context, string $type, ?string $title, ?string $emoji, ?string $description): Page {
+	private function addPage(Context $context, string $type, ?string $title, ?string $emoji, ?string $description, string $technicalName): Page {
 		$page = new Page();
 		$page->setContextId($context->getId());
 		$page->setPageType($type);
 		$page->setTitle($title);
 		$page->setEmoji($emoji);
 		$page->setDescription($description);
+		$page->setTechnicalName($technicalName);
 		return $this->pageMapper->insert($page);
 	}
 

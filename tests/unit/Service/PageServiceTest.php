@@ -49,8 +49,8 @@ class PageServiceTest extends TestCase {
 		$this->context->id = 7;
 		$this->context->setNodes([self::NODE_REL => ['id' => self::NODE_REL, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE, 'permissions' => 1]]);
 		$this->context->setPages([
-			self::START_PAGE => ['id' => self::START_PAGE, 'page_type' => Page::TYPE_STARTPAGE, 'title' => null, 'emoji' => null, 'description' => null, 'content' => []],
-			self::GRID_PAGE => ['id' => self::GRID_PAGE, 'page_type' => Page::TYPE_GRID, 'title' => 'Overview', 'emoji' => '📊', 'description' => null, 'content' => []],
+			self::START_PAGE => ['id' => self::START_PAGE, 'page_type' => Page::TYPE_STARTPAGE, 'title' => null, 'emoji' => null, 'description' => null, 'technical_name' => 'dashboard', 'content' => []],
+			self::GRID_PAGE => ['id' => self::GRID_PAGE, 'page_type' => Page::TYPE_GRID, 'title' => 'Overview', 'emoji' => '📊', 'description' => null, 'technical_name' => 'overview', 'content' => []],
 		]);
 		$contextMapper = $this->createMock(ContextMapper::class);
 		$contextMapper->method('findById')->willReturnCallback(function (int $contextId): Context {
@@ -91,6 +91,7 @@ class PageServiceTest extends TestCase {
 			'title' => 'Overview',
 			'emoji' => '📊',
 			'description' => null,
+			'technicalName' => 'overview',
 			'widgets' => [$widget],
 		], $this->service->find(7, self::GRID_PAGE, 'alice'));
 	}
@@ -109,9 +110,10 @@ class PageServiceTest extends TestCase {
 			return $page;
 		});
 
-		$this->service->create(7, '  Overview ', ' 📊 ', '', 'alice');
+		$this->service->create(7, '  Overview ', ' 📊 ', '', null, 'alice');
 
 		$this->assertSame([7, Page::TYPE_GRID, 'Overview', '📊', null], [$inserted->getContextId(), $inserted->getPageType(), $inserted->getTitle(), $inserted->getEmoji(), $inserted->getDescription()]);
+		$this->assertSame('overview_2', $inserted->getTechnicalName());
 	}
 
 	public function testCreateNeedsManagePermission(): void {
@@ -119,7 +121,7 @@ class PageServiceTest extends TestCase {
 		$this->pageMapper->expects($this->never())->method('insert');
 
 		$this->expectException(PermissionError::class);
-		$this->service->create(7, 'Overview', null, null, 'bob');
+		$this->service->create(7, 'Overview', null, null, null, 'bob');
 	}
 
 	public function testCreateNeedsATitle(): void {
@@ -127,7 +129,66 @@ class PageServiceTest extends TestCase {
 		$this->pageMapper->expects($this->never())->method('insert');
 
 		$this->expectException(BadRequestError::class);
-		$this->service->create(7, '   ', null, null, 'alice');
+		$this->service->create(7, '   ', null, null, null, 'alice');
+	}
+
+	public static function invalidTechnicalNames(): array {
+		return [
+			'upper case' => ['Overview', 'starts with a lowercase letter'],
+			'starts with a digit' => ['1st', 'starts with a lowercase letter'],
+			'taken by another page' => ['dashboard', 'already uses the technical name dashboard'],
+		];
+	}
+
+	/**
+	 * @dataProvider invalidTechnicalNames
+	 */
+	public function testCreateRejectsAnInvalidOrTakenTechnicalName(string $technicalName, string $message): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$this->pageMapper->expects($this->never())->method('insert');
+
+		$this->expectException(BadRequestError::class);
+		$this->expectExceptionMessage($message);
+		$this->service->create(7, 'Board', null, null, $technicalName, 'alice');
+	}
+
+	public function testCreateKeepsAGivenTechnicalName(): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$this->pageMapper->expects($this->once())->method('insert')->willReturnCallback(function (Page $page): Page {
+			$this->assertSame('sales_board', $page->getTechnicalName());
+			$page->id = self::GRID_PAGE;
+			return $page;
+		});
+
+		$this->service->create(7, 'Board', null, null, 'sales_board', 'alice');
+	}
+
+	public function testARaceOnATechnicalNameIsABadRequest(): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$violation = new class('duplicate') extends \OCP\DB\Exception {
+			public function getReason(): ?int {
+				return self::REASON_UNIQUE_CONSTRAINT_VIOLATION;
+			}
+		};
+		$this->pageMapper->method('insert')->willThrowException($violation);
+
+		$this->expectException(BadRequestError::class);
+		$this->service->create(7, 'Board', null, null, 'board', 'alice');
+	}
+
+	public function testUpdateMayKeepItsOwnTechnicalName(): void {
+		$this->permissionsService->method('canManageContextById')->willReturn(true);
+		$stored = new Page();
+		$stored->id = self::GRID_PAGE;
+		$stored->setTechnicalName('overview');
+		$stored->resetUpdatedFields();
+		$this->pageMapper->method('findById')->willReturn($stored);
+		$this->pageMapper->expects($this->never())->method('update');
+
+		$this->service->update(7, self::GRID_PAGE, null, null, null, null, 'alice', 'overview');
+
+		$this->expectException(BadRequestError::class);
+		$this->service->update(7, self::GRID_PAGE, null, null, null, null, 'alice', 'dashboard');
 	}
 
 	public function testUpdateSyncsWidgetsById(): void {

@@ -59,16 +59,16 @@ class ContextPageControllerTest extends TestCase {
 	}
 
 	public function testCreatePassesThePageFields(): void {
-		$this->pageService->expects($this->once())->method('create')->with(7, 'Overview', '📊', 'At a glance', 'alice')->willReturn([]);
+		$this->pageService->expects($this->once())->method('create')->with(7, 'Overview', '📊', 'At a glance', 'overview', 'alice')->willReturn([]);
 
-		$this->assertSame(Http::STATUS_OK, $this->controller->create(7, 'Overview', '📊', 'At a glance')->getStatus());
+		$this->assertSame(Http::STATUS_OK, $this->controller->create(7, 'Overview', '📊', 'At a glance', 'overview')->getStatus());
 	}
 
 	public function testUpdatePassesFieldsAndWidgets(): void {
 		$widgets = [['type' => 'text', 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 6, 'gridHeight' => 2]];
-		$this->pageService->expects($this->once())->method('update')->with(7, 2, null, '', null, $widgets, 'alice')->willReturn([]);
+		$this->pageService->expects($this->once())->method('update')->with(7, 2, null, '', null, $widgets, 'alice', 'board')->willReturn([]);
 
-		$this->assertSame(Http::STATUS_OK, $this->controller->update(7, 2, null, '', null, $widgets)->getStatus());
+		$this->assertSame(Http::STATUS_OK, $this->controller->update(7, 2, null, '', null, $widgets, 'board')->getStatus());
 	}
 
 	public static function errors(): array {
