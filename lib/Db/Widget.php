@@ -67,13 +67,13 @@ class Widget extends Entity implements \JsonSerializable {
 	}
 
 	/**
-	 * Stores the settings as one JSON object, or no value when there are none.
+	 * Stores the settings as one JSON object, `{}` when there are none.
 	 *
 	 * @param array<string, TablesWidgetSettingValue> $settings
 	 * @throws \JsonException
 	 */
 	public function setSettingsArray(array $settings): void {
-		$this->setSettings($settings === [] ? null : json_encode($settings, JSON_THROW_ON_ERROR));
+		$this->setSettings(json_encode((object)$settings, JSON_THROW_ON_ERROR));
 	}
 
 	public function jsonSerialize(): array {
