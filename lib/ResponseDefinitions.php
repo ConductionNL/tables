@@ -237,6 +237,47 @@ namespace OCA\Tables;
  *   ownerType: int,
  * }
  *
+ * @psalm-type TablesWidgetValue = string|int|float|bool|null
+ *
+ * @psalm-type TablesWidgetSettingSchema = array{
+ *   type: 'string'|'text'|'color'|'boolean'|'enum',
+ *   title: string,
+ *   default: TablesWidgetValue,
+ *   options?: list<array{value: string, label: string}>,
+ *   required?: bool,
+ * }
+ *
+ * @psalm-type TablesWidgetType = array{
+ *   type: string,
+ *   title: string,
+ *   defaultWidth: int,
+ *   defaultHeight: int,
+ *   hasSource: bool,
+ *   settings: array<string, TablesWidgetSettingSchema>,
+ * }
+ *
+ * @psalm-type TablesWidget = array{
+ *   id: int,
+ *   type: string,
+ *   title: ?string,
+ *   gridX: int,
+ *   gridY: int,
+ *   gridWidth: int,
+ *   gridHeight: int,
+ *   settings: array<string, TablesWidgetValue>,
+ *   source: ?array{nodeRelId: int},
+ * }
+ *
+ * @psalm-type TablesPage = array{
+ *   id: int,
+ *   contextId: int,
+ *   pageType: string,
+ *   title: ?string,
+ *   emoji: ?string,
+ *   description: ?string,
+ *   widgets: list<TablesWidget>,
+ * }
+ *
  * @psalm-type TablesContextNavigation = array{
  *     id: int,
  *     shareId: int,

@@ -22,6 +22,7 @@ use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IDBConnection;
+use OCP\IL10N;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
 use OCP\IUserManager;
@@ -51,6 +52,8 @@ final class ContextServiceTest extends TestCase {
 		$eventDispatcher = $this->createMock(IEventDispatcher::class);
 		$this->dbConnection = $this->createMock(IDBConnection::class);
 		$this->widgetService = $this->createMock(WidgetService::class);
+		$l10n = $this->createMock(IL10N::class);
+		$l10n->method('t')->willReturnArgument(0);
 		$shareService = $this->createMock(ShareService::class);
 		$navigationManager = $this->createMock(INavigationManager::class);
 		$urlGenerator = $this->createMock(IURLGenerator::class);
@@ -72,6 +75,7 @@ final class ContextServiceTest extends TestCase {
 			$this->createMock(TableMapper::class),
 			$this->createMock(ViewMapper::class),
 			$this->widgetService,
+			new GridWidgetTypes($l10n),
 		);
 	}
 
@@ -213,7 +217,7 @@ final class ContextServiceTest extends TestCase {
 		self::assertSame([$widget], $pages[302]['widgets']);
 	}
 
-	public function testImportContextRemapsTheSourceOfAWidget(): void {
+	public function testImportContextRemapsSourcesAndSkipsInvalidWidgets(): void {
 		$table = new Table();
 		$table->id = 77;
 		$table->setOwnership('user-1');
@@ -249,15 +253,20 @@ final class ContextServiceTest extends TestCase {
 				'description' => 'At a glance',
 				'content' => [],
 				'widgets' => [
-					['type' => 'data', 'title' => 'Tasks', 'gridX' => 0, 'gridY' => 2, 'gridWidth' => 12, 'gridHeight' => 5, 'settings' => ['pageSize' => 10], 'source' => ['nodeRelId' => 101]],
+					['type' => 'data', 'title' => 'Tasks', 'gridX' => 0, 'gridY' => 2, 'gridWidth' => 12, 'gridHeight' => 5, 'settings' => ['unknown' => 10], 'source' => ['nodeRelId' => 101]],
 					['type' => 'data', 'title' => null, 'gridX' => 0, 'gridY' => 7, 'gridWidth' => 6, 'gridHeight' => 5, 'settings' => [], 'source' => ['nodeRelId' => 999]],
+					['type' => 'text', 'title' => null, 'gridX' => 6, 'gridY' => 7, 'gridWidth' => 6, 'gridHeight' => 2, 'settings' => ['text' => 'Hi'], 'source' => ['nodeRelId' => 101]],
+					['type' => 'header', 'title' => null, 'gridX' => 0, 'gridY' => 0, 'gridWidth' => 12, 'gridHeight' => 2, 'settings' => ['heading' => ''], 'source' => null],
+					['type' => 'chart', 'title' => null, 'gridX' => 0, 'gridY' => 9, 'gridWidth' => 12, 'gridHeight' => 2, 'settings' => [], 'source' => null],
 				],
 			]],
 		], 5);
 
 		self::assertSame(['Overview', '📊', 'At a glance'], [$insertedPages[0]->getTitle(), $insertedPages[0]->getEmoji(), $insertedPages[0]->getDescription()]);
-		self::assertSame([600, 'data', 'Tasks', ['gridX' => 0, 'gridY' => 2, 'gridWidth' => 12, 'gridHeight' => 5], ['pageSize' => 10], 501], $inserted[0]);
+		self::assertCount(3, $inserted);
+		self::assertSame([600, 'data', 'Tasks', ['gridX' => 0, 'gridY' => 2, 'gridWidth' => 12, 'gridHeight' => 5], [], 501], $inserted[0]);
 		self::assertNull($inserted[1][5]);
+		self::assertSame([600, 'text', null, ['gridX' => 6, 'gridY' => 7, 'gridWidth' => 6, 'gridHeight' => 2], ['text' => 'Hi'], null], $inserted[2]);
 	}
 
 	private function buildPageContent(int $id, int $pageId, int $nodeRelId, int $order): PageContent {

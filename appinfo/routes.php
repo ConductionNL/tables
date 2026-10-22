@@ -160,6 +160,11 @@ return [
 		['name' => 'Context#importScheme', 'url' => '/api/2/contexts/{contextId}/scheme/import', 'verb' => 'POST'],
 		['name' => 'Context#transfer', 'url' => '/api/2/contexts/{contextId}/transfer', 'verb' => 'PUT'],
 		['name' => 'Context#updateContentOrder', 'url' => '/api/2/contexts/{contextId}/pages/{pageId}', 'verb' => 'PUT'],
+		['name' => 'ContextPage#create', 'url' => '/api/2/contexts/{contextId}/pages', 'verb' => 'POST'],
+		['name' => 'ContextPage#show', 'url' => '/api/2/contexts/{contextId}/pages/{pageId}', 'verb' => 'GET'],
+		['name' => 'ContextPage#update', 'url' => '/api/2/contexts/{contextId}/pages/{pageId}', 'verb' => 'PATCH'],
+		['name' => 'ContextPage#destroy', 'url' => '/api/2/contexts/{contextId}/pages/{pageId}', 'verb' => 'DELETE'],
+		['name' => 'ContextPage#widgetTypes', 'url' => '/api/2/widget-types', 'verb' => 'GET'],
 
 		['name' => 'Config#getTableConfig', 'url' => '/api/2/config/table/{id}', 'verb' => 'GET'],
 		['name' => 'Config#getViewConfig', 'url' => '/api/2/config/view/{id}', 'verb' => 'GET'],

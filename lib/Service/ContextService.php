@@ -63,6 +63,7 @@ class ContextService {
 		private TableMapper $tableMapper,
 		private ViewMapper $viewMapper,
 		private WidgetService $widgetService,
+		private GridWidgetTypes $gridWidgetTypes,
 	) {
 	}
 
@@ -683,7 +684,8 @@ class ContextService {
 
 	/**
 	 * Inserts an exported widget on a page. Its source is remapped to the imported node
-	 * relation, and dropped when that node was not imported.
+	 * relation, and dropped when that node was not imported. A widget whose type or
+	 * settings are not valid is skipped.
 	 *
 	 * @param array<array-key, ContextNodeRelation> $nodeRelMap imported node relations by their exported id
 	 * @throws Exception
@@ -693,9 +695,15 @@ class ContextService {
 		if (!is_array($widgetArr) || !is_string($widgetArr['type'] ?? null)) {
 			return;
 		}
-		$oldNodeRelId = $widgetArr['source']['nodeRelId'] ?? null;
+		try {
+			$hasSource = $this->gridWidgetTypes->get($widgetArr['type'])['hasSource'];
+			$settings = $this->gridWidgetTypes->sanitizeSettings($widgetArr['type'], $widgetArr['settings'] ?? null);
+		} catch (BadRequestError $e) {
+			$this->logger->warning('Skipping an imported widget: ' . $e->getMessage(), ['exception' => $e]);
+			return;
+		}
+		$oldNodeRelId = $hasSource ? ($widgetArr['source']['nodeRelId'] ?? null) : null;
 		$newNodeRel = $oldNodeRelId !== null ? ($nodeRelMap[$oldNodeRelId] ?? null) : null;
-		$settings = is_array($widgetArr['settings'] ?? null) ? $widgetArr['settings'] : [];
 		$this->widgetService->insert(
 			$pageId,
 			$widgetArr['type'],
