@@ -10,12 +10,10 @@ declare(strict_types=1);
 namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\Db\WidgetMapper;
-use OCA\Tables\Db\WidgetSetting;
-use OCA\Tables\Db\WidgetSettingMapper;
 use OCA\Tables\Db\WidgetSourceMapper;
 use OCA\Tables\Service\WidgetService;
 use OCA\Tables\Tests\Unit\Database\DatabaseTestCase;
-use OCP\DB\Exception;
+use OCP\DB\QueryBuilder\IQueryBuilder;
 
 /**
  * Runs against the database: widgets, their settings and sources.
@@ -25,14 +23,11 @@ class WidgetServiceTest extends DatabaseTestCase {
 	private const OTHER_PAGE = 990002;
 
 	private WidgetService $service;
-	private WidgetSettingMapper $settingMapper;
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->settingMapper = new WidgetSettingMapper($this->connectionAdapter);
 		$this->service = new WidgetService(
 			new WidgetMapper($this->connectionAdapter),
-			$this->settingMapper,
 			new WidgetSourceMapper($this->connectionAdapter),
 		);
 	}
@@ -101,33 +96,31 @@ class WidgetServiceTest extends DatabaseTestCase {
 		$this->service->deleteByPageIds([self::PAGE]);
 
 		$this->assertSame([], $this->service->findByPageIds([self::PAGE]));
-		$this->assertSame([], $this->settingMapper->findSettingsByWidgetIds([$widget->getId()]));
+		$this->assertNull($this->storedSettings($widget->getId()));
 		$this->assertSame([], (new WidgetSourceMapper($this->connectionAdapter))->findNodeRelIdsByWidgetIds([$widget->getId()]));
 		$this->assertSame(['nodeRelId' => 52], $this->service->findByPageIds([self::OTHER_PAGE])[self::OTHER_PAGE][0]['source']);
-		$this->assertSame([$other->getId() => ['pageSize' => 20]], $this->settingMapper->findSettingsByWidgetIds([$other->getId()]));
+		$this->assertSame(['pageSize' => 20], $this->service->findByPageIds([self::OTHER_PAGE])[self::OTHER_PAGE][0]['settings']);
+		$this->assertSame('{"pageSize":20}', $this->storedSettings($other->getId()));
 	}
 
-	public function testReplacingSettingsDropsSettingsThatAreNotGiven(): void {
-		$widget = $this->service->insert(self::PAGE, 'header', null, $this->position(0, 0, 12, 2), ['text' => 'A', 'subtitle' => 'B'], null);
+	public function testSettingsAreStoredAsOneJsonObjectOnTheWidgetRow(): void {
+		$header = $this->service->insert(self::PAGE, 'header', null, $this->position(0, 0, 12, 2), ['text' => 'A', 'level' => 2, 'showTitle' => false, 'color' => null], null);
+		$data = $this->service->insert(self::PAGE, 'data', null, $this->position(0, 2, 12, 5), [], 61);
 
-		$this->settingMapper->replaceSettings($widget->getId(), ['text' => 'C']);
-
-		$this->assertSame([$widget->getId() => ['text' => 'C']], $this->settingMapper->findSettingsByWidgetIds([$widget->getId()]));
+		$this->assertSame('{"text":"A","level":2,"showTitle":false,"color":null}', $this->storedSettings($header->getId()));
+		$this->assertNull($this->storedSettings($data->getId()));
+		$this->assertSame([], $this->service->findByPageIds([self::PAGE])[self::PAGE][1]['settings']);
 	}
 
-	public function testASettingNameIsUniquePerWidget(): void {
-		$widget = $this->service->insert(self::PAGE, 'header', null, $this->position(0, 0, 12, 2), ['text' => 'A'], null);
-		$duplicate = new WidgetSetting();
-		$duplicate->setWidgetId($widget->getId());
-		$duplicate->setName('text');
-		$duplicate->setValue('"B"');
-
-		try {
-			$this->settingMapper->insert($duplicate);
-			$this->fail('A second setting with the same name was stored.');
-		} catch (Exception $e) {
-			$this->assertSame(Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION, $e->getReason());
-		}
+	private function storedSettings(int $widgetId): ?string {
+		$qb = $this->connectionAdapter->getQueryBuilder();
+		$qb->select('settings')
+			->from('tables_contexts_widget')
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($widgetId, IQueryBuilder::PARAM_INT)));
+		$result = $qb->executeQuery();
+		$value = $result->fetchOne();
+		$result->closeCursor();
+		return $value === false || $value === null ? null : (string)$value;
 	}
 
 	public function testSyncUpdatesListedInsertsNewAndDeletesMissingWidgets(): void {
