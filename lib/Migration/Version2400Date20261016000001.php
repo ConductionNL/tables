@@ -17,8 +17,8 @@ use OCP\Migration\SimpleMigrationStep;
 use Override;
 
 /**
- * Grid pages: a title, emoji and description on pages, and the widgets of a page
- * with their settings and the node a data widget shows.
+ * Grid pages: a title, emoji and description on pages, the widgets of a page with
+ * their settings as one JSON object, and the node a data widget shows.
  */
 class Version2400Date20261016000001 extends SimpleMigrationStep {
 	private const PREFIX = 'tables_contexts_';
@@ -30,7 +30,6 @@ class Version2400Date20261016000001 extends SimpleMigrationStep {
 
 		$this->extendPageTable($schema);
 		$this->haveWidgetTable($schema);
-		$this->haveWidgetSettingTable($schema);
 		$this->haveWidgetSourceTable($schema);
 
 		return $schema;
@@ -68,21 +67,9 @@ class Version2400Date20261016000001 extends SimpleMigrationStep {
 		$table->addColumn('grid_y', Types::INTEGER, ['notnull' => true, 'default' => 0]);
 		$table->addColumn('grid_width', Types::SMALLINT, ['notnull' => true, 'default' => 1]);
 		$table->addColumn('grid_height', Types::SMALLINT, ['notnull' => true, 'default' => 1]);
+		$table->addColumn('settings', Types::TEXT, ['notnull' => false]);
 		$table->setPrimaryKey(['id']);
 		$table->addIndex(['page_id'], 'tables_ctx_widget_page_idx');
-	}
-
-	private function haveWidgetSettingTable(ISchemaWrapper $schema): void {
-		if ($schema->hasTable(self::PREFIX . 'widget_setting')) {
-			return;
-		}
-		$table = $schema->createTable(self::PREFIX . 'widget_setting');
-		$table->addColumn('id', Types::INTEGER, ['autoincrement' => true, 'notnull' => true]);
-		$table->addColumn('widget_id', Types::INTEGER, ['notnull' => true]);
-		$table->addColumn('name', Types::STRING, ['notnull' => true, 'length' => 64]);
-		$table->addColumn('value', Types::TEXT, ['notnull' => false]);
-		$table->setPrimaryKey(['id']);
-		$table->addUniqueIndex(['widget_id', 'name'], 'tables_ctx_wsetting_uq');
 	}
 
 	private function haveWidgetSourceTable(ISchemaWrapper $schema): void {
