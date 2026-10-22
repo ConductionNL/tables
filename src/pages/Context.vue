@@ -36,7 +36,15 @@
 				<ErrorMessage v-else :message="t('tables', 'This page could not be found')" />
 			</template>
 
-			<div v-else class="resources">
+			<GridPage v-else-if="startPage"
+				:key="'start-' + startPage.id"
+				:context="activeContext"
+				:page="startPage"
+				:can-edit="canManage"
+				is-start-page
+				@saved="page => startPage = page" />
+
+			<div v-if="activePageId === null" class="resources">
 				<div v-for="resource in contextResources" :key="resource.key">
 					<div v-if="!resource.isView" class="resource">
 						<TableWrapper v-model:view-setting="resourceViewSettings[resource.key]" :table="resource" :columns="columns[resource.key]"
@@ -115,6 +123,7 @@ export default {
 			loadedSignature: null,
 			isReloading: false,
 			activePage: null,
+			startPage: null,
 			pageLoading: false,
 			pageFormOpen: false,
 			pageBeingEdited: null,
@@ -241,6 +250,7 @@ export default {
 				if (this.activePageId !== null) {
 					await this.loadActivePage()
 				} else if (this.context && this.context.pages) {
+					await this.loadStartPage()
 					const pages = Object.values(this.context.pages)
 					const startPage = pages.find(p => p.page_type === 'startpage')
 
@@ -339,6 +349,21 @@ export default {
 				this.pageLoading = false
 			}
 			await this.loadApplicationNodes()
+		},
+		/**
+		 * Loads the widgets of the start page, shown above its tables and views.
+		 */
+		async loadStartPage() {
+			this.startPage = null
+			const startPage = Object.values(this.context?.pages ?? {}).find(page => page.page_type === 'startpage')
+			if (!startPage) {
+				return
+			}
+			try {
+				this.startPage = await this.loadContextPage({ contextId: this.activeContextId, pageId: startPage.id })
+			} catch (e) {
+				displayError(e, t('tables', 'Could not load the page.'))
+			}
 		},
 		/**
 		 * Puts the tables and views of the application in the store, without their rows.

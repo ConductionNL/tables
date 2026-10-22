@@ -131,7 +131,7 @@ class PageService {
 	 */
 	public function update(int $contextId, int $pageId, ?string $title, ?string $emoji, ?string $description, ?array $widgets, string $userId, ?string $technicalName = null): array {
 		$context = $this->getManageableContext($contextId, $userId);
-		$pageArray = $this->getPageArray($context, $pageId);
+		$this->getPageArray($context, $pageId);
 
 		$page = $this->pageMapper->findById($pageId);
 		if ($title !== null) {
@@ -150,9 +150,6 @@ class PageService {
 		$rows = null;
 		$nodesToAdd = [];
 		if ($widgets !== null) {
-			if ($pageArray['page_type'] !== Page::TYPE_GRID) {
-				throw new BadRequestError('Only grid pages hold widgets.');
-			}
 			[$rows, $nodesToAdd] = $this->readWidgets($widgets, $context, $pageId, $userId);
 		}
 
