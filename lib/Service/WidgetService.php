@@ -11,21 +11,19 @@ namespace OCA\Tables\Service;
 
 use OCA\Tables\Db\Widget;
 use OCA\Tables\Db\WidgetMapper;
-use OCA\Tables\Db\WidgetSettingMapper;
 use OCA\Tables\Db\WidgetSourceMapper;
 use OCP\DB\Exception;
 
 /**
- * Stores the widgets of grid pages together with their settings and the node a
- * data widget shows. Callers check permissions and run writes in a transaction.
+ * Stores the widgets of grid pages, settings included, and the node a data widget
+ * shows. Callers check permissions and run writes in a transaction.
  *
- * @psalm-import-type TablesWidgetSettingValue from WidgetSettingMapper
+ * @psalm-import-type TablesWidgetSettingValue from Widget
  * @psalm-type TablesWidgetRecord = array{id: int, type: string, title: ?string, gridX: int, gridY: int, gridWidth: int, gridHeight: int, settings: array<string, TablesWidgetSettingValue>, source: ?array{nodeRelId: int}}
  */
 class WidgetService {
 	public function __construct(
 		private readonly WidgetMapper $widgetMapper,
-		private readonly WidgetSettingMapper $widgetSettingMapper,
 		private readonly WidgetSourceMapper $widgetSourceMapper,
 	) {
 	}
@@ -38,7 +36,6 @@ class WidgetService {
 	public function findByPageIds(array $pageIds): array {
 		$widgets = $this->widgetMapper->findByPageIds($pageIds);
 		$widgetIds = array_map(static fn (Widget $widget): int => $widget->getId(), $widgets);
-		$settings = $this->widgetSettingMapper->findSettingsByWidgetIds($widgetIds);
 		$sources = $this->widgetSourceMapper->findNodeRelIdsByWidgetIds($widgetIds);
 
 		$byPage = [];
@@ -52,7 +49,7 @@ class WidgetService {
 				'gridY' => $widget->getGridY(),
 				'gridWidth' => $widget->getGridWidth(),
 				'gridHeight' => $widget->getGridHeight(),
-				'settings' => $settings[$id] ?? [],
+				'settings' => $widget->getSettingsArray(),
 				'source' => isset($sources[$id]) ? ['nodeRelId' => $sources[$id]] : null,
 			];
 		}
@@ -68,16 +65,15 @@ class WidgetService {
 	public function insert(int $pageId, string $type, ?string $title, array $position, array $settings, ?int $nodeRelId): Widget {
 		$widget = new Widget();
 		$widget->setPageId($pageId);
-		$this->applyFields($widget, $type, $title, $position);
+		$this->applyFields($widget, $type, $title, $position, $settings);
 		$widget = $this->widgetMapper->insert($widget);
 
-		$this->widgetSettingMapper->replaceSettings($widget->getId(), $settings);
 		$this->widgetSourceMapper->setSource($widget->getId(), $nodeRelId);
 		return $widget;
 	}
 
 	/**
-	 * Deletes the widgets of the given pages with their settings and sources.
+	 * Deletes the widgets of the given pages with their sources.
 	 *
 	 * @param int[] $pageIds
 	 * @throws Exception
@@ -95,7 +91,6 @@ class WidgetService {
 	 * @throws Exception
 	 */
 	public function deleteByIds(array $widgetIds): void {
-		$this->widgetSettingMapper->deleteByWidgetIds($widgetIds);
 		$this->widgetSourceMapper->deleteByWidgetIds($widgetIds);
 		$this->widgetMapper->deleteByIds($widgetIds);
 	}
@@ -112,13 +107,16 @@ class WidgetService {
 
 	/**
 	 * @param array{gridX: int, gridY: int, gridWidth: int, gridHeight: int} $position
+	 * @param array<string, TablesWidgetSettingValue> $settings
+	 * @throws \JsonException
 	 */
-	private function applyFields(Widget $widget, string $type, ?string $title, array $position): void {
+	private function applyFields(Widget $widget, string $type, ?string $title, array $position, array $settings): void {
 		$widget->setType($type);
 		$widget->setTitle($title);
 		$widget->setGridX($position['gridX']);
 		$widget->setGridY($position['gridY']);
 		$widget->setGridWidth($position['gridWidth']);
 		$widget->setGridHeight($position['gridHeight']);
+		$widget->setSettingsArray($settings);
 	}
 }
