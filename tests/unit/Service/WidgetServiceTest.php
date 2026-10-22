@@ -145,6 +145,17 @@ class WidgetServiceTest extends DatabaseTestCase {
 		$this->assertSame($other->getId(), $widgets[self::OTHER_PAGE][0]['id']);
 	}
 
+	public function testSyncWithNoSettingsClearsTheStoredSettings(): void {
+		$widget = $this->service->insert(self::PAGE, 'text', null, $this->position(0, 0, 6, 2), ['text' => 'A'], null);
+
+		$this->service->syncPage(self::PAGE, [
+			['id' => $widget->getId(), 'type' => 'text', 'title' => null, 'position' => $this->position(0, 0, 6, 2), 'settings' => [], 'nodeRelId' => null],
+		]);
+
+		$this->assertSame([], $this->service->findByPageIds([self::PAGE])[self::PAGE][0]['settings']);
+		$this->assertSame('{}', $this->storedSettings($widget->getId()));
+	}
+
 	public function testSyncWithNoWidgetsEmptiesThePage(): void {
 		$this->service->insert(self::PAGE, 'text', null, $this->position(0, 0, 6, 2), ['text' => 'A'], null);
 
