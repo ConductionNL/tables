@@ -9,10 +9,14 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Db;
 
+use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Db\Entity;
 
 /**
- * A widget on a grid page: its type, optional title and its place on the grid.
+ * A widget on a grid page: its type, optional title, its place on the grid and its
+ * settings, stored as one JSON object.
+ *
+ * @psalm-import-type TablesWidgetValue from ResponseDefinitions
  *
  * @method getPageId(): int
  * @method setPageId(int $value): void
@@ -28,6 +32,8 @@ use OCP\AppFramework\Db\Entity;
  * @method setGridWidth(int $value): void
  * @method getGridHeight(): int
  * @method setGridHeight(int $value): void
+ * @method getSettings(): ?string
+ * @method setSettings(?string $value): void
  */
 class Widget extends Entity implements \JsonSerializable {
 	protected ?int $pageId = null;
@@ -37,6 +43,7 @@ class Widget extends Entity implements \JsonSerializable {
 	protected ?int $gridY = null;
 	protected ?int $gridWidth = null;
 	protected ?int $gridHeight = null;
+	protected ?string $settings = null;
 
 	public function __construct() {
 		$this->addType('id', 'integer');
@@ -45,6 +52,29 @@ class Widget extends Entity implements \JsonSerializable {
 		$this->addType('grid_y', 'integer');
 		$this->addType('grid_width', 'integer');
 		$this->addType('grid_height', 'integer');
+	}
+
+	/**
+	 * @return array<string, TablesWidgetValue>
+	 */
+	public function getSettingsArray(): array {
+		$settings = $this->getSettings();
+		if ($settings === null || $settings === '') {
+			return [];
+		}
+		$decoded = json_decode($settings, true);
+		/** @var array<string, TablesWidgetValue> */
+		return is_array($decoded) ? $decoded : [];
+	}
+
+	/**
+	 * Stores the settings as one JSON object, `{}` when there are none.
+	 *
+	 * @param array<string, TablesWidgetValue> $settings
+	 * @throws \JsonException
+	 */
+	public function setSettingsArray(array $settings): void {
+		$this->setSettings(json_encode((object)$settings, JSON_THROW_ON_ERROR));
 	}
 
 	public function jsonSerialize(): array {
@@ -57,6 +87,7 @@ class Widget extends Entity implements \JsonSerializable {
 			'gridY' => $this->getGridY(),
 			'gridWidth' => $this->getGridWidth(),
 			'gridHeight' => $this->getGridHeight(),
+			'settings' => $this->getSettingsArray(),
 		];
 	}
 }
