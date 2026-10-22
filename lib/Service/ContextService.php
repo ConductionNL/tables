@@ -62,6 +62,7 @@ class ContextService {
 		protected IURLGenerator $urlGenerator,
 		private TableMapper $tableMapper,
 		private ViewMapper $viewMapper,
+		private WidgetService $widgetService,
 	) {
 	}
 
@@ -319,6 +320,7 @@ class ContextService {
 			$this->shareService->deleteAllForContext($context);
 			$this->contextNodeRelMapper->deleteAllByContextId($context->getId());
 			$pageIds = $this->pageMapper->getPageIdsForContext($context->getId());
+			$this->widgetService->deleteByPageIds($pageIds);
 			foreach ($pageIds as $pageId) {
 				$this->pageContentMapper->deleteByPageId($pageId);
 				$this->pageMapper->deleteByPageId($pageId);
@@ -332,6 +334,7 @@ class ContextService {
 		try {
 			$nodeRelIds = $this->contextNodeRelMapper->getRelIdsForNode($nodeId, $nodeType);
 			$this->atomic(function () use ($nodeRelIds): void {
+				$this->widgetService->deleteSourcesByNodeRelIds($nodeRelIds);
 				$this->pageContentMapper->deleteByNodeRelIds($nodeRelIds);
 				$this->contextNodeRelMapper->deleteByNodeRelIds($nodeRelIds);
 			}, $this->dbc);
@@ -432,6 +435,7 @@ class ContextService {
 	 */
 	public function removeNodeFromContextAndPages(int $nodeRelationId): array {
 		$nodeRelation = $this->removeNodeFromContextById($nodeRelationId);
+		$this->widgetService->deleteSourcesByNodeRelIds([$nodeRelationId]);
 		$contents = $this->removeNodeRelFromAllPages($nodeRelation);
 		return [$nodeRelation, $contents];
 	}
@@ -635,6 +639,9 @@ class ContextService {
 				$page = new Page();
 				$page->setContextId($newContext->getId());
 				$page->setPageType($pageArr['page_type'] ?? $pageArr['pageType'] ?? '');
+				$page->setTitle($pageArr['title'] ?? null);
+				$page->setEmoji($pageArr['emoji'] ?? null);
+				$page->setDescription($pageArr['description'] ?? null);
 				$page = $this->pageMapper->insert($page);
 				$pageMap[$pageArr['id'] ?? null] = $page;
 
@@ -650,10 +657,58 @@ class ContextService {
 						$this->pageContentMapper->insert($pageContent);
 					}
 				}
+
+				foreach ($pageArr['widgets'] ?? [] as $widgetArr) {
+					$this->importWidget($page->getId(), $widgetArr, $nodeRelMap);
+				}
 			}
 		}
 
 		return $newContext;
+	}
+
+	/**
+	 * The pages of an application with the widgets of each page under `widgets`.
+	 *
+	 * @throws Exception
+	 */
+	public function getPagesWithWidgets(Context $context): array {
+		$pages = $context->getPages() ?? [];
+		$widgets = $this->widgetService->findByPageIds(array_keys($pages));
+		foreach ($pages as $pageId => $page) {
+			$pages[$pageId]['widgets'] = $widgets[$pageId] ?? [];
+		}
+		return $pages;
+	}
+
+	/**
+	 * Inserts an exported widget on a page. Its source is remapped to the imported node
+	 * relation, and dropped when that node was not imported.
+	 *
+	 * @param array<array-key, ContextNodeRelation> $nodeRelMap imported node relations by their exported id
+	 * @throws Exception
+	 * @throws \JsonException
+	 */
+	private function importWidget(int $pageId, mixed $widgetArr, array $nodeRelMap): void {
+		if (!is_array($widgetArr) || !is_string($widgetArr['type'] ?? null)) {
+			return;
+		}
+		$oldNodeRelId = $widgetArr['source']['nodeRelId'] ?? null;
+		$newNodeRel = $oldNodeRelId !== null ? ($nodeRelMap[$oldNodeRelId] ?? null) : null;
+		$settings = is_array($widgetArr['settings'] ?? null) ? $widgetArr['settings'] : [];
+		$this->widgetService->insert(
+			$pageId,
+			$widgetArr['type'],
+			is_string($widgetArr['title'] ?? null) ? $widgetArr['title'] : null,
+			[
+				'gridX' => (int)($widgetArr['gridX'] ?? 0),
+				'gridY' => (int)($widgetArr['gridY'] ?? 0),
+				'gridWidth' => max(1, (int)($widgetArr['gridWidth'] ?? 1)),
+				'gridHeight' => max(1, (int)($widgetArr['gridHeight'] ?? 1)),
+			],
+			$settings,
+			$newNodeRel?->getId(),
+		);
 	}
 
 	/**
@@ -705,7 +760,7 @@ class ContextService {
 			$context->getIcon(),
 			$context->getDescription(),
 			array_values($nodes),
-			$context->getPages(),
+			$this->getPagesWithWidgets($context),
 			array_values($tables),
 		);
 	}
