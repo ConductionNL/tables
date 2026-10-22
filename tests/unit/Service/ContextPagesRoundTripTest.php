@@ -25,6 +25,7 @@ use OCA\Tables\Db\WidgetMapper;
 use OCA\Tables\Db\WidgetSourceMapper;
 use OCA\Tables\Helper\GroupHelper;
 use OCA\Tables\Helper\UserHelper;
+use OCA\Tables\Service\ContextSchemeService;
 use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\GridWidgetTypes;
 use OCA\Tables\Service\PermissionsService;
@@ -87,6 +88,7 @@ class ContextPagesRoundTripTest extends DatabaseTestCase {
 			new GridWidgetTypes($l10n),
 			new MenuItemMapper($this->connectionAdapter),
 			$l10n,
+			$this->createMock(ContextSchemeService::class),
 		);
 	}
 

@@ -179,6 +179,44 @@
 				</div>
 			</div>
 		</div>
+
+		<!-- Menu and pages section -->
+		<div v-if="menuItems || pages" class="preview-section preview-section--option" data-cy="importSchemeMenu">
+			<div class="preview-option">
+				<NcCheckboxRadioSwitch v-model="importMenu" class="preview-option__label" type="switch">
+					{{ t('tables', 'Menu and pages') }}
+				</NcCheckboxRadioSwitch>
+				<div v-if="importMenu" class="preview-card__meta preview-card__meta--compare">
+					<ul v-if="menuItems" class="preview-card__meta--before">
+						<li class="preview-card__meta-title">
+							{{ t('tables', 'From') }}:
+						</li>
+						<li v-for="(item, index) in currentMenuItems" :key="index">
+							{{ item.label }}
+						</li>
+					</ul>
+					<ul v-if="menuItems" class="preview-card__meta--after">
+						<li class="preview-card__meta-title">
+							{{ t('tables', 'To') }}:
+						</li>
+						<li v-for="(item, index) in menuItems" :key="index">
+							{{ item.label }}
+						</li>
+					</ul>
+					<ul v-if="pages && importNodes" class="preview-card__meta--after" data-cy="importSchemePages">
+						<li class="preview-card__meta-title">
+							{{ t('tables', 'Pages') }}:
+						</li>
+						<li v-for="(page, index) in pages" :key="index">
+							{{ pageTitle(page) }}
+						</li>
+					</ul>
+					<p v-if="pages && !importNodes" class="preview-empty">
+						{{ t('tables', 'Pages come along with the resources they show.') }}
+					</p>
+				</div>
+			</div>
+		</div>
 	</div>
 </template>
 
@@ -186,6 +224,7 @@
 import { translate as t } from '@nextcloud/l10n'
 import { NcCheckboxRadioSwitch } from '@nextcloud/vue'
 import ImportTableSchemePreview from './ImportTableSchemePreview.vue'
+import { pageTitle } from '../../shared/utils/menuItems.js'
 import svgHelper from '../../shared/components/ncIconPicker/mixins/svgHelper.js';
 
 export default {
@@ -226,6 +265,21 @@ export default {
 				}
 			},
 		},
+		// The menu of the uploaded scheme; null when the file has none, which keeps the current menu
+		menuItems: {
+			type: Array,
+			default: null,
+		},
+		// The pages of the uploaded scheme; null when the file has none, which keeps the current pages
+		pages: {
+			type: Array,
+			default: null,
+		},
+		// The menu the application has now
+		currentMenuItems: {
+			type: Array,
+			default: () => [],
+		},
 	},
 
 	emits: ['update'],
@@ -236,6 +290,7 @@ export default {
 			importIcon: true,
 			importDescription: true,
 			importNodes: true,
+			importMenu: true,
 			addTablesConfig: [],
 			removeColumnsConfig: [],
 			modifyTablesConfig: [],
@@ -268,6 +323,11 @@ export default {
 				this.emitPayload()
 			}
 		},
+		importMenu: {
+			handler() {
+				this.emitPayload()
+			},
+		},
 		importNodes: {
 			handler() {
 				this.emitPayload()
@@ -288,6 +348,7 @@ export default {
 	},
 
 	methods: {
+		pageTitle,
 		t,
 
 		initializeSelection() {
@@ -332,6 +393,14 @@ export default {
 							.map(item => ({uuid: item.uuid, ...item.tableSubmitPayload})),
 				},
 				nodes: this.importNodes ? this.previewData.nodes.to : this.previewData.nodes.from,
+			}
+			// Left out, the import keeps the current menu and pages. Data widgets name their node by its
+			// id in the nodes of the file, so pages only come along with those nodes.
+			if (this.importMenu && this.menuItems) {
+				payload.menuItems = this.menuItems
+			}
+			if (this.importMenu && this.pages && this.importNodes) {
+				payload.pages = this.pages
 			}
 
 			this.$emit('update', payload)
