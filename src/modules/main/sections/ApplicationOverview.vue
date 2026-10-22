@@ -152,6 +152,7 @@
 									<router-link :to="row.route" class="page-row__link" data-cy="page-card-open">
 										{{ row.title }}
 									</router-link>
+									<code class="page-row__technical-name" data-cy="page-card-technical-name">{{ row.page.technical_name }}</code>
 								</div>
 							</td>
 							<td>{{ row.typeLabel }}</td>
@@ -401,8 +402,18 @@ export default {
 	},
 	computed: {
 		...mapState(useTablesStore, ['tables', 'views']),
+		/**
+		 * The address of the application opened on its own. Technical names are unique per owner
+		 * only, so an application of someone else is addressed by id.
+		 *
+		 * @return {string}
+		 */
 		applicationUrl() {
-			return window.location.origin + generateUrl('/apps/tables/app/' + this.context.id)
+			const technicalName = this.isOwner ? this.context.technicalName : null
+			return window.location.origin + generateUrl('/apps/tables/app/' + (technicalName || this.context.id))
+		},
+		isOwner() {
+			return this.context.owner === getCurrentUser()?.uid
 		},
 		menuItems() {
 			return [...(this.context.menuItems ?? [])].sort((a, b) => a.order - b.order)
@@ -952,6 +963,11 @@ export default {
 	&__emoji {
 		width: 20px;
 		text-align: center;
+	}
+
+	&__technical-name {
+		color: var(--color-text-maxcontrast);
+		font-size: 0.9em;
 	}
 
 	&__link {

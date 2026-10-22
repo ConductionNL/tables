@@ -19,6 +19,7 @@
 					:name="branch.item.label"
 					:to="branch.item.targetType === 'url' ? undefined : menuItemRoute(branch.item, context.id)"
 					:href="branch.item.targetType === 'url' ? branch.item.url : undefined"
+					:target="branch.item.targetType === 'url' ? '_blank' : undefined"
 					:class="{ active: isActive(branch.item) }"
 					:allow-collapse="branch.children.length > 0"
 					:open="branch.children.some(child => isActive(child))"
@@ -32,6 +33,7 @@
 							:name="child.label"
 							:to="child.targetType === 'url' ? undefined : menuItemRoute(child, context.id)"
 							:href="child.targetType === 'url' ? child.url : undefined"
+							:target="child.targetType === 'url' ? '_blank' : undefined"
 							:class="{ active: isActive(child) }"
 							data-cy="application-nav-item">
 							<template #icon>

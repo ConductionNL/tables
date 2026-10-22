@@ -53,6 +53,7 @@ final class ContextServiceTest extends TestCase {
 	private MockObject $permissionsService;
 	private ContextSchemeService&MockObject $contextSchemeService;
 	private array $constructorArgs;
+	private MockObject $urlGenerator;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -74,7 +75,7 @@ final class ContextServiceTest extends TestCase {
 		$gridL10n->method('t')->willReturnArgument(0);
 		$shareService = $this->createMock(ShareService::class);
 		$navigationManager = $this->createMock(INavigationManager::class);
-		$urlGenerator = $this->createMock(IURLGenerator::class);
+		$this->urlGenerator = $this->createMock(IURLGenerator::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnCallback(static fn (string $text): string => 'translated ' . $text);
 
@@ -92,7 +93,7 @@ final class ContextServiceTest extends TestCase {
 			$shareService,
 			false,
 			$navigationManager,
-			$urlGenerator,
+			$this->urlGenerator,
 			$this->tableMapper,
 			$this->viewMapper,
 			$this->widgetService,
@@ -134,6 +135,96 @@ final class ContextServiceTest extends TestCase {
 
 	private function scheme(array $nodes, ?array $pages, ?array $menuItems, array $gridViews = []): ContextScheme {
 		return new ContextScheme('Intake', 'star', '', $nodes, $pages, ['addTables' => [], 'modifyTables' => []], $menuItems, $gridViews);
+	}
+
+	public function testUpdateRejectsAMalformedTechnicalName(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->service->update(7, 'user-1', null, null, null, null, null, 'Not A Name');
+	}
+
+	public function testUpdateRejectsATechnicalNameTheOwnerAlreadyUses(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+		$this->contextMapper->method('isTechnicalNameTaken')->with('intake', 'user-1', 7)->willReturn(true);
+
+		$this->expectException(InvalidArgumentException::class);
+		$this->expectExceptionMessage('already exists');
+		$this->service->update(7, 'user-1', null, null, null, null, null, 'intake');
+	}
+
+	public function testUpdateClearsTheTechnicalNameWhenItIsBlank(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setTechnicalName('old');
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$updated = $this->service->update(7, 'user-1', null, null, null, null, null, '  ');
+
+		$this->assertNull($updated->getTechnicalName());
+	}
+
+	public function testUpdateLeavesTheTechnicalNameAloneWhenNoneIsGiven(): void {
+		$context = $this->contextWithMenu(7, []);
+		$context->setTechnicalName('intake');
+		$this->contextMapper->method('findById')->willReturn($context);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->contextMapper->expects($this->never())->method('isTechnicalNameTaken');
+
+		$updated = $this->service->update(7, 'user-1', 'Renamed', null, null, null);
+
+		$this->assertSame('intake', $updated->getTechnicalName());
+	}
+
+	public function testCreateStoresTheTechnicalName(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(8);
+			return $context;
+		});
+		$this->pageMapper->method('insert')->willReturnCallback(static function (Page $page): Page {
+			$page->setId(3);
+			return $page;
+		});
+		$this->menuItemMapper->method('findByContextId')->willReturn([]);
+
+		$created = $this->service->create('Intake portal', 'heart', '', [], 'user-1', 0, [], 'intake');
+
+		$this->assertSame('intake', $created->getTechnicalName());
+	}
+
+	public function testNavigationLinksOwnApplicationsByTechnicalNameAndOthersById(): void {
+		$own = $this->contextWithMenu(7, []);
+		$own->setTechnicalName('intake');
+		$shared = $this->contextWithMenu(8, []);
+		$shared->setOwnerId('someone-else');
+		$shared->setTechnicalName('intake');
+		$this->contextMapper->method('findForNavBar')->willReturn([$own, $shared]);
+		$linked = [];
+		$this->urlGenerator->method('linkToRoute')->willReturnCallback(static function (string $route, array $parameters) use (&$linked): string {
+			$linked[] = $parameters['contextId'];
+			return '/app/' . $parameters['contextId'];
+		});
+
+		$this->service->addToNavigation('user-1');
+
+		$this->assertSame(['intake', 8], $linked);
+	}
+
+	public function testImportGivesTheApplicationTheTechnicalNameOfTheScheme(): void {
+		$names = [];
+		$service = $this->getMockBuilder(ContextService::class)
+			->setConstructorArgs($this->constructorArgs)
+			->onlyMethods(['update', 'tableService', 'viewService', 'columnService'])
+			->getMock();
+		$service->method('update')->willReturnCallback(function (int $contextId, string $userId, ?string $name, ?string $icon, ?string $description, ?array $nodes, ?array $menuItems = null, ?string $technicalName = null) use (&$names): Context {
+			$names[] = $technicalName;
+			return $this->contextWithMenu($contextId, []);
+		});
+		$this->contextMapper->method('findById')->willReturn($this->contextWithMenu(7, []));
+
+		$service->importScheme(7, new ContextScheme('Intake', 'star', '', [], null, ['addTables' => [], 'modifyTables' => []], null, [], 'intake'), 'user-1');
+
+		$this->assertSame(['intake'], $names);
 	}
 
 	public function testImportSetsTheNodesThenThePagesThenTheMenu(): void {
