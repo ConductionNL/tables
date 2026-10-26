@@ -23,6 +23,8 @@ require_once __DIR__ . '/Database/DatabaseTestCase.php';
 
 require_once __DIR__ . '/Db/Row2MapperTestDependencies.php';
 
+require_once __DIR__ . '/JsonSchema/SchemaFixtures.php';
+
 if (!interface_exists(\OCP\Share\ShareReview\IShareReviewSource::class)) {
 	require_once __DIR__ . '/ShareReview/Stubs.php';
 }
