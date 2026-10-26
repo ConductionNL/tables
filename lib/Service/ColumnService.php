@@ -366,6 +366,7 @@ class ColumnService extends SuperService {
 		int $columnId,
 		?string $userId,
 		ColumnDto $columnDto,
+		bool $allowMissingFormat = false,
 	):Column {
 		try {
 			/** @var Column $item */
@@ -395,7 +396,7 @@ class ColumnService extends SuperService {
 			}
 			// a column whose format went missing can still be edited, as long as it keeps its subtype
 			if ($item->getType() !== $previousType || $item->getSubtype() !== $previousSubtype) {
-				$this->assertSubtypeIsKnown($item->getType(), $item->getSubtype());
+				$this->assertSubtypeIsKnown($item->getType(), $item->getSubtype(), $allowMissingFormat);
 			}
 			if ($columnDto->getNumberPrefix() !== null) {
 				$item->setNumberPrefix($columnDto->getNumberPrefix());
@@ -530,11 +531,12 @@ class ColumnService extends SuperService {
 
 	/**
 	 * A subtype has to be built in or name a usable format. Text and number columns may leave it
-	 * empty, which makes them behave as their base subtype.
+	 * empty, which makes them behave as their base subtype. Only imports may name a format that is
+	 * not installed, so nothing is lost; the column is then broken.
 	 *
 	 * @throws BadRequestError
 	 */
-	private function assertSubtypeIsKnown(string $type, string $subtype): void {
+	private function assertSubtypeIsKnown(string $type, string $subtype, bool $allowMissingFormat = false): void {
 		if (Column::isBuiltInSubtype($type, $subtype) || ($subtype === '' && Column::supportsFormats($type))) {
 			return;
 		}
@@ -543,7 +545,7 @@ class ColumnService extends SuperService {
 			$translatedMessage = $this->l->t('Columns of type %1$s have no subtype %2$s.', [$type, $subtype]);
 			throw new BadRequestError($translatedMessage, 0, null, $translatedMessage);
 		}
-		if ($this->formatService->findUsableFormat($formatName, $type) === null) {
+		if (!$allowMissingFormat && $this->formatService->findUsableFormat($formatName, $type) === null) {
 			$translatedMessage = $this->l->t('There is no format %1$s for columns of type %2$s.', [$formatName, $type]);
 			throw new BadRequestError($translatedMessage, 0, null, $translatedMessage);
 		}

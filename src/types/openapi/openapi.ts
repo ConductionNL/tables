@@ -582,6 +582,66 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/ocs/v2.php/apps/tables/api/2/tables/import/schema": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * [api v2] Create a table from a JSON Schema
+         * @description Accepts JSON Schema 2020-12 and draft-07. Format definitions the schema carries are installed as custom formats when they are missing. When one differs from an installed format, an administrator gets 409 with those formats and chooses with resolution[{technicalName}]=keep or replace; for anyone else the installed format is kept and a warning says so. Columns whose format stays missing keep their subtype and are broken.
+         */
+        readonly post: operations["table_schema-import-as-new-table"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/ocs/v2.php/apps/tables/api/2/tables/{id}/schema/preview-changes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * [api v2] Preview importing a JSON Schema into a table
+         * @description Shows the columns that would be added, changed and removed, the format definitions that would be installed or conflict, and the columns that would be broken, without changing anything. Columns are matched by x-tables-uuid and otherwise by technical name.
+         */
+        readonly post: operations["table_schema-preview-changes"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/ocs/v2.php/apps/tables/api/2/tables/{id}/schema/import": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        /**
+         * [api v2] Import a JSON Schema into a table
+         * @description Applies what the preview shows: columns the schema has are changed, new ones are added and columns it does not have are removed. Formats are handled as when creating a table.
+         */
+        readonly post: operations["table_schema-import-into-table"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/ocs/v2.php/apps/tables/api/2/tables/scheme": {
         readonly parameters: {
             readonly query?: never;
@@ -1247,6 +1307,26 @@ export type components = {
             readonly updatedAt: string;
             readonly updatedBy: string | null;
         };
+        readonly FormatPackImport: {
+            readonly created: readonly string[];
+            readonly replaced: readonly string[];
+            readonly kept: readonly string[];
+            readonly unchanged: readonly string[];
+            readonly skipped: readonly string[];
+        };
+        readonly FormatPackItem: {
+            readonly technicalName: string;
+            readonly label: string;
+            /** @enum {string} */
+            readonly status: "new" | "unchanged" | "update" | "conflict" | "core";
+            readonly version: string;
+            readonly installedVersion: string | null;
+            readonly installedSource: string | null;
+            /** Format: int64 */
+            readonly columnsCount: number;
+            /** Format: int64 */
+            readonly failingValuesCount: number;
+        };
         readonly ImportState: {
             /** Format: int64 */
             readonly found_columns_count: number;
@@ -1439,6 +1519,45 @@ export type components = {
             readonly errors: {
                 readonly [key: string]: string;
             };
+        };
+        readonly SchemaChanges: {
+            readonly title: {
+                readonly from: string;
+                readonly to: string;
+            };
+            readonly description: {
+                readonly from: string;
+                readonly to: string;
+            };
+            readonly columns: {
+                readonly add: readonly components["schemas"]["SchemaColumnSummary"][];
+                readonly modify: readonly {
+                    readonly technicalName: string;
+                    readonly title: string;
+                    readonly changes: {
+                        readonly [key: string]: {
+                            readonly from: Record<string, never>;
+                            readonly to: Record<string, never>;
+                        };
+                    };
+                }[];
+                readonly remove: readonly components["schemas"]["SchemaColumnSummary"][];
+            };
+            readonly formats: readonly components["schemas"]["FormatPackItem"][];
+            readonly brokenColumns: readonly string[];
+            readonly hasChanges: boolean;
+        };
+        readonly SchemaColumnSummary: {
+            readonly technicalName: string;
+            readonly title: string;
+            readonly type: string;
+            readonly subtype: string;
+        };
+        readonly SchemaImport: {
+            readonly table: components["schemas"]["Table"];
+            readonly formats: components["schemas"]["FormatPackImport"];
+            readonly brokenColumns: readonly string[];
+            readonly warnings: readonly string[];
         };
         readonly Share: {
             /** Format: int64 */
@@ -5341,6 +5460,370 @@ export interface operations {
                             readonly meta: components["schemas"]["OCSMeta"];
                             readonly data: {
                                 readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "table_schema-import-as-new-table": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** @description The JSON Schema of the table */
+                    readonly schema: {
+                        readonly [key: string]: Record<string, never>;
+                    };
+                    /**
+                     * @description keep or replace, by technical name of a format
+                     * @default {}
+                     */
+                    readonly resolution?: {
+                        readonly [key: string]: string;
+                    };
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Table created */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["SchemaImport"];
+                        };
+                    };
+                };
+            };
+            /** @description The schema cannot be imported, with the property that is the reason */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description Formats would change and have no resolution */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                                readonly conflicts: readonly components["schemas"]["FormatPackItem"][];
+                            };
+                        };
+                    };
+                };
+            };
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "table_schema-preview-changes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description Table ID */
+                readonly id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** @description The JSON Schema of the table */
+                    readonly schema: {
+                        readonly [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+        readonly responses: {
+            /** @description What the import would change */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["SchemaChanges"];
+                        };
+                    };
+                };
+            };
+            /** @description The schema cannot be imported, with the property that is the reason */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "table_schema-import-into-table": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description Table ID */
+                readonly id: number;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** @description The JSON Schema of the table */
+                    readonly schema: {
+                        readonly [key: string]: Record<string, never>;
+                    };
+                    /**
+                     * @description keep or replace, by technical name of a format
+                     * @default {}
+                     */
+                    readonly resolution?: {
+                        readonly [key: string]: string;
+                    };
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Table changed */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["SchemaImport"];
+                        };
+                    };
+                };
+            };
+            /** @description The schema cannot be imported, with the property that is the reason */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Formats would change and have no resolution */
+            readonly 409: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                                readonly conflicts: readonly components["schemas"]["FormatPackItem"][];
                             };
                         };
                     };

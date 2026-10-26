@@ -346,6 +346,30 @@ namespace OCA\Tables;
  *     unchanged: list<string>,
  *     skipped: list<string>,
  * }
+ * @psalm-type TablesSchemaImport = array{
+ *     table: TablesTable,
+ *     formats: TablesFormatPackImport,
+ *     brokenColumns: list<string>,
+ *     warnings: list<string>,
+ * }
+ * @psalm-type TablesSchemaColumnSummary = array{
+ *     technicalName: string,
+ *     title: string,
+ *     type: string,
+ *     subtype: string,
+ * }
+ * @psalm-type TablesSchemaChanges = array{
+ *     title: array{from: string, to: string},
+ *     description: array{from: string, to: string},
+ *     columns: array{
+ *         add: list<TablesSchemaColumnSummary>,
+ *         modify: list<array{technicalName: string, title: string, changes: array<string, array{from: mixed, to: mixed}>}>,
+ *         remove: list<TablesSchemaColumnSummary>,
+ *     },
+ *     formats: list<TablesFormatPackItem>,
+ *     brokenColumns: list<string>,
+ *     hasChanges: bool,
+ * }
  */
 class ResponseDefinitions {
 }

@@ -25,7 +25,8 @@ use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\DB\Exception;
 
 /**
- * Installs, previews and removes format packs.
+ * Installs, previews and removes format packs, and installs the format definitions a JSON Schema
+ * carries in the same way.
  *
  * @psalm-import-type TablesFormatPack from ResponseDefinitions
  * @psalm-import-type TablesFormatPackItem from ResponseDefinitions
@@ -93,14 +94,27 @@ class FormatPackService {
 	 * @throws InternalError
 	 */
 	public function preview(FormatPack $pack): array {
+		return $this->previewDefinitions($pack->formats, $pack->source());
+	}
+
+	/**
+	 * What installing the definitions with the source would do to each of them. A definition is
+	 * an update when the installed format has the same source and an older version.
+	 *
+	 * @param array<string, PackFormat> $definitions
+	 * @return list<TablesFormatPackItem>
+	 * @throws Exception
+	 * @throws InternalError
+	 */
+	public function previewDefinitions(array $definitions, string $source): array {
 		$installedFormats = $this->installedFormatsByName();
 		$items = [];
-		foreach ($pack->formats as $packFormat) {
+		foreach ($definitions as $packFormat) {
 			$installed = $installedFormats[$packFormat->technicalName] ?? null;
-			$status = $this->statusOf($pack, $packFormat, $installed);
+			$status = $this->statusOf($source, $packFormat, $installed);
 			$impact = ['columnsCount' => 0, 'failingValuesCount' => 0];
 			if ($installed !== null && in_array($status, [self::STATUS_UPDATE, self::STATUS_CONFLICT], true)) {
-				$impact = $this->formatValueValidator->previewFormatChange($this->replacementOf($installed, $packFormat, $pack));
+				$impact = $this->formatValueValidator->previewFormatChange($this->replacementOf($installed, $packFormat, $source));
 			}
 			$items[] = [
 				'technicalName' => $packFormat->technicalName,
@@ -129,12 +143,27 @@ class FormatPackService {
 	 * @throws InternalError
 	 */
 	public function import(FormatPack $pack, array $resolutions, ?string $userId): array {
+		return $this->importDefinitions($pack->formats, $pack->source(), $resolutions, $userId);
+	}
+
+	/**
+	 * Installs the definitions with the source, as import() does for a pack.
+	 *
+	 * @param array<string, PackFormat> $definitions
+	 * @param array<string, string> $resolutions keep or replace, by technical name
+	 * @return TablesFormatPackImport
+	 * @throws BadRequestError when a resolution is not keep or replace
+	 * @throws FormatImportConflictError when formats that would change have no resolution
+	 * @throws Exception
+	 * @throws InternalError
+	 */
+	public function importDefinitions(array $definitions, string $source, array $resolutions, ?string $userId): array {
 		foreach ($resolutions as $technicalName => $resolution) {
 			if (!in_array($resolution, [self::RESOLUTION_KEEP, self::RESOLUTION_REPLACE], true)) {
 				throw new BadRequestError('The resolution for ' . $technicalName . ' has to be keep or replace.');
 			}
 		}
-		$preview = $this->preview($pack);
+		$preview = $this->previewDefinitions($definitions, $source);
 		$unresolved = array_values(array_filter(
 			$preview,
 			static fn (array $item): bool => in_array($item['status'], [self::STATUS_UPDATE, self::STATUS_CONFLICT], true) && !isset($resolutions[$item['technicalName']]),
@@ -148,10 +177,10 @@ class FormatPackService {
 		$now = $this->now();
 		foreach ($preview as $item) {
 			$technicalName = $item['technicalName'];
-			$packFormat = $pack->formats[$technicalName];
+			$packFormat = $definitions[$technicalName];
 			$installed = $installedFormats[$technicalName] ?? null;
 			if ($installed === null) {
-				$this->formatMapper->insert($this->createFormat($packFormat, $pack, $userId, $now));
+				$this->formatMapper->insert($this->createFormat($packFormat, $source, $userId, $now));
 				$result['created'][] = $technicalName;
 			} elseif ($item['status'] === self::STATUS_CORE) {
 				$result['skipped'][] = $technicalName;
@@ -160,7 +189,7 @@ class FormatPackService {
 			} elseif ($resolutions[$technicalName] === self::RESOLUTION_KEEP) {
 				$result['kept'][] = $technicalName;
 			} else {
-				$replacement = $this->replacementOf($installed, $packFormat, $pack);
+				$replacement = $this->replacementOf($installed, $packFormat, $source);
 				$replacement->setUpdatedAt($now);
 				$replacement->setUpdatedBy($userId);
 				$this->formatMapper->update($replacement);
@@ -197,7 +226,7 @@ class FormatPackService {
 	/**
 	 * @return 'new'|'unchanged'|'update'|'conflict'|'core'
 	 */
-	private function statusOf(FormatPack $pack, PackFormat $packFormat, ?Format $installed): string {
+	private function statusOf(string $source, PackFormat $packFormat, ?Format $installed): string {
 		if ($installed === null) {
 			return self::STATUS_NEW;
 		}
@@ -207,41 +236,41 @@ class FormatPackService {
 		if ($installed->getType() === $packFormat->type && $installed->getRuleAsArray() == $packFormat->rule) {
 			return self::STATUS_UNCHANGED;
 		}
-		if ($installed->getSource() === $pack->source() && version_compare($packFormat->version, $installed->getVersion(), '>')) {
+		if ($installed->getSource() === $source && version_compare($packFormat->version, $installed->getVersion(), '>')) {
 			return self::STATUS_UPDATE;
 		}
 		return self::STATUS_CONFLICT;
 	}
 
-	private function createFormat(PackFormat $packFormat, FormatPack $pack, ?string $userId, string $now): Format {
+	private function createFormat(PackFormat $packFormat, string $source, ?string $userId, string $now): Format {
 		$format = new Format();
 		$format->setTechnicalName($packFormat->technicalName);
 		$format->setType($packFormat->type);
 		$format->setEnabled(true);
 		$format->setCreatedAt($now);
 		$format->setCreatedBy($userId);
-		$this->applyPackDefinition($format, $packFormat, $pack);
+		$this->applyPackDefinition($format, $packFormat, $source);
 		$format->setUpdatedAt($now);
 		$format->setUpdatedBy($userId);
 		return $format;
 	}
 
 	/**
-	 * The installed format with the pack's definition, not yet stored. Its type stays, as columns
+	 * The installed format with the incoming definition, not yet stored. Its type stays, as columns
 	 * refer to the format by name and type.
 	 */
-	private function replacementOf(Format $installed, PackFormat $packFormat, FormatPack $pack): Format {
+	private function replacementOf(Format $installed, PackFormat $packFormat, string $source): Format {
 		$replacement = clone $installed;
-		$this->applyPackDefinition($replacement, $packFormat, $pack);
+		$this->applyPackDefinition($replacement, $packFormat, $source);
 		return $replacement;
 	}
 
-	private function applyPackDefinition(Format $format, PackFormat $packFormat, FormatPack $pack): void {
+	private function applyPackDefinition(Format $format, PackFormat $packFormat, string $source): void {
 		$format->setLabel($packFormat->label);
 		$format->setExample($packFormat->example);
 		$format->setRule(json_encode($packFormat->rule, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
 		$format->setVersion($packFormat->version);
-		$format->setSource($pack->source());
+		$format->setSource($source);
 	}
 
 	/**
