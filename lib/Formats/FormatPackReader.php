@@ -96,17 +96,20 @@ class FormatPackReader {
 				throw $this->badRequest($this->l->t('The format %1$s in the pack %2$s is not an object.', [$technicalName, $name]));
 			}
 			$rule = $this->resolveRule($technicalName, $definitions, []);
-			$formats[$technicalName] = $this->createFormat($technicalName, $definition, $rule);
+			$formats[$technicalName] = $this->readFormat($technicalName, $definition, $rule);
 		}
 		return new FormatPack($name, $label, $version, $formats);
 	}
 
 	/**
+	 * Checks one format definition, as a pack or a JSON Schema carries it, naming the format when
+	 * it cannot be used.
+	 *
 	 * @param array<array-key, mixed> $definition
-	 * @param array<string, mixed> $rule
+	 * @param array<string, mixed> $rule the rule of the definition, with any sameAs replaced
 	 * @throws BadRequestError
 	 */
-	private function createFormat(string $technicalName, array $definition, array $rule): PackFormat {
+	public function readFormat(string $technicalName, array $definition, array $rule): PackFormat {
 		$label = $definition['label'] ?? null;
 		$type = $definition['type'] ?? null;
 		$version = $definition['version'] ?? null;

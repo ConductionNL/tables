@@ -1,0 +1,315 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://cloud.example.org/ocs/v2.php/apps/tables/api/2/tables/7/schema",
+    "title": "Customers",
+    "description": "Everyone we work for",
+    "type": "object",
+    "properties": {
+        "name": {
+            "title": "Name",
+            "description": "Full name",
+            "type": "string",
+            "maxLength": 100,
+            "x-tables-column-id": 101,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000101",
+            "x-tables-type": "text",
+            "x-tables-subtype": "line"
+        },
+        "notes": {
+            "title": "Notes",
+            "type": "string",
+            "x-tables-column-id": 102,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000102",
+            "x-tables-type": "text",
+            "x-tables-subtype": "long"
+        },
+        "profile": {
+            "title": "Profile",
+            "type": "string",
+            "contentMediaType": "text/html",
+            "x-tables-column-id": 103,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000103",
+            "x-tables-type": "text",
+            "x-tables-subtype": "rich"
+        },
+        "website": {
+            "title": "Website",
+            "type": "object",
+            "properties": {
+                "title": {
+                    "type": "string"
+                },
+                "url": {
+                    "type": "string",
+                    "format": "uri"
+                },
+                "providerId": {
+                    "type": "string"
+                }
+            },
+            "required": [
+                "url"
+            ],
+            "x-tables-link-providers": [
+                "url",
+                "files"
+            ],
+            "x-tables-column-id": 104,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000104",
+            "x-tables-type": "text",
+            "x-tables-subtype": "link"
+        },
+        "email": {
+            "title": "Email",
+            "type": "string",
+            "format": "email",
+            "examples": [
+                "jane@example.org"
+            ],
+            "x-tables-unique": true,
+            "x-tables-column-id": 105,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000105",
+            "x-tables-type": "text",
+            "x-tables-subtype": "email"
+        },
+        "homepage": {
+            "title": "Homepage",
+            "type": "string",
+            "format": "uri",
+            "examples": [
+                "https://example.org/path"
+            ],
+            "x-tables-column-id": 106,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000106",
+            "x-tables-type": "text",
+            "x-tables-subtype": "url"
+        },
+        "postcode": {
+            "title": "Postcode",
+            "type": "string",
+            "examples": [
+                "1234 AB"
+            ],
+            "x-tables-format-definition": {
+                "technicalName": "nl.postcode",
+                "label": "Postal code (NL)",
+                "example": "1234 AB",
+                "type": "text",
+                "rule": {
+                    "match": [
+                        {
+                            "var": "value"
+                        },
+                        "^[1-9][0-9]{3} ?[A-Z]{2}$"
+                    ]
+                },
+                "version": "1.0.0"
+            },
+            "pattern": "^[1-4]",
+            "x-tables-allowed-pattern": "^[1-4]",
+            "x-tables-column-id": 107,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000107",
+            "x-tables-type": "text",
+            "x-tables-subtype": "nl.postcode"
+        },
+        "bsn": {
+            "title": "BSN",
+            "type": "string",
+            "format": "nl.bsn",
+            "x-tables-broken": true,
+            "x-tables-column-id": 108,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000108",
+            "x-tables-type": "text",
+            "x-tables-subtype": "nl.bsn"
+        },
+        "revenue": {
+            "title": "Revenue",
+            "type": "number",
+            "minimum": 0,
+            "x-tables-decimals": 2,
+            "x-tables-prefix": "€",
+            "x-tables-column-id": 109,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000109",
+            "x-tables-type": "number",
+            "x-tables-subtype": ""
+        },
+        "employees": {
+            "title": "Employees",
+            "type": "integer",
+            "default": 1,
+            "x-tables-decimals": 0,
+            "x-tables-column-id": 110,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000110",
+            "x-tables-type": "number",
+            "x-tables-subtype": ""
+        },
+        "rating": {
+            "title": "Rating",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 5,
+            "x-tables-decimals": 0,
+            "x-tables-column-id": 111,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000111",
+            "x-tables-type": "number",
+            "x-tables-subtype": "stars"
+        },
+        "progress": {
+            "title": "Progress",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100,
+            "x-tables-decimals": 0,
+            "x-tables-suffix": "%",
+            "x-tables-column-id": 112,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000112",
+            "x-tables-type": "number",
+            "x-tables-subtype": "progress"
+        },
+        "status": {
+            "title": "Status",
+            "type": "integer",
+            "enum": [
+                1,
+                2
+            ],
+            "default": 1,
+            "x-tables-options": [
+                {
+                    "id": 1,
+                    "label": "Lead"
+                },
+                {
+                    "id": 2,
+                    "label": "Customer"
+                }
+            ],
+            "x-tables-column-id": 113,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000113",
+            "x-tables-type": "selection",
+            "x-tables-subtype": ""
+        },
+        "sectors": {
+            "title": "Sectors",
+            "type": "array",
+            "items": {
+                "type": "integer",
+                "enum": [
+                    1,
+                    2
+                ]
+            },
+            "uniqueItems": true,
+            "default": [
+                2
+            ],
+            "x-tables-options": [
+                {
+                    "id": 1,
+                    "label": "Government"
+                },
+                {
+                    "id": 2,
+                    "label": "Education"
+                }
+            ],
+            "x-tables-column-id": 114,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000114",
+            "x-tables-type": "selection",
+            "x-tables-subtype": "multi"
+        },
+        "active": {
+            "title": "Active",
+            "type": "boolean",
+            "default": true,
+            "x-tables-column-id": 115,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000115",
+            "x-tables-type": "selection",
+            "x-tables-subtype": "check"
+        },
+        "last_contact": {
+            "title": "Last contact",
+            "type": "string",
+            "format": "date-time",
+            "x-tables-column-id": 116,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000116",
+            "x-tables-type": "datetime",
+            "x-tables-subtype": ""
+        },
+        "since": {
+            "title": "Customer since",
+            "type": "string",
+            "format": "date",
+            "x-tables-default": "today",
+            "x-tables-column-id": 117,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000117",
+            "x-tables-type": "datetime",
+            "x-tables-subtype": "date"
+        },
+        "call_at": {
+            "title": "Call at",
+            "type": "string",
+            "pattern": "^[0-9]{2}:[0-9]{2}$",
+            "x-tables-column-id": 118,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000118",
+            "x-tables-type": "datetime",
+            "x-tables-subtype": "time"
+        },
+        "owner": {
+            "title": "Owner",
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "integer"
+                    }
+                },
+                "required": [
+                    "id",
+                    "type"
+                ]
+            },
+            "maxItems": 1,
+            "x-tables-usergroup": {
+                "multipleItems": false,
+                "selectUsers": true,
+                "selectGroups": false,
+                "selectTeams": false,
+                "showUserStatus": true,
+                "default": []
+            },
+            "x-tables-column-id": 119,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000119",
+            "x-tables-type": "usergroup",
+            "x-tables-subtype": ""
+        },
+        "contact": {
+            "title": "Contact person",
+            "type": "string",
+            "format": "uuid",
+            "x-tables-column-id": 120,
+            "x-tables-uuid": "0192a6e4-0000-7000-8000-000000000120",
+            "x-tables-type": "relation",
+            "x-tables-subtype": "",
+            "x-tables-custom-settings": {
+                "relationType": "table",
+                "targetId": 3,
+                "labelColumn": 12,
+                "width": 200
+            }
+        }
+    },
+    "required": [
+        "name",
+        "email"
+    ],
+    "additionalProperties": false,
+    "x-tables-table": {
+        "uuid": "0192a6e4-0000-7000-8000-000000000007",
+        "emoji": "🏢"
+    }
+}

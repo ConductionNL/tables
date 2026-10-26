@@ -292,7 +292,8 @@ class Column extends EntitySuper implements JsonSerializable {
 
 	public function setter(string $name, array $args): void {
 		if ($name === 'uuid') {
-			$this->setOrAssignUuid((string)$args[0]);
+			// null asks for a new uuid, so it must not become an empty one
+			$this->setOrAssignUuid($args[0] === null ? null : (string)$args[0]);
 			return;
 		}
 
