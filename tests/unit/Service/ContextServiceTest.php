@@ -77,6 +77,7 @@ final class ContextServiceTest extends TestCase {
 	public function testTransferLogsPreviousAndNewOwner(): void {
 		$context = new Context();
 		$context->setId(7);
+		$context->setTechnicalName('crm');
 		$context->setOwnerId('alice');
 		$context->setOwnerType(Application::OWNER_TYPE_USER);
 		$this->contextMapper->method('findById')->with(7)->willReturn($context);

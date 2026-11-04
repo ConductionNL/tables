@@ -13,6 +13,8 @@ use JsonSerializable;
 /**
  * @method getName(): string
  * @method setName(string $value): void
+ * @method getTechnicalName(): string
+ * @method setTechnicalName(string $value): void
  * @method getIcon(): string
  * @method setIcon(string $value): void
  * @method getDescription(): string
@@ -31,6 +33,7 @@ use JsonSerializable;
  */
 class Context extends EntitySuper implements JsonSerializable {
 	protected ?string $name = null;
+	protected ?string $technicalName = null;
 	protected ?string $icon = null;
 	protected ?string $description = null;
 	protected ?string $ownerId = null;
@@ -53,6 +56,7 @@ class Context extends EntitySuper implements JsonSerializable {
 		$data = [
 			'id' => $this->getId(),
 			'name' => $this->getName(),
+			'technicalName' => $this->getTechnicalName(),
 			'iconName' => $this->getIcon(),
 			'description' => $this->getDescription(),
 			'owner' => $this->getOwnerId(),

@@ -1,0 +1,64 @@
+<?php
+
+declare(strict_types=1);
+
+/**
+ * SPDX-FileCopyrightText: 2026 Nextcloud GmbH and Nextcloud contributors
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+namespace OCA\Tables\Migration;
+
+use OCA\Tables\AppInfo\Application;
+use PHPUnit\Framework\TestCase;
+
+final class Version2500Date20261026000000Test extends TestCase {
+	public function testNamesTablesAndViewsByTheirNodeId(): void {
+		$names = Version2500Date20261026000000::backfillNodeNames([
+			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
+			$this->row(2, 10, 7, Application::NODE_TYPE_VIEW),
+		]);
+
+		$this->assertSame([1 => 'table_5', 2 => 'view_7'], $names);
+	}
+
+	public function testKeepsExistingNamesAndAvoidsThem(): void {
+		$names = Version2500Date20261026000000::backfillNodeNames([
+			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
+			$this->row(2, 10, 6, Application::NODE_TYPE_TABLE, 'table_5'),
+		]);
+
+		$this->assertSame([1 => 'table_5_2'], $names);
+	}
+
+	public function testAddsASuffixWhenTheSameNodeIsInAnApplicationTwice(): void {
+		$names = Version2500Date20261026000000::backfillNodeNames([
+			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
+			$this->row(2, 10, 5, Application::NODE_TYPE_TABLE),
+			$this->row(3, 11, 5, Application::NODE_TYPE_TABLE),
+		]);
+
+		$this->assertSame([1 => 'table_5', 2 => 'table_5_2', 3 => 'table_5'], $names);
+	}
+
+	public function testTreatsAnEmptyNameAsMissing(): void {
+		$names = Version2500Date20261026000000::backfillNodeNames([
+			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE, ''),
+		]);
+
+		$this->assertSame([1 => 'table_5'], $names);
+	}
+
+	/**
+	 * @return array{id: int, context_id: int, node_id: int, node_type: int, technical_name: ?string}
+	 */
+	private function row(int $id, int $contextId, int $nodeId, int $nodeType, ?string $technicalName = null): array {
+		return [
+			'id' => $id,
+			'context_id' => $contextId,
+			'node_id' => $nodeId,
+			'node_type' => $nodeType,
+			'technical_name' => $technicalName,
+		];
+	}
+}

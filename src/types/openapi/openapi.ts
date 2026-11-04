@@ -1193,6 +1193,7 @@ export type components = {
             /** Format: int64 */
             readonly id: number;
             readonly name: string;
+            readonly technicalName: string;
             readonly iconName: string;
             readonly description: string;
             readonly owner: string;
@@ -7090,7 +7091,7 @@ export interface operations {
                      */
                     readonly description?: string;
                     /**
-                     * @description optional nodes to be connected to this context
+                     * @description optional nodes to be connected to this context, each with an optional technical name unique within the context
                      * @default []
                      */
                     readonly nodes?: readonly {
@@ -7100,7 +7101,13 @@ export interface operations {
                         readonly type: number;
                         /** Format: int64 */
                         readonly permissions?: number;
+                        readonly technicalName?: string;
                     }[];
+                    /**
+                     * @description Technical name of the context, unique among the owner's contexts; application_{id} when omitted
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };
@@ -7280,7 +7287,7 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes. */
+                    /** @description provide this parameter to set a new list of nodes, optionally renaming them by technical name. */
                     readonly nodes?: {
                         /** Format: int64 */
                         readonly id: number;
@@ -7290,7 +7297,13 @@ export interface operations {
                         readonly permissions: number;
                         /** Format: int64 */
                         readonly order: number;
+                        readonly technicalName?: string;
                     } | null;
+                    /**
+                     * @description provide this parameter to set a new technical name
+                     * @default null
+                     */
+                    readonly technicalName?: string | null;
                 };
             };
         };

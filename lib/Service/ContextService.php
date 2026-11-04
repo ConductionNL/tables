@@ -32,6 +32,7 @@ use OCA\Tables\Model\FilterSet;
 use OCA\Tables\Model\SortRuleSet;
 use OCA\Tables\Model\ViewSettings;
 use OCA\Tables\Service\Support\AuditLogServiceInterface;
+use OCA\Tables\Validation\TechnicalNameValidator;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\TTransactional;
@@ -130,10 +131,18 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
-	 * @throws Exception|PermissionError|InvalidArgumentException
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}> $nodes
+	 * @param ?string $technicalName the name, unique among the owner's applications; application_{id} when null
+	 * @throws Exception|PermissionError|InvalidArgumentException|BadRequestError
 	 */
-	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType): Context {
+	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $technicalName = null): Context {
+		if ($technicalName !== null) {
+			$this->assertTechnicalNameValid($technicalName);
+			if (isset($this->contextMapper->findTechnicalNamesForOwner($ownerType, $ownerId)[$technicalName])) {
+				throw new BadRequestError('The technical name ' . $technicalName . ' is already used by another application of the owner.');
+			}
+		}
+
 		$context = new Context();
 		$context->setName(trim($name));
 		$context->setIcon(trim($iconName));
@@ -141,8 +150,8 @@ class ContextService {
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType($ownerType);
 
-		$this->atomic(function () use ($context, $nodes): void {
-			$this->contextMapper->insert($context);
+		$this->atomic(function () use ($context, $nodes, $technicalName): void {
+			$this->insertContext($context, $technicalName);
 
 			if (!empty($nodes)) {
 				$context->resetUpdatedFields();
@@ -160,13 +169,21 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}> $nodes
 	 * @throws Exception
 	 * @throws DoesNotExistException
-	 * @throws PermissionError|MultipleObjectsReturnedException
+	 * @throws PermissionError|MultipleObjectsReturnedException|BadRequestError
 	 */
-	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes): Context {
+	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $technicalName = null): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
+
+		if ($technicalName !== null && $technicalName !== $context->getTechnicalName()) {
+			$this->assertTechnicalNameValid($technicalName);
+			if (isset($this->contextMapper->findTechnicalNamesForOwner($context->getOwnerType(), $context->getOwnerId())[$technicalName])) {
+				throw new BadRequestError('The technical name ' . $technicalName . ' is already used by another application of the owner.');
+			}
+			$context->setTechnicalName($technicalName);
+		}
 
 		if ($name !== null) {
 			$context->setName(trim($name));
@@ -203,17 +220,27 @@ class ContextService {
 				$key = sprintf('t%di%d', $node['type'], $node['id']);
 				if (isset($oldNodeResolvableIdMapper[$key])) {
 					$nodesBeingKept[$key] = $node;
-					if ($node['permissions'] !== $currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions']) {
-						$nodeRel = $this->contextNodeRelMapper->findById($currentNodes[$oldNodeResolvableIdMapper[$key]]['id']);
-						$updatedNodes[] = [
-							'nodeType' => $nodeRel->getNodeType(),
-							'nodeId' => $nodeRel->getNodeId(),
-							'previousPermissions' => $nodeRel->getPermissions(),
-							'permissions' => (int)$node['permissions'],
-						];
-						$nodeRel->setPermissions($node['permissions']);
-						$this->contextNodeRelMapper->update($nodeRel);
+					$currentNode = $currentNodes[$oldNodeResolvableIdMapper[$key]];
+					$hasNewPermissions = $node['permissions'] !== $currentNode['permissions'];
+					$hasNewTechnicalName = isset($node['technicalName']) && $node['technicalName'] !== $currentNode['technical_name'];
+					if ($hasNewPermissions || $hasNewTechnicalName) {
+						$nodeRel = $this->contextNodeRelMapper->findById($currentNode['id']);
+						if ($hasNewPermissions) {
+							$updatedNodes[] = [
+								'nodeType' => $nodeRel->getNodeType(),
+								'nodeId' => $nodeRel->getNodeId(),
+								'previousPermissions' => $nodeRel->getPermissions(),
+								'permissions' => (int)$node['permissions'],
+							];
+							$nodeRel->setPermissions($node['permissions']);
+						}
+						if ($hasNewTechnicalName) {
+							$this->assertNodeTechnicalNameAvailable($contextId, $node['technicalName']);
+							$nodeRel->setTechnicalName($node['technicalName']);
+						}
+						$this->updateNodeRelation($nodeRel);
 						$currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions'] = $nodeRel->getPermissions();
+						$currentNodes[$oldNodeResolvableIdMapper[$key]]['technical_name'] = $nodeRel->getTechnicalName();
 						$hasUpdatedNodeInformation = true;
 					}
 					unset($oldNodeResolvableIdMapper[$key]);
@@ -257,7 +284,8 @@ class ContextService {
 					$node['type'],
 					$node['permissions'],
 					$node['order'] ?? 100,
-					$userId
+					$userId,
+					$node['technicalName'] ?? null,
 				);
 				$currentNodes[$addedNode->getId()] = $addedNode->jsonSerialize();
 				$currentPages[$updatedContent->getPageId()]['content'][$updatedContent->getId()] = $updatedContent->jsonSerialize();
@@ -315,7 +343,11 @@ class ContextService {
 			}
 		}
 
-		$context = $this->contextMapper->update($context);
+		try {
+			$context = $this->contextMapper->update($context);
+		} catch (Exception $e) {
+			throw $this->toTechnicalNameConflict($e, 'The technical name is already used by another application of the owner.');
+		}
 		if (isset($currentNodes, $currentPages) && $hasUpdatedNodeInformation) {
 			$context->setNodes($currentNodes);
 			$context->setPages($currentPages);
@@ -385,6 +417,11 @@ class ContextService {
 			throw new BadRequestError('User does not exist');
 		}
 
+		$isOwnerChanging = $newOwnerId !== $context->getOwnerId() || $newOwnerType !== $context->getOwnerType();
+		if ($isOwnerChanging && isset($this->contextMapper->findTechnicalNamesForOwner($newOwnerType, $newOwnerId)[$context->getTechnicalName()])) {
+			throw new BadRequestError('The new owner already has an application with the technical name ' . $context->getTechnicalName() . '.');
+		}
+
 		$oldOwnerId = $context->getOwnerId();
 		$context->setOwnerId($newOwnerId);
 		$context->setOwnerType($newOwnerType);
@@ -414,9 +451,9 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId): ContextNodeRelation {
+	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId, ?string $technicalName = null): ContextNodeRelation {
 		$context = $this->contextMapper->findById($contextId, $userId);
-		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions);
+		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions, $technicalName);
 	}
 
 	/**
@@ -441,8 +478,8 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId): array {
-		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId);
+	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId, ?string $technicalName = null): array {
+		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId, $technicalName);
 		$pageContent = $this->addNodeRelToPage($relation, $order);
 		return [$relation, $pageContent];
 	}
@@ -459,16 +496,32 @@ class ContextService {
 	}
 
 	/**
+	 * @param ?string $technicalName the name, unique within the application; table_{id} or view_{id} when null
 	 * @throws Exception
+	 * @throws BadRequestError
 	 */
-	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions): ContextNodeRelation {
+	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions, ?string $technicalName = null): ContextNodeRelation {
+		if ($technicalName === null) {
+			$technicalName = self::uniqueTechnicalName(
+				self::defaultNodeTechnicalName($nodeType, $nodeId),
+				$this->contextNodeRelMapper->findTechnicalNamesByContextId($context->getId()),
+			);
+		} else {
+			$this->assertNodeTechnicalNameAvailable($context->getId(), $technicalName);
+		}
+
 		$contextNodeRel = new ContextNodeRelation();
 		$contextNodeRel->setContextId($context->getId());
 		$contextNodeRel->setNodeId($nodeId);
 		$contextNodeRel->setNodeType($nodeType);
 		$contextNodeRel->setPermissions($permissions);
+		$contextNodeRel->setTechnicalName($technicalName);
 
-		return $this->contextNodeRelMapper->insert($contextNodeRel);
+		try {
+			return $this->contextNodeRelMapper->insert($contextNodeRel);
+		} catch (Exception $e) {
+			throw $this->toTechnicalNameConflict($e, 'The technical name ' . $technicalName . ' is already used in this application.');
+		}
 	}
 
 	public function addNodeRelToPage(ContextNodeRelation $nodeRel, ?int $order = null, ?int $pageId = null): PageContent {
@@ -543,6 +596,104 @@ class ContextService {
 		return $this->pageContentMapper->update($pageContent);
 	}
 
+	/**
+	 * Inserts the context under the given technical name, or under
+	 * application_{id} when it is null. The id only exists after the insert, so the
+	 * row first gets a random name that no client can choose.
+	 *
+	 * @throws Exception
+	 */
+	protected function insertContext(Context $context, ?string $technicalName): void {
+		if ($technicalName !== null) {
+			$context->setTechnicalName($technicalName);
+			$this->contextMapper->insert($context);
+			return;
+		}
+
+		$context->setTechnicalName('_' . bin2hex(random_bytes(16)));
+		$this->contextMapper->insert($context);
+		$context->setTechnicalName(self::uniqueTechnicalName(
+			'application_' . $context->getId(),
+			$this->contextMapper->findTechnicalNamesForOwner($context->getOwnerType(), $context->getOwnerId()),
+		));
+		$this->contextMapper->update($context);
+	}
+
+	/**
+	 * @throws BadRequestError
+	 */
+	private function assertTechnicalNameValid(string $technicalName): void {
+		if (TechnicalNameValidator::isTooLong($technicalName)) {
+			throw new BadRequestError('Technical name must not exceed ' . TechnicalNameValidator::MAX_LENGTH . ' characters.');
+		}
+		if (!TechnicalNameValidator::hasValidCharacters($technicalName)) {
+			throw new BadRequestError('Technical name must start with a lowercase letter and contain only lowercase letters, numbers, and underscores.');
+		}
+	}
+
+	/**
+	 * @throws BadRequestError
+	 * @throws Exception
+	 */
+	private function assertNodeTechnicalNameAvailable(int $contextId, string $technicalName): void {
+		$this->assertTechnicalNameValid($technicalName);
+		if (isset($this->contextNodeRelMapper->findTechnicalNamesByContextId($contextId)[$technicalName])) {
+			throw new BadRequestError('The technical name ' . $technicalName . ' is already used in this application.');
+		}
+	}
+
+	/**
+	 * @throws Exception
+	 * @throws BadRequestError
+	 */
+	private function updateNodeRelation(ContextNodeRelation $nodeRel): void {
+		try {
+			$this->contextNodeRelMapper->update($nodeRel);
+		} catch (Exception $e) {
+			throw $this->toTechnicalNameConflict($e, 'The technical name ' . $nodeRel->getTechnicalName() . ' is already used in this application.');
+		}
+	}
+
+	/**
+	 * A unique constraint violation means another request took the technical name
+	 * after it was checked.
+	 */
+	private function toTechnicalNameConflict(Exception $e, string $message): BadRequestError|Exception {
+		if ($e->getReason() === Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+			return new BadRequestError($message, 0, $e);
+		}
+		return $e;
+	}
+
+	public static function defaultNodeTechnicalName(int $nodeType, int $nodeId): string {
+		return ($nodeType === Application::NODE_TYPE_VIEW ? 'view_' : 'table_') . $nodeId;
+	}
+
+	/**
+	 * The base name, or the base with the lowest free suffix _2, _3, ...
+	 *
+	 * @param array<string, true> $taken
+	 */
+	public static function uniqueTechnicalName(string $base, array $taken): string {
+		$technicalName = $base;
+		for ($suffix = 2; isset($taken[$technicalName]); $suffix++) {
+			$technicalName = $base . '_' . $suffix;
+		}
+		return $technicalName;
+	}
+
+	/**
+	 * The requested name when it is valid and free, else null.
+	 *
+	 * @param array<string, true> $taken
+	 */
+	private static function availableTechnicalName(mixed $requested, array $taken): ?string {
+		if (!is_string($requested) || !TechnicalNameValidator::isValid($requested) || isset($taken[$requested])) {
+			return null;
+		}
+		return $requested;
+	}
+
 	protected function insertPage(Context $context): void {
 		$page = new Page();
 		$page->setContextId($context->getId());
@@ -572,8 +723,8 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
-	 * @throws PermissionError|InvalidArgumentException
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}> $nodes
+	 * @throws PermissionError|InvalidArgumentException|BadRequestError
 	 */
 	protected function insertNodesFromArray(Context $context, array $nodes): void {
 		$addedNodes = [];
@@ -587,7 +738,7 @@ class ContextService {
 				if (!$this->permissionsService->canManageNodeById($nodeType, $nodeId, $userId)) {
 					throw new PermissionError(sprintf('Owner cannot manage node %d (type %d)', $nodeId, $nodeType));
 				}
-				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ);
+				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ, $node['technicalName'] ?? null);
 				$addedNodes[] = $contextNodeRel->jsonSerialize();
 			} catch (Exception $e) {
 				$this->logger->warning('Could not add node {ntype}/{nid} to context {cid}, skipping.', [
@@ -634,17 +785,27 @@ class ContextService {
 		$newContext->setDescription($context['description'] ?? '');
 		$newContext->setOwnerId($table->getOwnership() ?? '');
 		$newContext->setOwnerType($context['ownerType'] ?? 0);
-		$this->contextMapper->insert($newContext);
+		$this->insertContext($newContext, self::availableTechnicalName(
+			$context['technicalName'] ?? null,
+			$this->contextMapper->findTechnicalNamesForOwner($newContext->getOwnerType(), $newContext->getOwnerId()),
+		));
 
 		// insert nodes
 		$nodeRelMap = [];
 		if (!empty($context['nodes'])) {
+			$takenNodeNames = [];
 			foreach ($context['nodes'] as $nodeArr) {
+				$nodeType = (int)($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
+				$technicalName = self::availableTechnicalName($nodeArr['technical_name'] ?? $nodeArr['technicalName'] ?? null, $takenNodeNames)
+					?? self::uniqueTechnicalName(self::defaultNodeTechnicalName($nodeType, $table->getId()), $takenNodeNames);
+				$takenNodeNames[$technicalName] = true;
+
 				$contextNodeRel = new ContextNodeRelation();
 				$contextNodeRel->setContextId($newContext->getId());
 				$contextNodeRel->setNodeId($table->getId());
-				$contextNodeRel->setNodeType($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
+				$contextNodeRel->setNodeType($nodeType);
 				$contextNodeRel->setPermissions($nodeArr['permissions'] ?? 0);
+				$contextNodeRel->setTechnicalName($technicalName);
 				$contextNodeRel = $this->contextNodeRelMapper->insert($contextNodeRel);
 				$nodeRelMap[$nodeArr['id'] ?? null] = $contextNodeRel;
 			}

@@ -288,6 +288,7 @@
                 "required": [
                     "id",
                     "name",
+                    "technicalName",
                     "iconName",
                     "description",
                     "owner",
@@ -299,6 +300,9 @@
                         "format": "int64"
                     },
                     "name": {
+                        "type": "string"
+                    },
+                    "technicalName": {
                         "type": "string"
                     },
                     "iconName": {
@@ -12272,7 +12276,7 @@
                                     "nodes": {
                                         "type": "array",
                                         "default": [],
-                                        "description": "optional nodes to be connected to this context",
+                                        "description": "optional nodes to be connected to this context, each with an optional technical name unique within the context",
                                         "items": {
                                             "type": "object",
                                             "required": [
@@ -12291,9 +12295,18 @@
                                                 "permissions": {
                                                     "type": "integer",
                                                     "format": "int64"
+                                                },
+                                                "technicalName": {
+                                                    "type": "string"
                                                 }
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Technical name of the context, unique among the owner's contexts; application_{id} when omitted"
                                     }
                                 }
                             }
@@ -12701,7 +12714,7 @@
                                     "nodes": {
                                         "type": "object",
                                         "nullable": true,
-                                        "description": "provide this parameter to set a new list of nodes.",
+                                        "description": "provide this parameter to set a new list of nodes, optionally renaming them by technical name.",
                                         "required": [
                                             "id",
                                             "type",
@@ -12724,8 +12737,17 @@
                                             "order": {
                                                 "type": "integer",
                                                 "format": "int64"
+                                            },
+                                            "technicalName": {
+                                                "type": "string"
                                             }
                                         }
+                                    },
+                                    "technicalName": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "provide this parameter to set a new technical name"
                                     }
                                 }
                             }

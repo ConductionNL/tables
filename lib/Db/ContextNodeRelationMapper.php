@@ -66,4 +66,24 @@ class ContextNodeRelationMapper extends QBMapper {
 		$row = $this->findOneQuery($qb);
 		return $this->mapRowToEntity($row);
 	}
+
+	/**
+	 * @return array<string, true> the technical names used in the application
+	 * @throws Exception
+	 */
+	public function findTechnicalNamesByContextId(int $contextId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('technical_name')
+			->from($this->tableName)
+			->where($qb->expr()->eq('context_id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)));
+
+		$result = $qb->executeQuery();
+		$names = [];
+		while ($row = $result->fetchAssociative()) {
+			$names[(string)$row['technical_name']] = true;
+		}
+		$result->closeCursor();
+		return $names;
+	}
+
 }

@@ -19,6 +19,8 @@ use OCP\AppFramework\Db\Entity;
  * @method setNodeType(int $value): void
  * @method getPermissions(): int
  * @method setPermissions(int $value): void
+ * @method getTechnicalName(): string
+ * @method setTechnicalName(string $value): void
  */
 
 class ContextNodeRelation extends Entity implements \JsonSerializable {
@@ -26,6 +28,7 @@ class ContextNodeRelation extends Entity implements \JsonSerializable {
 	protected ?int $nodeId = null;
 	protected ?int $nodeType = null;
 	protected ?int $permissions = null;
+	protected ?string $technicalName = null;
 
 	public function __construct() {
 		$this->addType('id', 'integer');
@@ -41,7 +44,8 @@ class ContextNodeRelation extends Entity implements \JsonSerializable {
 			'contextId' => $this->getContextId(),
 			'nodeId' => $this->getNodeId(),
 			'nodeType' => $this->getNodeType(),
-			'permissions' => $this->getPermissions()
+			'permissions' => $this->getPermissions(),
+			'technicalName' => $this->getTechnicalName(),
 		];
 	}
 }
