@@ -280,6 +280,30 @@ class ContextMapper extends QBMapper {
 	}
 
 	/**
+	 * The applications the user can access that carry the given technical name.
+	 * Names are unique per owner, so more than one means applications of
+	 * different owners.
+	 *
+	 * @return Context[]
+	 * @throws Exception
+	 */
+	public function findAllByTechnicalName(string $technicalName, string $userId): array {
+		$qb = $this->getFindContextBaseQuery($userId);
+		$qb->andWhere($qb->expr()->eq('c.technical_name', $qb->createNamedParameter($technicalName)));
+
+		$result = $qb->executeQuery();
+		$rows = $result->fetchAllAssociative();
+		$result->closeCursor();
+
+		$rowsByContext = [];
+		foreach ($rows as $row) {
+			$rowsByContext[(int)$row['id']][] = $row;
+		}
+
+		return array_values(array_map(fn (array $contextRows) => $this->formatResultRows($contextRows, $userId), $rowsByContext));
+	}
+
+	/**
 	 * @return array<string, true> the technical names of the owner's applications
 	 * @throws Exception
 	 */

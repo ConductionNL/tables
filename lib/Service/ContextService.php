@@ -524,6 +524,30 @@ class ContextService {
 		}
 	}
 
+	/**
+	 * Finds the table or view that an application, both given by technical name,
+	 * calls by the given technical name.
+	 *
+	 * @throws BadRequestError when more than one application the user can access has the name
+	 * @throws NotFoundError
+	 * @throws Exception
+	 */
+	public function resolveNode(string $contextTechnicalName, string $nodeTechnicalName, string $userId): ContextNodeRelation {
+		$contexts = $this->contextMapper->findAllByTechnicalName($contextTechnicalName, $userId);
+		if ($contexts === []) {
+			throw new NotFoundError('No application with the technical name ' . $contextTechnicalName . ' found.');
+		}
+		if (count($contexts) > 1) {
+			throw new BadRequestError('The technical name ' . $contextTechnicalName . ' matches more than one application you can access.');
+		}
+
+		try {
+			return $this->contextNodeRelMapper->findByContextAndTechnicalName($contexts[0]->getId(), $nodeTechnicalName);
+		} catch (DoesNotExistException|MultipleObjectsReturnedException $e) {
+			throw new NotFoundError('The application ' . $contextTechnicalName . ' has no table or view with the technical name ' . $nodeTechnicalName . '.', 0, $e);
+		}
+	}
+
 	public function addNodeRelToPage(ContextNodeRelation $nodeRel, ?int $order = null, ?int $pageId = null): PageContent {
 		if ($pageId === null) {
 			// when no page is given, find the startpage to add it to

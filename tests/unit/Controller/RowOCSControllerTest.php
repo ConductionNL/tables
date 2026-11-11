@@ -9,11 +9,14 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Tests\Unit\Controller;
 
+use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Controller\RowOCSController;
+use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
@@ -31,12 +34,14 @@ class RowOCSControllerTest extends TestCase {
 	private RowService&MockObject $rowService;
 	private TableService&MockObject $tableService;
 	private FederationService&MockObject $federationService;
+	private ContextService&MockObject $contextService;
 	private RowOCSController $controller;
 
 	protected function setUp(): void {
 		$this->rowService = $this->createMock(RowService::class);
 		$this->tableService = $this->createMock(TableService::class);
 		$this->federationService = $this->createMock(FederationService::class);
+		$this->contextService = $this->createMock(ContextService::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
 		$this->controller = new RowOCSController(
@@ -48,6 +53,7 @@ class RowOCSControllerTest extends TestCase {
 			$this->tableService,
 			$this->createMock(ViewService::class),
 			$this->federationService,
+			$this->contextService,
 		);
 	}
 
@@ -57,6 +63,13 @@ class RowOCSControllerTest extends TestCase {
 		$row->setUuid(self::UUID);
 		$row->setTableId(3);
 		return $row;
+	}
+
+	private function contextNode(int $nodeType, int $nodeId): void {
+		$nodeRelation = new ContextNodeRelation();
+		$nodeRelation->setNodeType($nodeType);
+		$nodeRelation->setNodeId($nodeId);
+		$this->contextService->method('resolveNode')->with('crm', 'clients', 'user1')->willReturn($nodeRelation);
 	}
 
 	public function testGetRowResolvesTheIdentifierWithinTheTable(): void {
@@ -153,5 +166,49 @@ class RowOCSControllerTest extends TestCase {
 		$this->federationService->expects($this->never())->method('deleteRow');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->deleteRow('tables', 3, self::UUID)->getStatus());
+	}
+
+	public function testShowContextRowResolvesTheIdentifierWithinTheView(): void {
+		$this->contextNode(Application::NODE_TYPE_VIEW, 5);
+		$this->rowService->expects($this->once())
+			->method('resolveRowId')
+			->with(self::UUID, null, 5)
+			->willReturn(7);
+		$this->rowService->expects($this->once())
+			->method('findInNode')
+			->with(7, null, 5, 'user1')
+			->willReturn($this->row(7));
+
+		$response = $this->controller->showContextRow('crm', 'clients', self::UUID);
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$this->assertSame(self::UUID, $response->getData()['uuid']);
+	}
+
+	public function testShowContextRowRejectsAnInvalidIdentifier(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('resolveRowId')->willThrowException(new BadRequestError('invalid'));
+		$this->rowService->expects($this->never())->method('findInNode');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->showContextRow('crm', 'clients', 'not-a-row')->getStatus());
+	}
+
+	public function testUpdateContextRowResolvesTheIdentifierWithinTheTable(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('resolveRowId')->with(self::UUID, 3, null)->willReturn(7);
+		$this->rowService->expects($this->once())
+			->method('updateSet')
+			->with(7, null, [1 => 'value'], 'user1', 3)
+			->willReturn($this->row(7));
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->updateContextRow('crm', 'clients', self::UUID, [1 => 'value'])->getStatus());
+	}
+
+	public function testDeleteContextRowDoesNotFindAUuidOfAnotherTable(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('resolveRowId')->with(self::UUID, 3, null)->willThrowException(new NotFoundError('Row not found.'));
+		$this->rowService->expects($this->never())->method('delete');
+
+		$this->assertSame(Http::STATUS_NOT_FOUND, $this->controller->deleteContextRow('crm', 'clients', self::UUID)->getStatus());
 	}
 }

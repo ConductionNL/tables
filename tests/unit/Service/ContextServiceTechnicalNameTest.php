@@ -12,13 +12,16 @@ namespace OCA\Tables\Service;
 use OCA\Tables\AppInfo\Application;
 use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextMapper;
+use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
 use OCA\Tables\Db\PageContentMapper;
 use OCA\Tables\Db\PageMapper;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Service\Support\AuditLogServiceInterface;
+use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\IDBConnection;
 use OCP\INavigationManager;
 use OCP\IURLGenerator;
@@ -155,6 +158,39 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 
 		$this->expectException(BadRequestError::class);
 		$this->service->addNodeToContext($this->context(7, 'crm', 'alice'), 6, Application::NODE_TYPE_TABLE, Application::PERMISSION_READ, 'customers');
+	}
+
+	public function testResolveNodeFindsTheNodeOfTheOnlyMatchingContext(): void {
+		$relation = new ContextNodeRelation();
+		$this->contextMapper->method('findAllByTechnicalName')->with('crm', 'alice')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextNodeRelMapper->method('findByContextAndTechnicalName')->with(7, 'customers')->willReturn($relation);
+
+		$this->assertSame($relation, $this->service->resolveNode('crm', 'customers', 'alice'));
+	}
+
+	public function testResolveNodeRefusesAnAmbiguousContextName(): void {
+		$this->contextMapper->method('findAllByTechnicalName')->willReturn([
+			$this->context(7, 'crm', 'alice'),
+			$this->context(8, 'crm', 'bob'),
+		]);
+
+		$this->expectException(BadRequestError::class);
+		$this->service->resolveNode('crm', 'customers', 'alice');
+	}
+
+	public function testResolveNodeReportsAnUnknownContext(): void {
+		$this->contextMapper->method('findAllByTechnicalName')->willReturn([]);
+
+		$this->expectException(NotFoundError::class);
+		$this->service->resolveNode('crm', 'customers', 'alice');
+	}
+
+	public function testResolveNodeReportsAnUnknownNode(): void {
+		$this->contextMapper->method('findAllByTechnicalName')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextNodeRelMapper->method('findByContextAndTechnicalName')->willThrowException(new DoesNotExistException(''));
+
+		$this->expectException(NotFoundError::class);
+		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
 	private function context(int $id, string $technicalName, string $ownerId): Context {
