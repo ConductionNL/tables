@@ -1193,7 +1193,7 @@ export type components = {
             /** Format: int64 */
             readonly id: number;
             readonly name: string;
-            readonly technicalName: string;
+            readonly slug: string;
             readonly iconName: string;
             readonly description: string;
             readonly owner: string;
@@ -7091,7 +7091,7 @@ export interface operations {
                      */
                     readonly description?: string;
                     /**
-                     * @description optional nodes to be connected to this context, each with an optional technical name unique within the context
+                     * @description optional nodes to be connected to this context, each with an optional slug unique within the context
                      * @default []
                      */
                     readonly nodes?: readonly {
@@ -7101,13 +7101,13 @@ export interface operations {
                         readonly type: number;
                         /** Format: int64 */
                         readonly permissions?: number;
-                        readonly technicalName?: string;
+                        readonly slug?: string;
                     }[];
                     /**
-                     * @description Technical name of the context, unique among the owner's contexts; application_{id} when omitted
+                     * @description Slug of the context, unique among the owner's contexts; application-{id} when omitted
                      * @default null
                      */
-                    readonly technicalName?: string | null;
+                    readonly slug?: string | null;
                 };
             };
         };
@@ -7287,7 +7287,7 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes, optionally renaming them by technical name. */
+                    /** @description provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared. */
                     readonly nodes?: {
                         /** Format: int64 */
                         readonly id: number;
@@ -7297,13 +7297,13 @@ export interface operations {
                         readonly permissions: number;
                         /** Format: int64 */
                         readonly order: number;
-                        readonly technicalName?: string;
+                        readonly slug?: string;
                     } | null;
                     /**
-                     * @description provide this parameter to set a new technical name
+                     * @description provide this parameter to set a new slug; not possible while the context is shared
                      * @default null
                      */
-                    readonly technicalName?: string | null;
+                    readonly slug?: string | null;
                 };
             };
         };
@@ -7322,7 +7322,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description bad request */
+            /** @description invalid or taken slug, a slug change on a shared context, or another bad request */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;

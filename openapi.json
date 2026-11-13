@@ -288,7 +288,7 @@
                 "required": [
                     "id",
                     "name",
-                    "technicalName",
+                    "slug",
                     "iconName",
                     "description",
                     "owner",
@@ -302,7 +302,7 @@
                     "name": {
                         "type": "string"
                     },
-                    "technicalName": {
+                    "slug": {
                         "type": "string"
                     },
                     "iconName": {
@@ -12276,7 +12276,7 @@
                                     "nodes": {
                                         "type": "array",
                                         "default": [],
-                                        "description": "optional nodes to be connected to this context, each with an optional technical name unique within the context",
+                                        "description": "optional nodes to be connected to this context, each with an optional slug unique within the context",
                                         "items": {
                                             "type": "object",
                                             "required": [
@@ -12296,17 +12296,17 @@
                                                     "type": "integer",
                                                     "format": "int64"
                                                 },
-                                                "technicalName": {
+                                                "slug": {
                                                     "type": "string"
                                                 }
                                             }
                                         }
                                     },
-                                    "technicalName": {
+                                    "slug": {
                                         "type": "string",
                                         "nullable": true,
                                         "default": null,
-                                        "description": "Technical name of the context, unique among the owner's contexts; application_{id} when omitted"
+                                        "description": "Slug of the context, unique among the owner's contexts; application-{id} when omitted"
                                     }
                                 }
                             }
@@ -12714,7 +12714,7 @@
                                     "nodes": {
                                         "type": "object",
                                         "nullable": true,
-                                        "description": "provide this parameter to set a new list of nodes, optionally renaming them by technical name.",
+                                        "description": "provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared.",
                                         "required": [
                                             "id",
                                             "type",
@@ -12738,16 +12738,16 @@
                                                 "type": "integer",
                                                 "format": "int64"
                                             },
-                                            "technicalName": {
+                                            "slug": {
                                                 "type": "string"
                                             }
                                         }
                                     },
-                                    "technicalName": {
+                                    "slug": {
                                         "type": "string",
                                         "nullable": true,
                                         "default": null,
-                                        "description": "provide this parameter to set a new technical name"
+                                        "description": "provide this parameter to set a new slug; not possible while the context is shared"
                                     }
                                 }
                             }
@@ -12922,7 +12922,7 @@
                         }
                     },
                     "400": {
-                        "description": "bad request",
+                        "description": "invalid or taken slug, a slug change on a shared context, or another bad request",
                         "content": {
                             "application/json": {
                                 "schema": {

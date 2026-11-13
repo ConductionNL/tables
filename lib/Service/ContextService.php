@@ -32,7 +32,7 @@ use OCA\Tables\Model\FilterSet;
 use OCA\Tables\Model\SortRuleSet;
 use OCA\Tables\Model\ViewSettings;
 use OCA\Tables\Service\Support\AuditLogServiceInterface;
-use OCA\Tables\Validation\TechnicalNameValidator;
+use OCA\Tables\Validation\SlugValidator;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\TTransactional;
@@ -131,15 +131,15 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}> $nodes
-	 * @param ?string $technicalName the name, unique among the owner's applications; application_{id} when null
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
+	 * @param ?string $slug the name, unique among the owner's applications; application-{id} when null
 	 * @throws Exception|PermissionError|InvalidArgumentException|BadRequestError
 	 */
-	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $technicalName = null): Context {
-		if ($technicalName !== null) {
-			$this->assertTechnicalNameValid($technicalName);
-			if (isset($this->contextMapper->findTechnicalNamesForOwner($ownerType, $ownerId)[$technicalName])) {
-				throw new BadRequestError('The technical name ' . $technicalName . ' is already used by another application of the owner.');
+	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $slug = null): Context {
+		if ($slug !== null) {
+			$this->assertSlugValid($slug);
+			if (isset($this->contextMapper->findSlugsForOwner($ownerType, $ownerId)[$slug])) {
+				throw new BadRequestError('The slug ' . $slug . ' is already used by another application of the owner.');
 			}
 		}
 
@@ -150,8 +150,8 @@ class ContextService {
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType($ownerType);
 
-		$this->atomic(function () use ($context, $nodes, $technicalName): void {
-			$this->insertContext($context, $technicalName);
+		$this->atomic(function () use ($context, $nodes, $slug): void {
+			$this->insertContext($context, $slug);
 
 			if (!empty($nodes)) {
 				$context->resetUpdatedFields();
@@ -169,20 +169,21 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}> $nodes
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
 	 * @throws Exception
 	 * @throws DoesNotExistException
-	 * @throws PermissionError|MultipleObjectsReturnedException|BadRequestError
+	 * @throws PermissionError|MultipleObjectsReturnedException|BadRequestError|InternalError
 	 */
-	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $technicalName = null): Context {
+	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $slug = null): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
 
-		if ($technicalName !== null && $technicalName !== $context->getTechnicalName()) {
-			$this->assertTechnicalNameValid($technicalName);
-			if (isset($this->contextMapper->findTechnicalNamesForOwner($context->getOwnerType(), $context->getOwnerId())[$technicalName])) {
-				throw new BadRequestError('The technical name ' . $technicalName . ' is already used by another application of the owner.');
+		if ($slug !== null && $slug !== $context->getSlug()) {
+			$this->assertSlugsChangeable($context);
+			$this->assertSlugValid($slug);
+			if (isset($this->contextMapper->findSlugsForOwner($context->getOwnerType(), $context->getOwnerId())[$slug])) {
+				throw new BadRequestError('The slug ' . $slug . ' is already used by another application of the owner.');
 			}
-			$context->setTechnicalName($technicalName);
+			$context->setSlug($slug);
 		}
 
 		if ($name !== null) {
@@ -222,8 +223,8 @@ class ContextService {
 					$nodesBeingKept[$key] = $node;
 					$currentNode = $currentNodes[$oldNodeResolvableIdMapper[$key]];
 					$hasNewPermissions = $node['permissions'] !== $currentNode['permissions'];
-					$hasNewTechnicalName = isset($node['technicalName']) && $node['technicalName'] !== $currentNode['technical_name'];
-					if ($hasNewPermissions || $hasNewTechnicalName) {
+					$hasNewSlug = isset($node['slug']) && $node['slug'] !== $currentNode['slug'];
+					if ($hasNewPermissions || $hasNewSlug) {
 						$nodeRel = $this->contextNodeRelMapper->findById($currentNode['id']);
 						if ($hasNewPermissions) {
 							$updatedNodes[] = [
@@ -234,13 +235,14 @@ class ContextService {
 							];
 							$nodeRel->setPermissions($node['permissions']);
 						}
-						if ($hasNewTechnicalName) {
-							$this->assertNodeTechnicalNameAvailable($contextId, $node['technicalName']);
-							$nodeRel->setTechnicalName($node['technicalName']);
+						if ($hasNewSlug) {
+							$this->assertSlugsChangeable($context);
+							$this->assertNodeSlugAvailable($contextId, $node['slug']);
+							$nodeRel->setSlug($node['slug']);
 						}
 						$this->updateNodeRelation($nodeRel);
 						$currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions'] = $nodeRel->getPermissions();
-						$currentNodes[$oldNodeResolvableIdMapper[$key]]['technical_name'] = $nodeRel->getTechnicalName();
+						$currentNodes[$oldNodeResolvableIdMapper[$key]]['slug'] = $nodeRel->getSlug();
 						$hasUpdatedNodeInformation = true;
 					}
 					unset($oldNodeResolvableIdMapper[$key]);
@@ -285,7 +287,7 @@ class ContextService {
 					$node['permissions'],
 					$node['order'] ?? 100,
 					$userId,
-					$node['technicalName'] ?? null,
+					$node['slug'] ?? null,
 				);
 				$currentNodes[$addedNode->getId()] = $addedNode->jsonSerialize();
 				$currentPages[$updatedContent->getPageId()]['content'][$updatedContent->getId()] = $updatedContent->jsonSerialize();
@@ -346,7 +348,7 @@ class ContextService {
 		try {
 			$context = $this->contextMapper->update($context);
 		} catch (Exception $e) {
-			throw $this->toTechnicalNameConflict($e, 'The technical name is already used by another application of the owner.');
+			throw $this->toSlugConflict($e, 'The slug is already used by another application of the owner.');
 		}
 		if (isset($currentNodes, $currentPages) && $hasUpdatedNodeInformation) {
 			$context->setNodes($currentNodes);
@@ -418,8 +420,8 @@ class ContextService {
 		}
 
 		$isOwnerChanging = $newOwnerId !== $context->getOwnerId() || $newOwnerType !== $context->getOwnerType();
-		if ($isOwnerChanging && isset($this->contextMapper->findTechnicalNamesForOwner($newOwnerType, $newOwnerId)[$context->getTechnicalName()])) {
-			throw new BadRequestError('The new owner already has an application with the technical name ' . $context->getTechnicalName() . '.');
+		if ($isOwnerChanging && isset($this->contextMapper->findSlugsForOwner($newOwnerType, $newOwnerId)[$context->getSlug()])) {
+			throw new BadRequestError('The new owner already has an application with the slug ' . $context->getSlug() . '.');
 		}
 
 		$oldOwnerId = $context->getOwnerId();
@@ -451,9 +453,9 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId, ?string $technicalName = null): ContextNodeRelation {
+	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId, ?string $slug = null): ContextNodeRelation {
 		$context = $this->contextMapper->findById($contextId, $userId);
-		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions, $technicalName);
+		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions, $slug);
 	}
 
 	/**
@@ -478,8 +480,8 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId, ?string $technicalName = null): array {
-		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId, $technicalName);
+	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId, ?string $slug = null): array {
+		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId, $slug);
 		$pageContent = $this->addNodeRelToPage($relation, $order);
 		return [$relation, $pageContent];
 	}
@@ -496,18 +498,18 @@ class ContextService {
 	}
 
 	/**
-	 * @param ?string $technicalName the name, unique within the application; table_{id} or view_{id} when null
+	 * @param ?string $slug the name, unique within the application; table-{id} or view-{id} when null
 	 * @throws Exception
 	 * @throws BadRequestError
 	 */
-	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions, ?string $technicalName = null): ContextNodeRelation {
-		if ($technicalName === null) {
-			$technicalName = self::uniqueTechnicalName(
-				self::defaultNodeTechnicalName($nodeType, $nodeId),
-				$this->contextNodeRelMapper->findTechnicalNamesByContextId($context->getId()),
+	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions, ?string $slug = null): ContextNodeRelation {
+		if ($slug === null) {
+			$slug = self::uniqueSlug(
+				self::defaultNodeSlug($nodeType, $nodeId),
+				$this->contextNodeRelMapper->findSlugsByContextId($context->getId()),
 			);
 		} else {
-			$this->assertNodeTechnicalNameAvailable($context->getId(), $technicalName);
+			$this->assertNodeSlugAvailable($context->getId(), $slug);
 		}
 
 		$contextNodeRel = new ContextNodeRelation();
@@ -515,12 +517,12 @@ class ContextService {
 		$contextNodeRel->setNodeId($nodeId);
 		$contextNodeRel->setNodeType($nodeType);
 		$contextNodeRel->setPermissions($permissions);
-		$contextNodeRel->setTechnicalName($technicalName);
+		$contextNodeRel->setSlug($slug);
 
 		try {
 			return $this->contextNodeRelMapper->insert($contextNodeRel);
 		} catch (Exception $e) {
-			throw $this->toTechnicalNameConflict($e, 'The technical name ' . $technicalName . ' is already used in this application.');
+			throw $this->toSlugConflict($e, 'The slug ' . $slug . ' is already used in this application.');
 		}
 	}
 
@@ -597,24 +599,24 @@ class ContextService {
 	}
 
 	/**
-	 * Inserts the context under the given technical name, or under
-	 * application_{id} when it is null. The id only exists after the insert, so the
+	 * Inserts the context under the given slug, or under
+	 * application-{id} when it is null. The id only exists after the insert, so the
 	 * row first gets a random name that no client can choose.
 	 *
 	 * @throws Exception
 	 */
-	protected function insertContext(Context $context, ?string $technicalName): void {
-		if ($technicalName !== null) {
-			$context->setTechnicalName($technicalName);
+	protected function insertContext(Context $context, ?string $slug): void {
+		if ($slug !== null) {
+			$context->setSlug($slug);
 			$this->contextMapper->insert($context);
 			return;
 		}
 
-		$context->setTechnicalName('_' . bin2hex(random_bytes(16)));
+		$context->setSlug('_' . bin2hex(random_bytes(16)));
 		$this->contextMapper->insert($context);
-		$context->setTechnicalName(self::uniqueTechnicalName(
-			'application_' . $context->getId(),
-			$this->contextMapper->findTechnicalNamesForOwner($context->getOwnerType(), $context->getOwnerId()),
+		$context->setSlug(self::uniqueSlug(
+			'application-' . $context->getId(),
+			$this->contextMapper->findSlugsForOwner($context->getOwnerType(), $context->getOwnerId()),
 		));
 		$this->contextMapper->update($context);
 	}
@@ -622,12 +624,24 @@ class ContextService {
 	/**
 	 * @throws BadRequestError
 	 */
-	private function assertTechnicalNameValid(string $technicalName): void {
-		if (TechnicalNameValidator::isTooLong($technicalName)) {
-			throw new BadRequestError('Technical name must not exceed ' . TechnicalNameValidator::MAX_LENGTH . ' characters.');
+	private function assertSlugValid(string $slug): void {
+		if (SlugValidator::isTooLong($slug)) {
+			throw new BadRequestError('Slug must not exceed ' . SlugValidator::MAX_LENGTH . ' characters.');
 		}
-		if (!TechnicalNameValidator::hasValidCharacters($technicalName)) {
-			throw new BadRequestError('Technical name must start with a lowercase letter and contain only lowercase letters, numbers, and underscores.');
+		if (!SlugValidator::hasValidCharacters($slug)) {
+			throw new BadRequestError('Slug must start with a lowercase letter and contain only lowercase letters and numbers, in groups separated by single dashes.');
+		}
+	}
+
+	/**
+	 * Slugs of a shared application are fixed, so the routes others use keep working.
+	 *
+	 * @throws BadRequestError
+	 * @throws InternalError
+	 */
+	private function assertSlugsChangeable(Context $context): void {
+		if ($this->shareService->isContextShared($context)) {
+			throw new BadRequestError('The slugs of a shared application cannot be changed.');
 		}
 	}
 
@@ -635,10 +649,10 @@ class ContextService {
 	 * @throws BadRequestError
 	 * @throws Exception
 	 */
-	private function assertNodeTechnicalNameAvailable(int $contextId, string $technicalName): void {
-		$this->assertTechnicalNameValid($technicalName);
-		if (isset($this->contextNodeRelMapper->findTechnicalNamesByContextId($contextId)[$technicalName])) {
-			throw new BadRequestError('The technical name ' . $technicalName . ' is already used in this application.');
+	private function assertNodeSlugAvailable(int $contextId, string $slug): void {
+		$this->assertSlugValid($slug);
+		if (isset($this->contextNodeRelMapper->findSlugsByContextId($contextId)[$slug])) {
+			throw new BadRequestError('The slug ' . $slug . ' is already used in this application.');
 		}
 	}
 
@@ -650,36 +664,36 @@ class ContextService {
 		try {
 			$this->contextNodeRelMapper->update($nodeRel);
 		} catch (Exception $e) {
-			throw $this->toTechnicalNameConflict($e, 'The technical name ' . $nodeRel->getTechnicalName() . ' is already used in this application.');
+			throw $this->toSlugConflict($e, 'The slug ' . $nodeRel->getSlug() . ' is already used in this application.');
 		}
 	}
 
 	/**
-	 * A unique constraint violation means another request took the technical name
+	 * A unique constraint violation means another request took the slug
 	 * after it was checked.
 	 */
-	private function toTechnicalNameConflict(Exception $e, string $message): BadRequestError|Exception {
+	private function toSlugConflict(Exception $e, string $message): BadRequestError|Exception {
 		if ($e->getReason() === Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
 			return new BadRequestError($message, 0, $e);
 		}
 		return $e;
 	}
 
-	public static function defaultNodeTechnicalName(int $nodeType, int $nodeId): string {
-		return ($nodeType === Application::NODE_TYPE_VIEW ? 'view_' : 'table_') . $nodeId;
+	public static function defaultNodeSlug(int $nodeType, int $nodeId): string {
+		return ($nodeType === Application::NODE_TYPE_VIEW ? 'view-' : 'table-') . $nodeId;
 	}
 
 	/**
-	 * The base name, or the base with the lowest free suffix _2, _3, ...
+	 * The base slug, or the base with the lowest free suffix -2, -3, ...
 	 *
 	 * @param array<string, true> $taken
 	 */
-	public static function uniqueTechnicalName(string $base, array $taken): string {
-		$technicalName = $base;
-		for ($suffix = 2; isset($taken[$technicalName]); $suffix++) {
-			$technicalName = $base . '_' . $suffix;
+	public static function uniqueSlug(string $base, array $taken): string {
+		$slug = $base;
+		for ($suffix = 2; isset($taken[$slug]); $suffix++) {
+			$slug = $base . '-' . $suffix;
 		}
-		return $technicalName;
+		return $slug;
 	}
 
 	/**
@@ -687,8 +701,8 @@ class ContextService {
 	 *
 	 * @param array<string, true> $taken
 	 */
-	private static function availableTechnicalName(mixed $requested, array $taken): ?string {
-		if (!is_string($requested) || !TechnicalNameValidator::isValid($requested) || isset($taken[$requested])) {
+	private static function availableSlug(mixed $requested, array $taken): ?string {
+		if (!is_string($requested) || !SlugValidator::isValid($requested) || isset($taken[$requested])) {
 			return null;
 		}
 		return $requested;
@@ -723,7 +737,7 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}> $nodes
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
 	 * @throws PermissionError|InvalidArgumentException|BadRequestError
 	 */
 	protected function insertNodesFromArray(Context $context, array $nodes): void {
@@ -738,7 +752,7 @@ class ContextService {
 				if (!$this->permissionsService->canManageNodeById($nodeType, $nodeId, $userId)) {
 					throw new PermissionError(sprintf('Owner cannot manage node %d (type %d)', $nodeId, $nodeType));
 				}
-				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ, $node['technicalName'] ?? null);
+				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ, $node['slug'] ?? null);
 				$addedNodes[] = $contextNodeRel->jsonSerialize();
 			} catch (Exception $e) {
 				$this->logger->warning('Could not add node {ntype}/{nid} to context {cid}, skipping.', [
@@ -785,9 +799,9 @@ class ContextService {
 		$newContext->setDescription($context['description'] ?? '');
 		$newContext->setOwnerId($table->getOwnership() ?? '');
 		$newContext->setOwnerType($context['ownerType'] ?? 0);
-		$this->insertContext($newContext, self::availableTechnicalName(
-			$context['technicalName'] ?? null,
-			$this->contextMapper->findTechnicalNamesForOwner($newContext->getOwnerType(), $newContext->getOwnerId()),
+		$this->insertContext($newContext, self::availableSlug(
+			$context['slug'] ?? null,
+			$this->contextMapper->findSlugsForOwner($newContext->getOwnerType(), $newContext->getOwnerId()),
 		));
 
 		// insert nodes
@@ -796,16 +810,16 @@ class ContextService {
 			$takenNodeNames = [];
 			foreach ($context['nodes'] as $nodeArr) {
 				$nodeType = (int)($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
-				$technicalName = self::availableTechnicalName($nodeArr['technical_name'] ?? $nodeArr['technicalName'] ?? null, $takenNodeNames)
-					?? self::uniqueTechnicalName(self::defaultNodeTechnicalName($nodeType, $table->getId()), $takenNodeNames);
-				$takenNodeNames[$technicalName] = true;
+				$slug = self::availableSlug($nodeArr['slug'] ?? $nodeArr['slug'] ?? null, $takenNodeNames)
+					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeNames);
+				$takenNodeNames[$slug] = true;
 
 				$contextNodeRel = new ContextNodeRelation();
 				$contextNodeRel->setContextId($newContext->getId());
 				$contextNodeRel->setNodeId($table->getId());
 				$contextNodeRel->setNodeType($nodeType);
 				$contextNodeRel->setPermissions($nodeArr['permissions'] ?? 0);
-				$contextNodeRel->setTechnicalName($technicalName);
+				$contextNodeRel->setSlug($slug);
 				$contextNodeRel = $this->contextNodeRelMapper->insert($contextNodeRel);
 				$nodeRelMap[$nodeArr['id'] ?? null] = $contextNodeRel;
 			}

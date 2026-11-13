@@ -237,7 +237,7 @@ namespace OCA\Tables;
  * @psalm-type TablesContext = array{
  *   id: int,
  *   name: string,
- *   technicalName: string,
+ *   slug: string,
  *   iconName: string,
  *   description: string,
  *   owner: string,

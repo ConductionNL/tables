@@ -68,19 +68,19 @@ class ContextNodeRelationMapper extends QBMapper {
 	}
 
 	/**
-	 * @return array<string, true> the technical names used in the application
+	 * @return array<string, true> the slugs used in the application
 	 * @throws Exception
 	 */
-	public function findTechnicalNamesByContextId(int $contextId): array {
+	public function findSlugsByContextId(int $contextId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('technical_name')
+		$qb->select('slug')
 			->from($this->tableName)
 			->where($qb->expr()->eq('context_id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)));
 
 		$result = $qb->executeQuery();
 		$names = [];
 		while ($row = $result->fetchAssociative()) {
-			$names[(string)$row['technical_name']] = true;
+			$names[(string)$row['slug']] = true;
 		}
 		$result->closeCursor();
 		return $names;
