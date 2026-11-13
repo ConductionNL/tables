@@ -527,26 +527,26 @@ class ContextService {
 	}
 
 	/**
-	 * Finds the table or view that an application, both given by technical name,
-	 * calls by the given technical name.
+	 * Finds the table or view that an application, both given by slug,
+	 * calls by the given slug.
 	 *
-	 * @throws BadRequestError when more than one application the user can access has the name
+	 * @throws BadRequestError when more than one application the user can access has the slug
 	 * @throws NotFoundError
 	 * @throws Exception
 	 */
-	public function resolveNode(string $contextTechnicalName, string $nodeTechnicalName, string $userId): ContextNodeRelation {
-		$contexts = $this->contextMapper->findAllByTechnicalName($contextTechnicalName, $userId);
+	public function resolveNode(string $contextSlug, string $nodeSlug, string $userId): ContextNodeRelation {
+		$contexts = $this->contextMapper->findAllBySlug($contextSlug, $userId);
 		if ($contexts === []) {
-			throw new NotFoundError('No application with the technical name ' . $contextTechnicalName . ' found.');
+			throw new NotFoundError('No application with the slug ' . $contextSlug . ' found.');
 		}
 		if (count($contexts) > 1) {
-			throw new BadRequestError('The technical name ' . $contextTechnicalName . ' matches more than one application you can access.');
+			throw new BadRequestError('The slug ' . $contextSlug . ' matches more than one application you can access.');
 		}
 
 		try {
-			return $this->contextNodeRelMapper->findByContextAndTechnicalName($contexts[0]->getId(), $nodeTechnicalName);
+			return $this->contextNodeRelMapper->findByContextAndSlug($contexts[0]->getId(), $nodeSlug);
 		} catch (DoesNotExistException|MultipleObjectsReturnedException $e) {
-			throw new NotFoundError('The application ' . $contextTechnicalName . ' has no table or view with the technical name ' . $nodeTechnicalName . '.', 0, $e);
+			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.', 0, $e);
 		}
 	}
 

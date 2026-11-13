@@ -243,14 +243,14 @@ final class ContextServiceSlugTest extends TestCase {
 
 	public function testResolveNodeFindsTheNodeOfTheOnlyMatchingContext(): void {
 		$relation = new ContextNodeRelation();
-		$this->contextMapper->method('findAllByTechnicalName')->with('crm', 'alice')->willReturn([$this->context(7, 'crm', 'alice')]);
-		$this->contextNodeRelMapper->method('findByContextAndTechnicalName')->with(7, 'customers')->willReturn($relation);
+		$this->contextMapper->method('findAllBySlug')->with('crm', 'alice')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextNodeRelMapper->method('findByContextAndSlug')->with(7, 'customers')->willReturn($relation);
 
 		$this->assertSame($relation, $this->service->resolveNode('crm', 'customers', 'alice'));
 	}
 
 	public function testResolveNodeRefusesAnAmbiguousContextName(): void {
-		$this->contextMapper->method('findAllByTechnicalName')->willReturn([
+		$this->contextMapper->method('findAllBySlug')->willReturn([
 			$this->context(7, 'crm', 'alice'),
 			$this->context(8, 'crm', 'bob'),
 		]);
@@ -260,15 +260,15 @@ final class ContextServiceSlugTest extends TestCase {
 	}
 
 	public function testResolveNodeReportsAnUnknownContext(): void {
-		$this->contextMapper->method('findAllByTechnicalName')->willReturn([]);
+		$this->contextMapper->method('findAllBySlug')->willReturn([]);
 
 		$this->expectException(NotFoundError::class);
 		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
 	public function testResolveNodeReportsAnUnknownNode(): void {
-		$this->contextMapper->method('findAllByTechnicalName')->willReturn([$this->context(7, 'crm', 'alice')]);
-		$this->contextNodeRelMapper->method('findByContextAndTechnicalName')->willThrowException(new DoesNotExistException(''));
+		$this->contextMapper->method('findAllBySlug')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextNodeRelMapper->method('findByContextAndSlug')->willThrowException(new DoesNotExistException(''));
 
 		$this->expectException(NotFoundError::class);
 		$this->service->resolveNode('crm', 'customers', 'alice');

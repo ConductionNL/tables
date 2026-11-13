@@ -21,6 +21,7 @@ use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
+use OCA\Tables\Validation\SlugValidator;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\Attribute\ApiRoute;
 use OCP\AppFramework\Http\Attribute\NoAdminRequired;
@@ -33,7 +34,6 @@ use Psr\Log\LoggerInterface;
  * @psalm-import-type TablesRow from ResponseDefinitions
  */
 class RowOCSController extends AOCSController {
-	private const TECHNICAL_NAME_PATTERN = '[a-z][a-z0-9_]*';
 
 	public function __construct(
 		IRequest $request,
@@ -150,27 +150,27 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * [api v2] List the rows of a table or view of a context, both addressed by technical name
+	 * [api v2] List the rows of a table or view of a context, both addressed by slug
 	 *
 	 * The user needs read access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextName The technical name of the context
-	 * @param string $nodeName The technical name of the table or view within the context
+	 * @param string $contextSlug The slug of the context
+	 * @param string $nodeSlug The slug of the table or view within the context
 	 * @param int|null $limit Limit the number of returned rows
 	 * @param int|null $offset Skip this number of rows
 	 * @return DataResponse<Http::STATUS_OK, list<TablesRow>, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Rows returned
-	 * 400: The technical name matches more than one context
+	 * 400: The slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
-	#[ApiRoute(verb: 'GET', url: '/api/2/contexts/{contextName}/{nodeName}', requirements: ['contextName' => self::TECHNICAL_NAME_PATTERN, 'nodeName' => self::TECHNICAL_NAME_PATTERN])]
-	public function indexContextRows(string $contextName, string $nodeName, ?int $limit = null, ?int $offset = null): DataResponse {
+	#[ApiRoute(verb: 'GET', url: '/api/2/contexts/{contextSlug}/{nodeSlug}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
+	public function indexContextRows(string $contextSlug, string $nodeSlug, ?int $limit = null, ?int $offset = null): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextName, $nodeName, $this->userId);
+			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
 			$rows = $nodeRelation->getNodeType() === Application::NODE_TYPE_VIEW
 				? $this->rowService->findAllByView($nodeRelation->getNodeId(), $this->userId, $limit, $offset)
 				: $this->rowService->findAllByTable($nodeRelation->getNodeId(), $this->userId, $limit, $offset);
@@ -187,26 +187,26 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * [api v2] Get a row of a table or view of a context, both addressed by technical name
+	 * [api v2] Get a row of a table or view of a context, both addressed by slug
 	 *
 	 * The user needs read access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextName The technical name of the context
-	 * @param string $nodeName The technical name of the table or view within the context
+	 * @param string $contextSlug The slug of the context
+	 * @param string $nodeSlug The slug of the table or view within the context
 	 * @param string $rowId The identifier of the row, either its integer id or its uuid
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid row identifier, or the technical name matches more than one context
+	 * 400: Invalid row identifier, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
-	#[ApiRoute(verb: 'GET', url: '/api/2/contexts/{contextName}/{nodeName}/{rowId}', requirements: ['contextName' => self::TECHNICAL_NAME_PATTERN, 'nodeName' => self::TECHNICAL_NAME_PATTERN])]
-	public function showContextRow(string $contextName, string $nodeName, string $rowId): DataResponse {
+	#[ApiRoute(verb: 'GET', url: '/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
+	public function showContextRow(string $contextSlug, string $nodeSlug, string $rowId): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextName, $nodeName, $this->userId);
+			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
 			[$tableId, $viewId] = $this->splitNodeId($nodeRelation->getNodeType(), $nodeRelation->getNodeId());
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
 			return new DataResponse($this->rowService->findInNode($resolvedRowId, $tableId, $viewId, $this->userId)->jsonSerialize());
@@ -222,26 +222,26 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * [api v2] Create a row in a table or view of a context, both addressed by technical name
+	 * [api v2] Create a row in a table or view of a context, both addressed by slug
 	 *
 	 * The user needs create access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextName The technical name of the context
-	 * @param string $nodeName The technical name of the table or view within the context
+	 * @param string $contextSlug The slug of the context
+	 * @param string $nodeSlug The slug of the table or view within the context
 	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid request parameters, or the technical name matches more than one context
+	 * 400: Invalid request parameters, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
-	#[ApiRoute(verb: 'POST', url: '/api/2/contexts/{contextName}/{nodeName}', requirements: ['contextName' => self::TECHNICAL_NAME_PATTERN, 'nodeName' => self::TECHNICAL_NAME_PATTERN])]
-	public function createContextRow(string $contextName, string $nodeName, mixed $data): DataResponse {
+	#[ApiRoute(verb: 'POST', url: '/api/2/contexts/{contextSlug}/{nodeSlug}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
+	public function createContextRow(string $contextSlug, string $nodeSlug, mixed $data): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextName, $nodeName, $this->userId);
+			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -253,27 +253,27 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * [api v2] Update a row in a table or view of a context, both addressed by technical name
+	 * [api v2] Update a row in a table or view of a context, both addressed by slug
 	 *
 	 * The user needs update access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextName The technical name of the context
-	 * @param string $nodeName The technical name of the table or view within the context
+	 * @param string $contextSlug The slug of the context
+	 * @param string $nodeSlug The slug of the table or view within the context
 	 * @param string $rowId The identifier of the row to update, either its integer id or its uuid
 	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row updated
-	 * 400: Invalid request parameters or row identifier, or the technical name matches more than one context
+	 * 400: Invalid request parameters or row identifier, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
-	#[ApiRoute(verb: 'PUT', url: '/api/2/contexts/{contextName}/{nodeName}/{rowId}', requirements: ['contextName' => self::TECHNICAL_NAME_PATTERN, 'nodeName' => self::TECHNICAL_NAME_PATTERN])]
-	public function updateContextRow(string $contextName, string $nodeName, string $rowId, mixed $data): DataResponse {
+	#[ApiRoute(verb: 'PUT', url: '/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
+	public function updateContextRow(string $contextSlug, string $nodeSlug, string $rowId, mixed $data): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextName, $nodeName, $this->userId);
+			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -285,26 +285,26 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * [api v2] Delete a row in a table or view of a context, both addressed by technical name
+	 * [api v2] Delete a row in a table or view of a context, both addressed by slug
 	 *
 	 * The user needs delete access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextName The technical name of the context
-	 * @param string $nodeName The technical name of the table or view within the context
+	 * @param string $contextSlug The slug of the context
+	 * @param string $nodeSlug The slug of the table or view within the context
 	 * @param string $rowId The identifier of the row to delete, either its integer id or its uuid
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row deleted
-	 * 400: Invalid row identifier, or the technical name matches more than one context
+	 * 400: Invalid row identifier, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
 	 */
 	#[NoAdminRequired]
-	#[ApiRoute(verb: 'DELETE', url: '/api/2/contexts/{contextName}/{nodeName}/{rowId}', requirements: ['contextName' => self::TECHNICAL_NAME_PATTERN, 'nodeName' => self::TECHNICAL_NAME_PATTERN])]
-	public function deleteContextRow(string $contextName, string $nodeName, string $rowId): DataResponse {
+	#[ApiRoute(verb: 'DELETE', url: '/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
+	public function deleteContextRow(string $contextSlug, string $nodeSlug, string $rowId): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextName, $nodeName, $this->userId);
+			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {

@@ -1093,7 +1093,7 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/ocs/v2.php/apps/tables/api/2/contexts/{contextName}/{nodeName}": {
+    readonly "/ocs/v2.php/apps/tables/api/2/contexts/{contextSlug}/{nodeSlug}": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -1101,13 +1101,13 @@ export type paths = {
             readonly cookie?: never;
         };
         /**
-         * [api v2] List the rows of a table or view of a context, both addressed by technical name
+         * [api v2] List the rows of a table or view of a context, both addressed by slug
          * @description The user needs read access to the table or view, directly or through a context.
          */
         readonly get: operations["rowocs-index-context-rows"];
         readonly put?: never;
         /**
-         * [api v2] Create a row in a table or view of a context, both addressed by technical name
+         * [api v2] Create a row in a table or view of a context, both addressed by slug
          * @description The user needs create access to the table or view, directly or through a context.
          */
         readonly post: operations["rowocs-create-context-row"];
@@ -1117,7 +1117,7 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
-    readonly "/ocs/v2.php/apps/tables/api/2/contexts/{contextName}/{nodeName}/{rowId}": {
+    readonly "/ocs/v2.php/apps/tables/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}": {
         readonly parameters: {
             readonly query?: never;
             readonly header?: never;
@@ -1125,18 +1125,18 @@ export type paths = {
             readonly cookie?: never;
         };
         /**
-         * [api v2] Get a row of a table or view of a context, both addressed by technical name
+         * [api v2] Get a row of a table or view of a context, both addressed by slug
          * @description The user needs read access to the table or view, directly or through a context.
          */
         readonly get: operations["rowocs-show-context-row"];
         /**
-         * [api v2] Update a row in a table or view of a context, both addressed by technical name
+         * [api v2] Update a row in a table or view of a context, both addressed by slug
          * @description The user needs update access to the table or view, directly or through a context.
          */
         readonly put: operations["rowocs-update-context-row"];
         readonly post?: never;
         /**
-         * [api v2] Delete a row in a table or view of a context, both addressed by technical name
+         * [api v2] Delete a row in a table or view of a context, both addressed by slug
          * @description The user needs delete access to the table or view, directly or through a context.
          */
         readonly delete: operations["rowocs-delete-context-row"];
@@ -9293,10 +9293,10 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The technical name of the context */
-                readonly contextName: string;
-                /** @description The technical name of the table or view within the context */
-                readonly nodeName: string;
+                /** @description The slug of the context */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context */
+                readonly nodeSlug: string;
             };
             readonly cookie?: never;
         };
@@ -9316,7 +9316,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description The technical name matches more than one context */
+            /** @description The slug matches more than one context */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9404,10 +9404,10 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The technical name of the context */
-                readonly contextName: string;
-                /** @description The technical name of the table or view within the context */
-                readonly nodeName: string;
+                /** @description The slug of the context */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context */
+                readonly nodeSlug: string;
             };
             readonly cookie?: never;
         };
@@ -9436,7 +9436,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid request parameters, or the technical name matches more than one context */
+            /** @description Invalid request parameters, or the slug matches more than one context */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9524,10 +9524,10 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The technical name of the context */
-                readonly contextName: string;
-                /** @description The technical name of the table or view within the context */
-                readonly nodeName: string;
+                /** @description The slug of the context */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context */
+                readonly nodeSlug: string;
                 /** @description The identifier of the row, either its integer id or its uuid */
                 readonly rowId: string;
             };
@@ -9549,7 +9549,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid row identifier, or the technical name matches more than one context */
+            /** @description Invalid row identifier, or the slug matches more than one context */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9637,10 +9637,10 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The technical name of the context */
-                readonly contextName: string;
-                /** @description The technical name of the table or view within the context */
-                readonly nodeName: string;
+                /** @description The slug of the context */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context */
+                readonly nodeSlug: string;
                 /** @description The identifier of the row to update, either its integer id or its uuid */
                 readonly rowId: string;
             };
@@ -9671,7 +9671,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid request parameters or row identifier, or the technical name matches more than one context */
+            /** @description Invalid request parameters or row identifier, or the slug matches more than one context */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9759,10 +9759,10 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The technical name of the context */
-                readonly contextName: string;
-                /** @description The technical name of the table or view within the context */
-                readonly nodeName: string;
+                /** @description The slug of the context */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context */
+                readonly nodeSlug: string;
                 /** @description The identifier of the row to delete, either its integer id or its uuid */
                 readonly rowId: string;
             };
@@ -9784,7 +9784,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid row identifier, or the technical name matches more than one context */
+            /** @description Invalid row identifier, or the slug matches more than one context */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;

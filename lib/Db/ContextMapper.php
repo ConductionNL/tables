@@ -280,16 +280,16 @@ class ContextMapper extends QBMapper {
 	}
 
 	/**
-	 * The applications the user can access that carry the given technical name.
-	 * Names are unique per owner, so more than one means applications of
+	 * The applications the user can access that carry the given slug.
+	 * Slugs are unique per owner, so more than one means applications of
 	 * different owners.
 	 *
 	 * @return Context[]
 	 * @throws Exception
 	 */
-	public function findAllByTechnicalName(string $technicalName, string $userId): array {
+	public function findAllBySlug(string $slug, string $userId): array {
 		$qb = $this->getFindContextBaseQuery($userId);
-		$qb->andWhere($qb->expr()->eq('c.technical_name', $qb->createNamedParameter($technicalName)));
+		$qb->andWhere($qb->expr()->eq('c.slug', $qb->createNamedParameter($slug)));
 
 		$result = $qb->executeQuery();
 		$rows = $result->fetchAllAssociative();

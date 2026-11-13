@@ -91,12 +91,12 @@ class ContextNodeRelationMapper extends QBMapper {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function findByContextAndTechnicalName(int $contextId, string $technicalName): ContextNodeRelation {
+	public function findByContextAndSlug(int $contextId, string $slug): ContextNodeRelation {
 		$qb = $this->db->getQueryBuilder();
 		$qb->select('*')
 			->from($this->tableName)
 			->where($qb->expr()->eq('context_id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)))
-			->andWhere($qb->expr()->eq('technical_name', $qb->createNamedParameter($technicalName)));
+			->andWhere($qb->expr()->eq('slug', $qb->createNamedParameter($slug)));
 
 		return $this->findEntity($qb);
 	}

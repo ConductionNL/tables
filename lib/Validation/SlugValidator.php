@@ -16,7 +16,9 @@ namespace OCA\Tables\Validation;
  */
 class SlugValidator {
 	public const MAX_LENGTH = 200;
-	private const PATTERN = '/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/D';
+	/** The rule without delimiters, for route requirements */
+	public const ROUTE_PATTERN = '[a-z][a-z0-9]*(?:-[a-z0-9]+)*';
+	private const PATTERN = '/^' . self::ROUTE_PATTERN . '$/D';
 
 	public static function isValid(string $slug): bool {
 		return !self::isTooLong($slug) && self::hasValidCharacters($slug);
