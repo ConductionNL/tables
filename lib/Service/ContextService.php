@@ -169,6 +169,11 @@ class ContextService {
 	}
 
 	/**
+	 * The slugs in the request are checked against the nodes the application
+	 * has after the update, before anything is written, so nodes can swap slugs
+	 * or take the slug of a node removed in the same request. All changes are
+	 * written in one transaction.
+	 *
 	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
 	 * @throws Exception
 	 * @throws DoesNotExistException
@@ -196,6 +201,71 @@ class ContextService {
 			$context->setDescription(trim($description));
 		}
 
+		if ($nodes !== null) {
+			$this->assertNodeSlugsAfterUpdate($context, $nodes);
+		}
+
+		/** @var array{0: Context, 1: list<array{nodeType: int, nodeId: int}>, 2: list<array{nodeType: int, nodeId: int}>, 3: list<array{nodeType: int, nodeId: int, previousPermissions: int, permissions: int}>} $result */
+		$result = $this->atomic(fn (): array => $this->writeUpdate($context, $userId, $nodes), $this->dbc);
+		[$context, $addedNodes, $removedNodes, $updatedNodes] = $result;
+
+		$this->auditLogService->log(Operation::ContextUpdated, 'Tables application with ID %s was updated', [
+			'contextId' => $contextId,
+			'addedNodes' => $addedNodes,
+			'removedNodes' => $removedNodes,
+			'updatedNodes' => $updatedNodes,
+		]);
+
+		return $context;
+	}
+
+	/**
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
+	 * @throws BadRequestError|InternalError
+	 */
+	private function assertNodeSlugsAfterUpdate(Context $context, array $nodes): void {
+		$currentSlugs = [];
+		foreach ($context->getNodes() ?? [] as $currentNode) {
+			$currentSlugs[sprintf('t%di%d', $currentNode['node_type'], $currentNode['node_id'])] = $currentNode['slug'] ?? null;
+		}
+
+		$slugsAfterUpdate = [];
+		$renamesNodes = false;
+		foreach ($nodes as $node) {
+			$key = sprintf('t%di%d', $node['type'], $node['id']);
+			$requestedSlug = $node['slug'] ?? null;
+			if ($requestedSlug !== null) {
+				$this->assertSlugValid($requestedSlug);
+			}
+
+			$slugAfterUpdate = $requestedSlug;
+			if (array_key_exists($key, $currentSlugs)) {
+				$slugAfterUpdate = $requestedSlug ?? $currentSlugs[$key];
+				$renamesNodes = $renamesNodes || $slugAfterUpdate !== $currentSlugs[$key];
+			}
+			if ($slugAfterUpdate === null) {
+				continue;
+			}
+			if (isset($slugsAfterUpdate[$slugAfterUpdate])) {
+				throw new BadRequestError('The slug ' . $slugAfterUpdate . ' is already used in this application.');
+			}
+			$slugsAfterUpdate[$slugAfterUpdate] = true;
+		}
+
+		if ($renamesNodes) {
+			$this->assertSlugsChangeable($context);
+		}
+	}
+
+	/**
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}>|null $nodes
+	 * @return array{0: Context, 1: list<array{nodeType: int, nodeId: int}>, 2: list<array{nodeType: int, nodeId: int}>, 3: list<array{nodeType: int, nodeId: int, previousPermissions: int, permissions: int}>}
+	 * @throws Exception
+	 * @throws DoesNotExistException
+	 * @throws PermissionError|MultipleObjectsReturnedException|BadRequestError|InternalError
+	 */
+	private function writeUpdate(Context $context, string $userId, ?array $nodes): array {
+		$contextId = $context->getId();
 		$hasUpdatedNodeInformation = false;
 		$addedNodes = [];
 		$removedNodes = [];
@@ -221,31 +291,6 @@ class ContextService {
 				$key = sprintf('t%di%d', $node['type'], $node['id']);
 				if (isset($oldNodeResolvableIdMapper[$key])) {
 					$nodesBeingKept[$key] = $node;
-					$currentNode = $currentNodes[$oldNodeResolvableIdMapper[$key]];
-					$hasNewPermissions = $node['permissions'] !== $currentNode['permissions'];
-					$hasNewSlug = isset($node['slug']) && $node['slug'] !== $currentNode['slug'];
-					if ($hasNewPermissions || $hasNewSlug) {
-						$nodeRel = $this->contextNodeRelMapper->findById($currentNode['id']);
-						if ($hasNewPermissions) {
-							$updatedNodes[] = [
-								'nodeType' => $nodeRel->getNodeType(),
-								'nodeId' => $nodeRel->getNodeId(),
-								'previousPermissions' => $nodeRel->getPermissions(),
-								'permissions' => (int)$node['permissions'],
-							];
-							$nodeRel->setPermissions($node['permissions']);
-						}
-						if ($hasNewSlug) {
-							$this->assertSlugsChangeable($context);
-							$this->assertNodeSlugAvailable($contextId, $node['slug']);
-							$nodeRel->setSlug($node['slug']);
-						}
-						$this->updateNodeRelation($nodeRel);
-						$currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions'] = $nodeRel->getPermissions();
-						$currentNodes[$oldNodeResolvableIdMapper[$key]]['slug'] = $nodeRel->getSlug();
-						$hasUpdatedNodeInformation = true;
-					}
-					unset($oldNodeResolvableIdMapper[$key]);
 					continue;
 				}
 				$nodesBeingAdded[$key] = $node;
@@ -254,10 +299,8 @@ class ContextService {
 			foreach (array_diff_key($oldNodeResolvableIdMapper, $nodesBeingAdded, $nodesBeingKept) as $toRemoveId) {
 				$nodesBeingRemoved[$toRemoveId] = $currentNodes[$toRemoveId];
 			}
-			unset($nodesBeingKept);
 
-			$hasUpdatedNodeInformation = $hasUpdatedNodeInformation || !empty($nodesBeingAdded) || !empty($nodesBeingRemoved);
-
+			// removals go first, so their slugs are free for the nodes that are kept or added
 			foreach ($nodesBeingRemoved as $node) {
 				$removedNodes[] = ['nodeType' => (int)$node['node_type'], 'nodeId' => (int)$node['node_id']];
 				/** @var ContextNodeRelation $removedNode */
@@ -270,6 +313,46 @@ class ContextService {
 			}
 			unset($nodesBeingRemoved);
 
+			$changedNodeRelations = [];
+			foreach ($nodesBeingKept as $key => $node) {
+				$currentNode = $currentNodes[$oldNodeResolvableIdMapper[$key]];
+				$hasNewPermissions = $node['permissions'] !== $currentNode['permissions'];
+				$hasNewSlug = isset($node['slug']) && $node['slug'] !== ($currentNode['slug'] ?? null);
+				if (!$hasNewPermissions && !$hasNewSlug) {
+					continue;
+				}
+				$nodeRel = $this->contextNodeRelMapper->findById($currentNode['id']);
+				if ($hasNewPermissions) {
+					$updatedNodes[] = [
+						'nodeType' => $nodeRel->getNodeType(),
+						'nodeId' => $nodeRel->getNodeId(),
+						'previousPermissions' => $nodeRel->getPermissions(),
+						'permissions' => (int)$node['permissions'],
+					];
+					$nodeRel->setPermissions($node['permissions']);
+				}
+				if ($hasNewSlug) {
+					// a placeholder first, so two nodes can swap their slugs
+					$nodeRel->setSlug('_' . bin2hex(random_bytes(16)));
+					$this->updateNodeRelation($nodeRel);
+				}
+				$changedNodeRelations[$key] = [$nodeRel, $hasNewSlug ? $node['slug'] : null];
+			}
+			foreach ($changedNodeRelations as $key => [$nodeRel, $newSlug]) {
+				if ($newSlug !== null) {
+					$nodeRel->setSlug($newSlug);
+				}
+				$this->updateNodeRelation($nodeRel);
+				$currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions'] = $nodeRel->getPermissions();
+				$currentNodes[$oldNodeResolvableIdMapper[$key]]['slug'] = $nodeRel->getSlug();
+				$hasUpdatedNodeInformation = true;
+			}
+			unset($nodesBeingKept, $changedNodeRelations);
+
+			$hasUpdatedNodeInformation = $hasUpdatedNodeInformation || !empty($nodesBeingAdded) || !empty($removedNodes);
+
+			// nodes with a requested slug go first, so a default slug cannot take it
+			uasort($nodesBeingAdded, static fn (array $a, array $b): int => (int)!isset($a['slug']) <=> (int)!isset($b['slug']));
 			foreach ($nodesBeingAdded as $node) {
 				$nodeType = (int)($node['type']);
 				$nodeId = (int)($node['id']);
@@ -354,14 +437,7 @@ class ContextService {
 			$context->setNodes($currentNodes);
 			$context->setPages($currentPages);
 		}
-		$this->auditLogService->log(Operation::ContextUpdated, 'Tables application with ID %s was updated', [
-			'contextId' => $contextId,
-			'addedNodes' => $addedNodes,
-			'removedNodes' => $removedNodes,
-			'updatedNodes' => $updatedNodes,
-		]);
-
-		return $context;
+		return [$context, $addedNodes, $removedNodes, $updatedNodes];
 	}
 
 	/**
