@@ -443,6 +443,80 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->service->importContext($this->table(5), ['name' => 'CRM', 'nodes' => [['id' => 1, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE]]], 3);
 	}
 
+	public function testCreateWithoutASlugGivesTheApplicationItsDefaultSlug(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(7);
+			return $context;
+		});
+		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true]);
+		$this->contextMapper->expects($this->once())->method('update')
+			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'application-7-2'))
+			->willReturnArgument(0);
+
+		$context = $this->service->create('CRM', 'icon', '', [], 'alice', Application::OWNER_TYPE_USER);
+
+		$this->assertSame('application-7-2', $context->getSlug());
+	}
+
+	public function testImportedContextKeepsAFreeSlugAndFallsBackForTakenOrInvalidOnes(): void {
+		$this->contextMapper->method('insert')->willReturnArgument(0);
+		$this->contextMapper->method('findSlugsForOwner')->willReturn(['crm' => true]);
+		$insertedSlugs = [];
+		$this->contextNodeRelMapper->method('insert')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$insertedSlugs): ContextNodeRelation {
+				$insertedSlugs[] = $relation->getSlug();
+				return $relation;
+			});
+
+		$context = $this->service->importContext($this->table(5), [
+			'name' => 'CRM',
+			'slug' => 'sales',
+			'nodes' => [
+				['id' => 1, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE, 'slug' => 'clients'],
+				['id' => 2, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE, 'slug' => 'clients'],
+				['id' => 3, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE, 'slug' => 'Not A Slug'],
+			],
+		], 3);
+
+		$this->assertSame('sales', $context->getSlug());
+		$this->assertSame(['clients', 'table-5', 'table-5-2'], $insertedSlugs);
+	}
+
+	public function testImportedContextFallsBackToTheDefaultWhenTheOwnerUsesItsSlug(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(7);
+			return $context;
+		});
+		$this->contextMapper->method('findSlugsForOwner')->willReturn(['crm' => true]);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$context = $this->service->importContext($this->table(5), ['name' => 'CRM', 'slug' => 'crm', 'nodes' => [['id' => 1, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE]]], 3);
+
+		$this->assertSame('application-7', $context->getSlug());
+	}
+
+	public function testAddNodeTurnsAUniqueViolationIntoABadRequest(): void {
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
+		$this->contextNodeRelMapper->method('insert')->willThrowException($this->uniqueConstraintViolation());
+
+		$this->expectException(BadRequestError::class);
+		$this->service->addNodeToContext($this->context(7, 'crm', 'alice'), 6, Application::NODE_TYPE_TABLE, Application::PERMISSION_READ, 'customers');
+	}
+
+	public function testAddNodePassesOtherDatabaseErrorsOn(): void {
+		$failure = $this->createMock(Exception::class);
+		$failure->method('getReason')->willReturn(Exception::REASON_DATABASE_OBJECT_NOT_FOUND);
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
+		$this->contextNodeRelMapper->method('insert')->willThrowException($failure);
+
+		try {
+			$this->service->addNodeToContext($this->context(7, 'crm', 'alice'), 6, Application::NODE_TYPE_TABLE, Application::PERMISSION_READ, 'customers');
+			$this->fail('The database error was swallowed.');
+		} catch (Exception $e) {
+			$this->assertSame($failure, $e);
+		}
+	}
+
 	/**
 	 * @param array<string, true> $ownerSlugs
 	 */
