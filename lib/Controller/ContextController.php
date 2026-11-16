@@ -141,7 +141,7 @@ class ContextController extends AOCSController {
 	 * @param ?string $name provide this parameter to set a new name
 	 * @param ?string $iconName provide this parameter to set a new icon
 	 * @param ?string $description provide this parameter to set a new description
-	 * @param ?array{id: int, type: int, permissions: int, order: int, slug?: string} $nodes provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared.
+	 * @param ?array{id: int, type: int, permissions: int, order: int, slug?: string} $nodes provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug.
 	 * @param ?string $slug provide this parameter to set a new slug; not possible while the context is shared
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>

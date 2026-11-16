@@ -710,7 +710,9 @@ class ContextService {
 	}
 
 	/**
-	 * Slugs of a shared application are fixed, so the routes others use keep working.
+	 * While an application is shared, its slug and the slugs of the nodes it keeps
+	 * are fixed, so the routes others use keep working. Removing a node from it
+	 * frees that node's slug.
 	 *
 	 * @throws BadRequestError
 	 * @throws InternalError

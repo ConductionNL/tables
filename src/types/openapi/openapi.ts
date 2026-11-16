@@ -7287,7 +7287,7 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared. */
+                    /** @description provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug. */
                     readonly nodes?: {
                         /** Format: int64 */
                         readonly id: number;

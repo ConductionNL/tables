@@ -15,6 +15,7 @@ use OCA\Tables\Db\ContextMapper;
 use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
 use OCA\Tables\Db\Page;
+use OCA\Tables\Db\PageContent;
 use OCA\Tables\Db\PageContentMapper;
 use OCA\Tables\Db\PageMapper;
 use OCA\Tables\Db\TableMapper;
@@ -38,6 +39,8 @@ final class ContextServiceSlugTest extends TestCase {
 	private ShareService&MockObject $shareService;
 	private PageMapper&MockObject $pageMapper;
 	private IDBConnection&MockObject $dbc;
+	private PermissionsService&MockObject $permissionsService;
+	private PageContentMapper&MockObject $pageContentMapper;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -48,14 +51,16 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->shareService = $this->createMock(ShareService::class);
 		$this->pageMapper = $this->createMock(PageMapper::class);
 		$this->dbc = $this->createMock(IDBConnection::class);
+		$this->permissionsService = $this->createMock(PermissionsService::class);
+		$this->pageContentMapper = $this->createMock(PageContentMapper::class);
 
 		$this->service = new ContextService(
 			$this->contextMapper,
 			$this->contextNodeRelMapper,
 			$this->pageMapper,
-			$this->createMock(PageContentMapper::class),
+			$this->pageContentMapper,
 			$this->createMock(LoggerInterface::class),
-			$this->createMock(PermissionsService::class),
+			$this->permissionsService,
 			$this->userManager,
 			$this->createMock(AuditLogServiceInterface::class),
 			$this->dbc,
@@ -339,6 +344,30 @@ final class ContextServiceSlugTest extends TestCase {
 		], 'crm-2');
 	}
 
+	public function testRemovingANodeOfASharedContextFreesItsSlugForAnAddedNode(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
+		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
+		$this->contextNodeRelMapper->method('delete')->willReturnArgument(0);
+		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$existingContent = new PageContent();
+		$existingContent->setId(9);
+		$existingContent->setPageId(4);
+		$this->pageContentMapper->method('findByPageAndNodeRelation')->willReturn($existingContent);
+		$this->shareService->method('isContextShared')->willReturn(true);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->contextNodeRelMapper->expects($this->once())->method('insert')
+			->with($this->callback(static fn (ContextNodeRelation $relation): bool => $relation->getNodeId() === 6 && $relation->getSlug() === 'customers'))
+			->willReturnCallback(static function (ContextNodeRelation $relation): ContextNodeRelation {
+				$relation->setId(2);
+				return $relation;
+			});
+
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'customers'],
+		]);
+	}
+
 	/**
 	 * @param array<int, string> $nodeSlugsByTableId
 	 */
@@ -351,7 +380,7 @@ final class ContextServiceSlugTest extends TestCase {
 			$relationId++;
 		}
 		$context->setNodes($nodes);
-		$context->setPages([]);
+		$context->setPages([3 => ['id' => 3, 'page_type' => Page::TYPE_STARTPAGE]]);
 		return $context;
 	}
 
