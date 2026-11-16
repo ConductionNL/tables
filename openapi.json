@@ -17385,7 +17385,7 @@
                     {
                         "name": "contextSlug",
                         "in": "path",
-                        "description": "The slug of the context",
+                        "description": "The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -17394,7 +17394,7 @@
                     {
                         "name": "nodeSlug",
                         "in": "path",
-                        "description": "The slug of the table or view within the context",
+                        "description": "The slug of the table or view within the context, by the same rule",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -17697,7 +17697,7 @@
                     {
                         "name": "contextSlug",
                         "in": "path",
-                        "description": "The slug of the context",
+                        "description": "The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -17706,7 +17706,7 @@
                     {
                         "name": "nodeSlug",
                         "in": "path",
-                        "description": "The slug of the table or view within the context",
+                        "description": "The slug of the table or view within the context, by the same rule",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -17957,7 +17957,7 @@
                     {
                         "name": "contextSlug",
                         "in": "path",
-                        "description": "The slug of the context",
+                        "description": "The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -17966,7 +17966,7 @@
                     {
                         "name": "nodeSlug",
                         "in": "path",
-                        "description": "The slug of the table or view within the context",
+                        "description": "The slug of the table or view within the context, by the same rule",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -18253,7 +18253,7 @@
                     {
                         "name": "contextSlug",
                         "in": "path",
-                        "description": "The slug of the context",
+                        "description": "The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -18262,7 +18262,7 @@
                     {
                         "name": "nodeSlug",
                         "in": "path",
-                        "description": "The slug of the table or view within the context",
+                        "description": "The slug of the table or view within the context, by the same rule",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -18520,7 +18520,7 @@
                     {
                         "name": "contextSlug",
                         "in": "path",
-                        "description": "The slug of the context",
+                        "description": "The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter",
                         "required": true,
                         "schema": {
                             "type": "string"
@@ -18529,7 +18529,7 @@
                     {
                         "name": "nodeSlug",
                         "in": "path",
-                        "description": "The slug of the table or view within the context",
+                        "description": "The slug of the table or view within the context, by the same rule",
                         "required": true,
                         "schema": {
                             "type": "string"

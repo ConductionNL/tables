@@ -9299,9 +9299,9 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The slug of the context */
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
                 readonly contextSlug: string;
-                /** @description The slug of the table or view within the context */
+                /** @description The slug of the table or view within the context, by the same rule */
                 readonly nodeSlug: string;
             };
             readonly cookie?: never;
@@ -9410,9 +9410,9 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The slug of the context */
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
                 readonly contextSlug: string;
-                /** @description The slug of the table or view within the context */
+                /** @description The slug of the table or view within the context, by the same rule */
                 readonly nodeSlug: string;
             };
             readonly cookie?: never;
@@ -9530,9 +9530,9 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The slug of the context */
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
                 readonly contextSlug: string;
-                /** @description The slug of the table or view within the context */
+                /** @description The slug of the table or view within the context, by the same rule */
                 readonly nodeSlug: string;
                 /** @description The identifier of the row, either its integer id or its uuid */
                 readonly rowId: string;
@@ -9643,9 +9643,9 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The slug of the context */
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
                 readonly contextSlug: string;
-                /** @description The slug of the table or view within the context */
+                /** @description The slug of the table or view within the context, by the same rule */
                 readonly nodeSlug: string;
                 /** @description The identifier of the row to update, either its integer id or its uuid */
                 readonly rowId: string;
@@ -9765,9 +9765,9 @@ export interface operations {
                 readonly "OCS-APIRequest": boolean;
             };
             readonly path: {
-                /** @description The slug of the context */
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
                 readonly contextSlug: string;
-                /** @description The slug of the table or view within the context */
+                /** @description The slug of the table or view within the context, by the same rule */
                 readonly nodeSlug: string;
                 /** @description The identifier of the row to delete, either its integer id or its uuid */
                 readonly rowId: string;

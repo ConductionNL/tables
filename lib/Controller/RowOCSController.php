@@ -156,8 +156,8 @@ class RowOCSController extends AOCSController {
 	 *
 	 * The user needs read access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextSlug The slug of the context
-	 * @param string $nodeSlug The slug of the table or view within the context
+	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
+	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param int|null $limit Limit the number of returned rows
 	 * @param int|null $offset Skip this number of rows
 	 * @return DataResponse<Http::STATUS_OK, list<TablesRow>, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
@@ -200,8 +200,8 @@ class RowOCSController extends AOCSController {
 	 *
 	 * The user needs read access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextSlug The slug of the context
-	 * @param string $nodeSlug The slug of the table or view within the context
+	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
+	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string $rowId The identifier of the row, either its integer id or its uuid
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
@@ -238,8 +238,8 @@ class RowOCSController extends AOCSController {
 	 *
 	 * The user needs create access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextSlug The slug of the context
-	 * @param string $nodeSlug The slug of the table or view within the context
+	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
+	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
@@ -271,8 +271,8 @@ class RowOCSController extends AOCSController {
 	 *
 	 * The user needs update access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextSlug The slug of the context
-	 * @param string $nodeSlug The slug of the table or view within the context
+	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
+	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string $rowId The identifier of the row to update, either its integer id or its uuid
 	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
@@ -305,8 +305,8 @@ class RowOCSController extends AOCSController {
 	 *
 	 * The user needs delete access to the table or view, directly or through a context.
 	 *
-	 * @param string $contextSlug The slug of the context
-	 * @param string $nodeSlug The slug of the table or view within the context
+	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
+	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string $rowId The identifier of the row to delete, either its integer id or its uuid
 	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
