@@ -15,7 +15,10 @@ use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Model\RowDataInput;
 use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowService;
@@ -210,5 +213,175 @@ class RowOCSControllerTest extends TestCase {
 		$this->rowService->expects($this->never())->method('delete');
 
 		$this->assertSame(Http::STATUS_NOT_FOUND, $this->controller->deleteContextRow('crm', 'clients', self::UUID)->getStatus());
+	}
+
+	public static function contextRouteProvider(): array {
+		return [
+			'index' => [static fn (RowOCSController $controller) => $controller->indexContextRows('crm', 'clients')],
+			'show' => [static fn (RowOCSController $controller) => $controller->showContextRow('crm', 'clients', '7')],
+			'create' => [static fn (RowOCSController $controller) => $controller->createContextRow('crm', 'clients', [1 => 'value'])],
+			'update' => [static fn (RowOCSController $controller) => $controller->updateContextRow('crm', 'clients', '7', [1 => 'value'])],
+			'delete' => [static fn (RowOCSController $controller) => $controller->deleteContextRow('crm', 'clients', '7')],
+		];
+	}
+
+	public static function resolveNodeFailureProvider(): array {
+		$cases = [];
+		foreach (self::contextRouteProvider() as $route => [$call]) {
+			$cases[$route . ', ambiguous context'] = [$call, new BadRequestError('ambiguous'), Http::STATUS_BAD_REQUEST];
+			$cases[$route . ', unknown context or node'] = [$call, new NotFoundError('not found'), Http::STATUS_NOT_FOUND];
+			$cases[$route . ', database failure'] = [$call, new \Exception('database'), Http::STATUS_INTERNAL_SERVER_ERROR];
+		}
+		return $cases;
+	}
+
+	/**
+	 * @dataProvider resolveNodeFailureProvider
+	 */
+	public function testContextRouteReportsAFailedSlugLookupWithoutTouchingRows(\Closure $call, \Exception $failure, int $expectedStatus): void {
+		$this->contextService->method('resolveNode')->with('crm', 'clients', 'user1')->willThrowException($failure);
+		foreach (['resolveRowId', 'findAllByTable', 'findAllByView', 'findInNode', 'create', 'updateSet', 'delete'] as $method) {
+			$this->rowService->expects($this->never())->method($method);
+		}
+
+		$this->assertSame($expectedStatus, $call($this->controller)->getStatus());
+	}
+
+	public function testIndexContextRowsListsTheRowsOfTheTable(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$rows = [$this->row(7)];
+		$this->rowService->expects($this->once())
+			->method('findAllByTable')
+			->with(3, 'user1', 10, 20)
+			->willReturn($rows);
+		$this->rowService->expects($this->never())->method('findAllByView');
+		$this->rowService->method('formatRows')->with($rows)->willReturn([['id' => 7]]);
+
+		$response = $this->controller->indexContextRows('crm', 'clients', 10, 20);
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$this->assertSame([['id' => 7]], $response->getData());
+	}
+
+	public function testIndexContextRowsListsTheRowsOfTheView(): void {
+		$this->contextNode(Application::NODE_TYPE_VIEW, 5);
+		$this->rowService->expects($this->once())
+			->method('findAllByView')
+			->with(5, 'user1', null, null)
+			->willReturn([]);
+		$this->rowService->expects($this->never())->method('findAllByTable');
+		$this->rowService->method('formatRows')->willReturn([]);
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->indexContextRows('crm', 'clients')->getStatus());
+	}
+
+	public function testIndexContextRowsIsForbiddenWithoutReadAccessToTheNode(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('findAllByTable')->willThrowException(new PermissionError('no read access'));
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->indexContextRows('crm', 'clients')->getStatus());
+	}
+
+	public function testShowContextRowIsForbiddenWithoutReadAccessToTheNode(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('findInNode')->willThrowException(new PermissionError('no read access'));
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->showContextRow('crm', 'clients', '7')->getStatus());
+	}
+
+	public function testCreateContextRowCreatesTheRowInTheTable(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->expects($this->once())
+			->method('create')
+			->with(3, null, $this->callback(static fn (RowDataInput $input) => $input->hasColumn(1) && $input[0]['value'] === 'value'))
+			->willReturn($this->row(7));
+
+		$response = $this->controller->createContextRow('crm', 'clients', ['1' => 'value']);
+
+		$this->assertSame(Http::STATUS_OK, $response->getStatus());
+		$this->assertSame(7, $response->getData()['id']);
+	}
+
+	public function testCreateContextRowCreatesTheRowInTheViewFromAJsonString(): void {
+		$this->contextNode(Application::NODE_TYPE_VIEW, 5);
+		$this->rowService->expects($this->once())
+			->method('create')
+			->with(null, 5, $this->callback(static fn (RowDataInput $input) => $input->hasColumn(2)))
+			->willReturn($this->row(7));
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->createContextRow('crm', 'clients', '{"2": "value"}')->getStatus());
+	}
+
+	public function testCreateContextRowRejectsDataThatIsNoMap(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->expects($this->never())->method('create');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createContextRow('crm', 'clients', 'not json')->getStatus());
+	}
+
+	public function testCreateContextRowIsForbiddenWithoutCreateAccessToTheNode(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('create')->willThrowException(new PermissionError('no create access'));
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->createContextRow('crm', 'clients', [1 => 'value'])->getStatus());
+	}
+
+	public function testCreateContextRowForwardsToAFederatedTable(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$table = new Table();
+		$this->federationService->method('isNodeFederated')->with(3, 'table')->willReturn(true);
+		$this->tableService->method('find')->with(3, true)->willReturn($table);
+		$this->federationService->expects($this->once())
+			->method('createRow')
+			->with($table, [1 => 'value'])
+			->willReturn(['id' => 7]);
+		$this->rowService->expects($this->never())->method('create');
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->createContextRow('crm', 'clients', [1 => 'value'])->getStatus());
+	}
+
+	public function testUpdateContextRowIsForbiddenWithoutUpdateAccessToTheNode(): void {
+		$this->contextNode(Application::NODE_TYPE_VIEW, 5);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('updateSet')->willThrowException(new PermissionError('no update access'));
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->updateContextRow('crm', 'clients', '7', [1 => 'value'])->getStatus());
+	}
+
+	public function testUpdateContextRowRejectsAUuidOnAFederatedTable(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->federationService->method('isNodeFederated')->willReturn(true);
+		$this->tableService->method('find')->willReturn(new Table());
+		$this->federationService->expects($this->never())->method('updateRow');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateContextRow('crm', 'clients', self::UUID, [])->getStatus());
+	}
+
+	public function testDeleteContextRowDeletesTheRowOfTheViewByItsId(): void {
+		$this->contextNode(Application::NODE_TYPE_VIEW, 5);
+		$this->rowService->method('resolveRowId')->with('7', null, 5)->willReturn(7);
+		$this->rowService->expects($this->once())
+			->method('delete')
+			->with(7, 5, 'user1', null)
+			->willReturn($this->row(7));
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->deleteContextRow('crm', 'clients', '7')->getStatus());
+	}
+
+	public function testDeleteContextRowIsForbiddenWithoutDeleteAccessToTheNode(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('delete')->willThrowException(new PermissionError('no delete access'));
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->deleteContextRow('crm', 'clients', '7')->getStatus());
+	}
+
+	public function testDeleteContextRowReportsAnInternalError(): void {
+		$this->contextNode(Application::NODE_TYPE_TABLE, 3);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('delete')->willThrowException(new InternalError('database'));
+
+		$this->assertSame(Http::STATUS_INTERNAL_SERVER_ERROR, $this->controller->deleteContextRow('crm', 'clients', '7')->getStatus());
 	}
 }
