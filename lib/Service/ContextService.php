@@ -982,6 +982,7 @@ class ContextService {
 			array_values($nodes),
 			$context->getPages(),
 			array_values($tables),
+			$context->getSlug(),
 		);
 	}
 
@@ -1062,6 +1063,7 @@ class ContextService {
 	 * @param array $nodes
 	 * @param array $tables
 	 * @param string $userId
+	 * @param ?string $slug the slug from the scheme; kept only when it is valid, free and the application is not shared
 	 *
 	 * @return Context
 	 *
@@ -1075,7 +1077,7 @@ class ContextService {
 	 * @throws NotFoundExceptionInterface
 	 * @throws PermissionError
 	 */
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId): Context {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, string $userId, ?string $slug = null): Context {
 		// Validate the structure of the columns and views arrays
 		if (!isset($tables['addTables']) || !is_array($tables['addTables'])
 			|| !isset($tables['modifyTables']) || !is_array($tables['modifyTables'])) {
@@ -1115,28 +1117,87 @@ class ContextService {
 			$tableService->updateTableStructure($table->getId(), $tableScheme['columns'], $tableScheme['views'], $tableScheme['columnOrder'], $tableScheme['sort'], $userId);
 		}
 
+		$context = $this->contextMapper->findById($contextId, $userId);
+		$currentNodeSlugs = [];
+		foreach ($context->getNodes() ?? [] as $currentNode) {
+			$currentNodeSlugs[sprintf('t%di%d', $currentNode['node_type'], $currentNode['node_id'])] = $currentNode['slug'];
+		}
+
 		// Resolve node ids for the new tables and views
 		$resolvedNodes = [];
 		foreach ($nodes as $node) {
 			if ($node['node_type'] === Application::NODE_TYPE_TABLE) {
-				$table = $this->tableMapper->findByUuid($node['node_uuid']);
-				$resolvedNodes[] = [
-					'id' => $table->getId(),
-					'type' => $node['node_type'],
-					'permissions' => $node['permissions'],
-				];
+				$nodeId = $this->tableMapper->findByUuid($node['node_uuid'])->getId();
 			} elseif ($node['node_type'] === Application::NODE_TYPE_VIEW) {
-				$view = $this->viewMapper->findByUuid($node['node_uuid']);
-				$resolvedNodes[] = [
-					'id' => $view->getId(),
-					'type' => $node['node_type'],
-					'permissions' => $node['permissions'],
-				];
+				$nodeId = $this->viewMapper->findByUuid($node['node_uuid'])->getId();
+			} else {
+				continue;
+			}
+			$resolvedNodes[] = [
+				'id' => $nodeId,
+				'type' => $node['node_type'],
+				'permissions' => $node['permissions'],
+				'slug' => $node['slug'] ?? null,
+			];
+		}
+
+		return $this->update(
+			$contextId,
+			$userId,
+			$name,
+			$iconName,
+			$description,
+			$this->withImportableNodeSlugs($resolvedNodes, $currentNodeSlugs),
+			$this->importableContextSlug($context, $slug),
+		);
+	}
+
+	/**
+	 * Nodes the application already has keep their slug. A new node takes the
+	 * slug from the scheme when it is valid and free, else it gets the default.
+	 *
+	 * @param list<array{id: int, type: int, permissions: int, slug: mixed}> $nodes
+	 * @param array<string, string> $currentNodeSlugs
+	 * @return list<array{id: int, type: int, permissions: int, slug?: string}>
+	 */
+	private function withImportableNodeSlugs(array $nodes, array $currentNodeSlugs): array {
+		$takenSlugs = [];
+		foreach ($nodes as $node) {
+			$key = sprintf('t%di%d', $node['type'], $node['id']);
+			if (isset($currentNodeSlugs[$key])) {
+				$takenSlugs[$currentNodeSlugs[$key]] = true;
 			}
 		}
 
-		$context = $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes);
+		$importableNodes = [];
+		foreach ($nodes as $node) {
+			$requestedSlug = $node['slug'];
+			unset($node['slug']);
+			$isNew = !isset($currentNodeSlugs[sprintf('t%di%d', $node['type'], $node['id'])]);
+			$slug = $isNew ? self::availableSlug($requestedSlug, $takenSlugs) : null;
+			if ($slug !== null) {
+				$node['slug'] = $slug;
+				$takenSlugs[$slug] = true;
+			}
+			$importableNodes[] = $node;
+		}
+		return $importableNodes;
+	}
 
-		return $context;
+	/**
+	 * The slug from the scheme when the application can take it, else null so
+	 * the application keeps its own.
+	 *
+	 * @throws Exception|InternalError
+	 */
+	private function importableContextSlug(Context $context, ?string $slug): ?string {
+		if ($slug === null || $slug === $context->getSlug()) {
+			return null;
+		}
+		$slug = self::availableSlug($slug, $this->contextMapper->findSlugsForOwner($context->getOwnerType(), $context->getOwnerId()));
+		if ($slug === null || $this->shareService->isContextShared($context)) {
+			return null;
+		}
+		return $slug;
 	}
 }

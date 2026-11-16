@@ -13733,7 +13733,7 @@
                                     },
                                     "nodes": {
                                         "type": "array",
-                                        "description": "Ordered meta data of the related nodes",
+                                        "description": "Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free",
                                         "items": {
                                             "type": "object",
                                             "required": [
@@ -13752,6 +13752,9 @@
                                                 "permissions": {
                                                     "type": "integer",
                                                     "format": "int64"
+                                                },
+                                                "slug": {
+                                                    "type": "string"
                                                 }
                                             }
                                         }
@@ -13777,6 +13780,12 @@
                                                 }
                                             }
                                         }
+                                    },
+                                    "slug": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Slug of the context from the scheme; ignored when it is invalid, already used by the owner, or the context is shared"
                                     }
                                 }
                             }

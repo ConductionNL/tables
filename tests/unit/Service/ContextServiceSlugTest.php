@@ -18,9 +18,11 @@ use OCA\Tables\Db\Page;
 use OCA\Tables\Db\PageContent;
 use OCA\Tables\Db\PageContentMapper;
 use OCA\Tables\Db\PageMapper;
+use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Service\Support\AuditLogServiceInterface;
 use OCP\DB\Exception;
 use OCP\IDBConnection;
@@ -41,6 +43,7 @@ final class ContextServiceSlugTest extends TestCase {
 	private IDBConnection&MockObject $dbc;
 	private PermissionsService&MockObject $permissionsService;
 	private PageContentMapper&MockObject $pageContentMapper;
+	private TableMapper&MockObject $tableMapper;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -53,6 +56,7 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->dbc = $this->createMock(IDBConnection::class);
 		$this->permissionsService = $this->createMock(PermissionsService::class);
 		$this->pageContentMapper = $this->createMock(PageContentMapper::class);
+		$this->tableMapper = $this->createMock(TableMapper::class);
 
 		$this->service = new ContextService(
 			$this->contextMapper,
@@ -68,7 +72,7 @@ final class ContextServiceSlugTest extends TestCase {
 			false,
 			$this->createMock(INavigationManager::class),
 			$this->createMock(IURLGenerator::class),
-			$this->createMock(TableMapper::class),
+			$this->tableMapper,
 			$this->createMock(ViewMapper::class),
 		);
 	}
@@ -366,6 +370,85 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->service->update(7, 'alice', null, null, null, [
 			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'customers'],
 		]);
+	}
+
+	public function testSchemeCarriesTheSlug(): void {
+		$scheme = new ContextScheme('CRM', 'icon', '', [], [], [], 'crm');
+
+		$this->assertSame('crm', $scheme->jsonSerialize()['slug']);
+	}
+
+	public function testSchemeExportCarriesTheApplicationSlug(): void {
+		$context = $this->context(7, 'crm', 'alice');
+		$context->setNodes([]);
+		$context->setPages([]);
+		$this->contextMapper->method('findById')->willReturn($context);
+
+		$this->assertSame('crm', $this->service->getScheme(7, 'alice')->jsonSerialize()['slug']);
+	}
+
+	public function testSchemeImportGivesNewNodesTheirSlugFromTheScheme(): void {
+		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true]);
+		$this->contextNodeRelMapper->expects($this->never())->method('update');
+		$insertedSlugs = [];
+		$this->contextNodeRelMapper->method('insert')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$insertedSlugs): ContextNodeRelation {
+				$insertedSlugs[$relation->getNodeId()] = $relation->getSlug();
+				$relation->setId(10 + $relation->getNodeId());
+				return $relation;
+			});
+		$this->contextMapper->expects($this->once())->method('update')
+			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'sales'))
+			->willReturnArgument(0);
+
+		$this->service->importScheme(7, 'CRM', 'icon', '', [
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-5', 'permissions' => Application::PERMISSION_READ, 'slug' => 'renamed'],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'clients'],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-8', 'permissions' => Application::PERMISSION_READ, 'slug' => 'customers'],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-9', 'permissions' => Application::PERMISSION_READ, 'slug' => 'Not A Slug'],
+		], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
+
+		$this->assertSame(['6' => 'clients', '8' => 'table-8', '9' => 'table-9'], array_map('strval', $insertedSlugs));
+	}
+
+	public function testSchemeImportKeepsTheSlugOfASharedApplication(): void {
+		$this->prepareSchemeImport(shared: true, ownerSlugs: ['crm' => true]);
+		$this->contextMapper->expects($this->once())->method('update')
+			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'crm'))
+			->willReturnArgument(0);
+
+		$this->service->importScheme(7, 'CRM', 'icon', '', [], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
+	}
+
+	public function testSchemeImportKeepsTheSlugWhenTheOwnerUsesTheSchemeSlug(): void {
+		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true, 'sales' => true]);
+		$this->contextMapper->expects($this->once())->method('update')
+			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'crm'))
+			->willReturnArgument(0);
+
+		$this->service->importScheme(7, 'CRM', 'icon', '', [], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
+	}
+
+	/**
+	 * @param array<string, true> $ownerSlugs
+	 */
+	private function prepareSchemeImport(bool $shared, array $ownerSlugs): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
+		$this->contextMapper->method('findSlugsForOwner')->willReturn($ownerSlugs);
+		$this->shareService->method('isContextShared')->willReturn($shared);
+		$this->tableMapper->method('findByUuid')->willReturnCallback(static function (string $uuid): Table {
+			$table = new Table();
+			$table->setId((int)substr($uuid, 5));
+			return $table;
+		});
+		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
+		$this->contextNodeRelMapper->method('delete')->willReturnArgument(0);
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
+		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$existingContent = new PageContent();
+		$existingContent->setId(9);
+		$existingContent->setPageId(4);
+		$this->pageContentMapper->method('findByPageAndNodeRelation')->willReturn($existingContent);
 	}
 
 	/**
