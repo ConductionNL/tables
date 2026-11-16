@@ -7342,7 +7342,7 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared. */
+                    /** @description provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug. */
                     readonly nodes?: {
                         /** Format: int64 */
                         readonly id: number;
@@ -7781,19 +7781,25 @@ export interface operations {
                     readonly iconName: string;
                     /** @description Description of the context */
                     readonly description: string;
-                    /** @description Ordered meta data of the related nodes */
+                    /** @description Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free */
                     readonly nodes: readonly {
                         /** Format: int64 */
                         readonly node_type: number;
                         readonly node_uuid: string;
                         /** Format: int64 */
                         readonly permissions: number;
+                        readonly slug?: string;
                     }[];
                     /** @description Tables to be added or modified */
                     readonly tables: {
                         readonly addTables: readonly components["schemas"]["Table"][];
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
+                    /**
+                     * @description Slug of the context from the scheme; ignored when it is invalid, already used by the owner, or the context is shared
+                     * @default null
+                     */
+                    readonly slug?: string | null;
                 };
             };
         };

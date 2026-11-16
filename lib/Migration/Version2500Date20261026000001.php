@@ -17,8 +17,8 @@ use Override;
 
 /**
  * Makes the slugs of applications and their nodes NOT NULL and unique,
- * after Version2500Date20261026000000 filled them in. An application's name is
- * unique for its owner, a node's name within its application.
+ * after Version2500Date20261026000000 filled them in. An application's slug is
+ * unique for its owner, a node's slug within its application.
  */
 class Version2500Date20261026000001 extends SimpleMigrationStep {
 	#[Override]

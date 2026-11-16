@@ -141,7 +141,7 @@ class ContextController extends AOCSController {
 	 * @param ?string $name provide this parameter to set a new name
 	 * @param ?string $iconName provide this parameter to set a new icon
 	 * @param ?string $description provide this parameter to set a new description
-	 * @param ?array{id: int, type: int, permissions: int, order: int, slug?: string} $nodes provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared.
+	 * @param ?array{id: int, type: int, permissions: int, order: int, slug?: string} $nodes provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug.
 	 * @param ?string $slug provide this parameter to set a new slug; not possible while the context is shared
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
@@ -185,6 +185,7 @@ class ContextController extends AOCSController {
 	/**
 	 * @psalm-param list<array{id: mixed, type: mixed, permissions?: mixed, order?: mixed, slug?: mixed}> $nodes
 	 * @psalm-return list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}>
+	 * @throws InvalidArgumentException|BadRequestError
 	 */
 	protected function sanitizeInputNodes(array $nodes): array {
 		foreach ($nodes as &$node) {
@@ -207,7 +208,7 @@ class ContextController extends AOCSController {
 			}
 
 			if (isset($node['slug']) && !is_string($node['slug'])) {
-				throw new InvalidArgumentException('Unexpected node slug');
+				throw new BadRequestError('A node slug must be a string.');
 			}
 		}
 		return $nodes;
@@ -366,8 +367,9 @@ class ContextController extends AOCSController {
 	 * @param string $name Title of the context
 	 * @param string $iconName Identifier of the context icon
 	 * @param string $description Description of the context
-	 * @param list<array{node_type: int, node_uuid: string, permissions: int}> $nodes Ordered meta data of the related nodes
+	 * @param list<array{node_type: int, node_uuid: string, permissions: int, slug?: string}> $nodes Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free
 	 * @psalm-param array{addTables: list<TablesTable>, modifyTables: list<TablesTable>} $tables Tables to be added or modified
+	 * @param ?string $slug Slug of the context from the scheme; ignored when it is invalid, already used by the owner, or the context is shared
 	 *
 	 * @return DataResponse<Http::STATUS_OK, array<string, mixed>, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -378,10 +380,10 @@ class ContextController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables): DataResponse {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?string $slug = null): DataResponse {
 		try {
 			$this->db->beginTransaction();
-			$context = $this->contextService->importScheme($contextId, $name, $iconName, $description, $nodes, $tables, $this->userId);
+			$context = $this->contextService->importScheme($contextId, $name, $iconName, $description, $nodes, $tables, $this->userId, $slug);
 			$this->db->commit();
 			return new DataResponse($context->jsonSerialize());
 		} catch (\InvalidArgumentException $e) {

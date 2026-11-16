@@ -78,12 +78,12 @@ class ContextNodeRelationMapper extends QBMapper {
 			->where($qb->expr()->eq('context_id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)));
 
 		$result = $qb->executeQuery();
-		$names = [];
+		$slugs = [];
 		while ($row = $result->fetchAssociative()) {
-			$names[(string)$row['slug']] = true;
+			$slugs[(string)$row['slug']] = true;
 		}
 		$result->closeCursor();
-		return $names;
+		return $slugs;
 	}
 
 	/**

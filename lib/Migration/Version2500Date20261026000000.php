@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace OCA\Tables\Migration;
 
 use Closure;
-use OCA\Tables\Service\ContextService;
 use OCP\DB\ISchemaWrapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\DB\Types;
@@ -22,11 +21,13 @@ use Override;
 /**
  * Adds a slug to applications and to the tables and views in them, and
  * fills it in for the existing ones. Version2500Date20261026000001 makes both
- * columns NOT NULL and unique once every row has a name.
+ * columns NOT NULL and unique once every row has a slug.
  */
 class Version2500Date20261026000000 extends SimpleMigrationStep {
 	private const CONTEXT_TABLE = 'tables_contexts_context';
 	private const NODE_REL_TABLE = 'tables_contexts_rel_context_node';
+	// Application::NODE_TYPE_VIEW, copied so the backfill stays as it shipped
+	private const NODE_TYPE_VIEW = 1;
 
 	public function __construct(
 		private readonly IDBConnection $connection,
@@ -101,7 +102,7 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 		$rows = $result->fetchAllAssociative();
 		$result->closeCursor();
 
-		$names = self::backfillNodeNames($rows);
+		$slugs = self::backfillNodeSlugs($rows);
 
 		$update = $this->connection->getQueryBuilder();
 		$update->update(self::NODE_REL_TABLE)
@@ -109,7 +110,7 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 			->where($update->expr()->eq('id', $update->createParameter('id')));
 
 		$count = 0;
-		foreach ($names as $nodeRelId => $slug) {
+		foreach ($slugs as $nodeRelId => $slug) {
 			$update->setParameter('slug', $slug);
 			$update->setParameter('id', $nodeRelId, IQueryBuilder::PARAM_INT);
 			$count += $update->executeStatement();
@@ -118,14 +119,14 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 	}
 
 	/**
-	 * The names for the relations that have none: table_{node_id} or view_{node_id},
-	 * with a suffix when the application already uses that name. The same node can be
+	 * The slugs for the relations that have none: table-{node_id} or view-{node_id},
+	 * with a suffix when the application already uses that slug. The same node can be
 	 * in an application twice, so the suffix is needed even without renamed nodes.
 	 *
 	 * @param list<array{id: int|string, context_id: int|string, node_id: int|string, node_type: int|string, slug: ?string}> $rows
-	 * @return array<int, string> the new name by relation id
+	 * @return array<int, string> the new slug by relation id
 	 */
-	public static function backfillNodeNames(array $rows): array {
+	public static function backfillNodeSlugs(array $rows): array {
 		$takenByContext = [];
 		foreach ($rows as $row) {
 			if ($row['slug'] !== null && $row['slug'] !== '') {
@@ -133,19 +134,20 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 			}
 		}
 
-		$names = [];
+		$slugs = [];
 		foreach ($rows as $row) {
 			if ($row['slug'] !== null && $row['slug'] !== '') {
 				continue;
 			}
 			$contextId = (int)$row['context_id'];
-			$slug = ContextService::uniqueSlug(
-				ContextService::defaultNodeSlug((int)$row['node_type'], (int)$row['node_id']),
-				$takenByContext[$contextId] ?? [],
-			);
+			$base = ((int)$row['node_type'] === self::NODE_TYPE_VIEW ? 'view-' : 'table-') . (int)$row['node_id'];
+			$slug = $base;
+			for ($suffix = 2; isset($takenByContext[$contextId][$slug]); $suffix++) {
+				$slug = $base . '-' . $suffix;
+			}
 			$takenByContext[$contextId][$slug] = true;
-			$names[(int)$row['id']] = $slug;
+			$slugs[(int)$row['id']] = $slug;
 		}
-		return $names;
+		return $slugs;
 	}
 }

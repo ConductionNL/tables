@@ -13,40 +13,40 @@ use OCA\Tables\AppInfo\Application;
 use PHPUnit\Framework\TestCase;
 
 final class Version2500Date20261026000000Test extends TestCase {
-	public function testNamesTablesAndViewsByTheirNodeId(): void {
-		$names = Version2500Date20261026000000::backfillNodeNames([
+	public function testGivesTablesAndViewsASlugByTheirNodeId(): void {
+		$slugs = Version2500Date20261026000000::backfillNodeSlugs([
 			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
 			$this->row(2, 10, 7, Application::NODE_TYPE_VIEW),
 		]);
 
-		$this->assertSame([1 => 'table-5', 2 => 'view-7'], $names);
+		$this->assertSame([1 => 'table-5', 2 => 'view-7'], $slugs);
 	}
 
-	public function testKeepsExistingNamesAndAvoidsThem(): void {
-		$names = Version2500Date20261026000000::backfillNodeNames([
+	public function testKeepsExistingSlugsAndAvoidsThem(): void {
+		$slugs = Version2500Date20261026000000::backfillNodeSlugs([
 			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
 			$this->row(2, 10, 6, Application::NODE_TYPE_TABLE, 'table-5'),
 		]);
 
-		$this->assertSame([1 => 'table-5-2'], $names);
+		$this->assertSame([1 => 'table-5-2'], $slugs);
 	}
 
 	public function testAddsASuffixWhenTheSameNodeIsInAnApplicationTwice(): void {
-		$names = Version2500Date20261026000000::backfillNodeNames([
+		$slugs = Version2500Date20261026000000::backfillNodeSlugs([
 			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
 			$this->row(2, 10, 5, Application::NODE_TYPE_TABLE),
 			$this->row(3, 11, 5, Application::NODE_TYPE_TABLE),
 		]);
 
-		$this->assertSame([1 => 'table-5', 2 => 'table-5-2', 3 => 'table-5'], $names);
+		$this->assertSame([1 => 'table-5', 2 => 'table-5-2', 3 => 'table-5'], $slugs);
 	}
 
-	public function testTreatsAnEmptyNameAsMissing(): void {
-		$names = Version2500Date20261026000000::backfillNodeNames([
+	public function testTreatsAnEmptySlugAsMissing(): void {
+		$slugs = Version2500Date20261026000000::backfillNodeSlugs([
 			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE, ''),
 		]);
 
-		$this->assertSame([1 => 'table-5'], $names);
+		$this->assertSame([1 => 'table-5'], $slugs);
 	}
 
 	/**
