@@ -891,7 +891,7 @@ class ContextService {
 			$takenNodeNames = [];
 			foreach ($context['nodes'] as $nodeArr) {
 				$nodeType = (int)($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
-				$slug = self::availableSlug($nodeArr['slug'] ?? $nodeArr['slug'] ?? null, $takenNodeNames)
+				$slug = self::availableSlug($nodeArr['slug'] ?? null, $takenNodeNames)
 					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeNames);
 				$takenNodeNames[$slug] = true;
 
