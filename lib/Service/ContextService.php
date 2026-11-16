@@ -510,6 +510,13 @@ class ContextService {
 				$this->shareService->transferSharesForContext($contextId, $newOwnerId, $oldOwnerId);
 				return $context;
 			}, $this->dbc);
+		} catch (Exception $e) {
+			$conflict = $this->toSlugConflict($e, 'The new owner already has an application with the slug ' . $context->getSlug() . '.');
+			if ($conflict instanceof BadRequestError) {
+				throw $conflict;
+			}
+			$this->logger->error('Failed to transfer context ownership: ' . $e->getMessage(), ['exception' => $e]);
+			throw new InternalError('Failed to transfer context ownership: ' . $e->getMessage());
 		} catch (\Exception $e) {
 			$this->logger->error('Failed to transfer context ownership: ' . $e->getMessage(), ['exception' => $e]);
 			throw new InternalError('Failed to transfer context ownership: ' . $e->getMessage());
@@ -681,11 +688,16 @@ class ContextService {
 	 * transaction so the random slug never stays.
 	 *
 	 * @throws Exception
+	 * @throws BadRequestError when another request took the slug
 	 */
 	protected function insertContext(Context $context, ?string $slug): void {
 		if ($slug !== null) {
 			$context->setSlug($slug);
-			$this->contextMapper->insert($context);
+			try {
+				$this->contextMapper->insert($context);
+			} catch (Exception $e) {
+				throw $this->toSlugConflict($e, 'The slug ' . $slug . ' is already used by another application of the owner.');
+			}
 			return;
 		}
 

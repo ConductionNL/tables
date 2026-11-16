@@ -185,6 +185,7 @@ class ContextController extends AOCSController {
 	/**
 	 * @psalm-param list<array{id: mixed, type: mixed, permissions?: mixed, order?: mixed, slug?: mixed}> $nodes
 	 * @psalm-return list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}>
+	 * @throws InvalidArgumentException|BadRequestError
 	 */
 	protected function sanitizeInputNodes(array $nodes): array {
 		foreach ($nodes as &$node) {
@@ -207,7 +208,7 @@ class ContextController extends AOCSController {
 			}
 
 			if (isset($node['slug']) && !is_string($node['slug'])) {
-				throw new InvalidArgumentException('Unexpected node slug');
+				throw new BadRequestError('A node slug must be a string.');
 			}
 		}
 		return $nodes;

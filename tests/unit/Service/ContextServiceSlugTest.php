@@ -22,6 +22,7 @@ use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Model\ContextScheme;
 use OCA\Tables\Service\Support\AuditLogServiceInterface;
 use OCP\DB\Exception;
@@ -515,6 +516,36 @@ final class ContextServiceSlugTest extends TestCase {
 		} catch (Exception $e) {
 			$this->assertSame($failure, $e);
 		}
+	}
+
+	public function testCreateTurnsALostRaceForTheSlugIntoABadRequest(): void {
+		$this->contextMapper->method('findSlugsForOwner')->willReturn([]);
+		$this->contextMapper->method('insert')->willThrowException($this->uniqueConstraintViolation());
+
+		$this->expectException(BadRequestError::class);
+		$this->service->create('CRM', 'icon', '', [], 'alice', Application::OWNER_TYPE_USER, 'crm');
+	}
+
+	public function testTransferTurnsALostRaceForTheSlugIntoABadRequest(): void {
+		$this->prepareTransfer();
+		$this->contextMapper->method('update')->willThrowException($this->uniqueConstraintViolation());
+
+		$this->expectException(BadRequestError::class);
+		$this->service->transfer(7, 'bob', Application::OWNER_TYPE_USER);
+	}
+
+	public function testTransferReportsOtherDatabaseErrorsAsInternalErrors(): void {
+		$this->prepareTransfer();
+		$this->contextMapper->method('update')->willThrowException($this->createMock(Exception::class));
+
+		$this->expectException(InternalError::class);
+		$this->service->transfer(7, 'bob', Application::OWNER_TYPE_USER);
+	}
+
+	private function prepareTransfer(): void {
+		$this->contextMapper->method('findById')->willReturn($this->context(7, 'crm', 'alice'));
+		$this->contextMapper->method('findSlugsForOwner')->willReturn([]);
+		$this->userManager->method('userExists')->willReturn(true);
 	}
 
 	/**
