@@ -280,27 +280,27 @@ class ContextMapper extends QBMapper {
 	}
 
 	/**
-	 * The applications the user can access that carry the given slug.
-	 * Slugs are unique per owner, so more than one means applications of
+	 * The ids of the applications the user can access that carry the given
+	 * slug. Slugs are unique per owner, so more than one means applications of
 	 * different owners.
 	 *
-	 * @return Context[]
+	 * @return list<int>
 	 * @throws Exception
 	 */
-	public function findAllBySlug(string $slug, string $userId): array {
-		$qb = $this->getFindContextBaseQuery($userId);
+	public function findIdsBySlug(string $slug, string $userId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->selectDistinct('c.id')
+			->from($this->table, 'c');
+		$this->applyOwnedOrSharedQuery($qb, $userId);
 		$qb->andWhere($qb->expr()->eq('c.slug', $qb->createNamedParameter($slug)));
 
 		$result = $qb->executeQuery();
-		$rows = $result->fetchAllAssociative();
-		$result->closeCursor();
-
-		$rowsByContext = [];
-		foreach ($rows as $row) {
-			$rowsByContext[(int)$row['id']][] = $row;
+		$ids = [];
+		while ($row = $result->fetchAssociative()) {
+			$ids[] = (int)$row['id'];
 		}
-
-		return array_values(array_map(fn (array $contextRows) => $this->formatResultRows($contextRows, $userId), $rowsByContext));
+		$result->closeCursor();
+		return $ids;
 	}
 
 	/**

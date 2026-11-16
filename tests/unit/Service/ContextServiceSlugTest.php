@@ -265,7 +265,7 @@ final class ContextServiceSlugTest extends TestCase {
 	public function testResolveNodeFindsTheNodeOfTheOnlyMatchingContext(): void {
 		$relation = new ContextNodeRelation();
 		$relation->setNodeType(Application::NODE_TYPE_VIEW);
-		$this->contextMapper->method('findAllBySlug')->with('crm', 'alice')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextMapper->method('findIdsBySlug')->with('crm', 'alice')->willReturn([7]);
 		$this->contextNodeRelMapper->method('findByContextAndSlug')->with(7, 'customers')->willReturn($relation);
 
 		$this->assertSame($relation, $this->service->resolveNode('crm', 'customers', 'alice'));
@@ -274,7 +274,7 @@ final class ContextServiceSlugTest extends TestCase {
 	public function testResolveNodeDoesNotFindANodeOfAnotherType(): void {
 		$relation = new ContextNodeRelation();
 		$relation->setNodeType(2);
-		$this->contextMapper->method('findAllBySlug')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextMapper->method('findIdsBySlug')->willReturn([7]);
 		$this->contextNodeRelMapper->method('findByContextAndSlug')->willReturn($relation);
 
 		$this->expectException(NotFoundError::class);
@@ -282,24 +282,21 @@ final class ContextServiceSlugTest extends TestCase {
 	}
 
 	public function testResolveNodeRefusesAnAmbiguousContextName(): void {
-		$this->contextMapper->method('findAllBySlug')->willReturn([
-			$this->context(7, 'crm', 'alice'),
-			$this->context(8, 'crm', 'bob'),
-		]);
+		$this->contextMapper->method('findIdsBySlug')->willReturn([7, 8]);
 
 		$this->expectException(BadRequestError::class);
 		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
 	public function testResolveNodeReportsAnUnknownContext(): void {
-		$this->contextMapper->method('findAllBySlug')->willReturn([]);
+		$this->contextMapper->method('findIdsBySlug')->willReturn([]);
 
 		$this->expectException(NotFoundError::class);
 		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
 	public function testResolveNodeReportsAnUnknownNode(): void {
-		$this->contextMapper->method('findAllBySlug')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextMapper->method('findIdsBySlug')->willReturn([7]);
 		$this->contextNodeRelMapper->method('findByContextAndSlug')->willThrowException(new DoesNotExistException(''));
 
 		$this->expectException(NotFoundError::class);

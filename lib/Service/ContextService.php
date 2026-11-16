@@ -623,16 +623,16 @@ class ContextService {
 	 * @throws Exception
 	 */
 	public function resolveNode(string $contextSlug, string $nodeSlug, string $userId): ContextNodeRelation {
-		$contexts = $this->contextMapper->findAllBySlug($contextSlug, $userId);
-		if ($contexts === []) {
+		$contextIds = $this->contextMapper->findIdsBySlug($contextSlug, $userId);
+		if ($contextIds === []) {
 			throw new NotFoundError('No application with the slug ' . $contextSlug . ' found.');
 		}
-		if (count($contexts) > 1) {
+		if (count($contextIds) > 1) {
 			throw new BadRequestError('The slug ' . $contextSlug . ' matches more than one application you can access.');
 		}
 
 		try {
-			$nodeRelation = $this->contextNodeRelMapper->findByContextAndSlug($contexts[0]->getId(), $nodeSlug);
+			$nodeRelation = $this->contextNodeRelMapper->findByContextAndSlug($contextIds[0], $nodeSlug);
 		} catch (DoesNotExistException|MultipleObjectsReturnedException $e) {
 			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.', 0, $e);
 		}
