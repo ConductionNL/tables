@@ -229,10 +229,15 @@ class ContextService {
 			$currentSlugs[sprintf('t%di%d', $currentNode['node_type'], $currentNode['node_id'])] = $currentNode['slug'] ?? null;
 		}
 
+		// like the update itself, the last entry wins for a node listed more than once
+		$nodesByKey = [];
+		foreach ($nodes as $node) {
+			$nodesByKey[sprintf('t%di%d', $node['type'], $node['id'])] = $node;
+		}
+
 		$slugsAfterUpdate = [];
 		$renamesNodes = false;
-		foreach ($nodes as $node) {
-			$key = sprintf('t%di%d', $node['type'], $node['id']);
+		foreach ($nodesByKey as $key => $node) {
 			$requestedSlug = $node['slug'] ?? null;
 			if ($requestedSlug !== null) {
 				$this->assertSlugValid($requestedSlug);
@@ -1170,6 +1175,7 @@ class ContextService {
 	/**
 	 * Nodes the application already has keep their slug. A new node takes the
 	 * slug from the scheme when it is valid and free, else it gets the default.
+	 * A node the scheme lists more than once is imported once.
 	 *
 	 * @param list<array{id: int, type: int, permissions: int, slug: mixed}> $nodes
 	 * @param array<string, string> $currentNodeSlugs
@@ -1185,10 +1191,16 @@ class ContextService {
 		}
 
 		$importableNodes = [];
+		$importedKeys = [];
 		foreach ($nodes as $node) {
+			$key = sprintf('t%di%d', $node['type'], $node['id']);
+			if (isset($importedKeys[$key])) {
+				continue;
+			}
+			$importedKeys[$key] = true;
 			$requestedSlug = $node['slug'];
 			unset($node['slug']);
-			$isNew = !isset($currentNodeSlugs[sprintf('t%di%d', $node['type'], $node['id'])]);
+			$isNew = !isset($currentNodeSlugs[$key]);
 			$slug = $isNew ? self::availableSlug($requestedSlug, $takenSlugs) : null;
 			if ($slug !== null) {
 				$node['slug'] = $slug;

@@ -548,6 +548,38 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->userManager->method('userExists')->willReturn(true);
 	}
 
+	public function testUpdateAcceptsANodeListedTwice(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
+		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
+		$this->contextNodeRelMapper->method('update')->willReturnArgument(0);
+		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
+
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10],
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_MANAGE, 'order' => 20],
+		]);
+	}
+
+	public function testSchemeImportAddsANodeListedTwiceOnceWithItsSlug(): void {
+		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true]);
+		$insertedSlugs = [];
+		$this->contextNodeRelMapper->method('insert')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$insertedSlugs): ContextNodeRelation {
+				$insertedSlugs[] = $relation->getSlug();
+				$relation->setId(10 + $relation->getNodeId());
+				return $relation;
+			});
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$this->service->importScheme(7, 'CRM', 'icon', '', [
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-5', 'permissions' => Application::PERMISSION_READ],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'clients'],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'clients'],
+		], ['addTables' => [], 'modifyTables' => []], 'alice');
+
+		$this->assertSame(['clients'], $insertedSlugs);
+	}
+
 	/**
 	 * @param array<string, true> $ownerSlugs
 	 */
