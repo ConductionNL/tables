@@ -409,7 +409,7 @@ final class ContextServiceSlugTest extends TestCase {
 			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-9', 'permissions' => Application::PERMISSION_READ, 'slug' => 'Not A Slug'],
 		], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
 
-		$this->assertSame(['6' => 'clients', '8' => 'table-8', '9' => 'table-9'], array_map('strval', $insertedSlugs));
+		$this->assertSame([6 => 'clients', 8 => 'table-8', 9 => 'table-9'], $insertedSlugs);
 	}
 
 	public function testSchemeImportKeepsTheSlugOfASharedApplication(): void {
