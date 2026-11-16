@@ -18,6 +18,7 @@ use OCA\Tables\Model\RowDataInput;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\ContextService;
 use OCA\Tables\Service\FederationService;
+use OCA\Tables\Service\PermissionsService;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
@@ -45,6 +46,7 @@ class RowOCSController extends AOCSController {
 		private readonly ViewService $viewService,
 		private readonly FederationService $federationService,
 		private readonly ContextService $contextService,
+		private readonly PermissionsService $permissionsService,
 	) {
 		parent::__construct($request, $logger, $n, $userId);
 	}
@@ -170,10 +172,17 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'GET', url: '/api/2/contexts/{contextSlug}/{nodeSlug}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
 	public function indexContextRows(string $contextSlug, string $nodeSlug, ?int $limit = null, ?int $offset = null): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
-			$rows = $nodeRelation->getNodeType() === Application::NODE_TYPE_VIEW
-				? $this->rowService->findAllByView($nodeRelation->getNodeId(), $this->userId, $limit, $offset)
-				: $this->rowService->findAllByTable($nodeRelation->getNodeId(), $this->userId, $limit, $offset);
+			[$nodeType, $nodeId] = $this->resolveContextNode($contextSlug, $nodeSlug, Application::PERMISSION_READ);
+			[$tableId, $viewId] = $this->splitNodeId($nodeType, $nodeId);
+			if ($tableId !== null && $this->federationService->isNodeFederated($tableId, 'table')) {
+				return new DataResponse($this->federationService->getRows($this->tableService->find($tableId, true), $limit, $offset));
+			}
+			if ($viewId !== null && $this->federationService->isNodeFederated($viewId, 'view')) {
+				return new DataResponse($this->federationService->getRows($this->viewService->find($viewId, false, $this->userId), $limit, $offset));
+			}
+			$rows = $viewId !== null
+				? $this->rowService->findAllByView($viewId, $this->userId, $limit, $offset)
+				: $this->rowService->findAllByTable((int)$tableId, $this->userId, $limit, $offset);
 			return new DataResponse($this->rowService->formatRows($rows));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
@@ -206,8 +215,11 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'GET', url: '/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
 	public function showContextRow(string $contextSlug, string $nodeSlug, string $rowId): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
-			[$tableId, $viewId] = $this->splitNodeId($nodeRelation->getNodeType(), $nodeRelation->getNodeId());
+			[$nodeType, $nodeId] = $this->resolveContextNode($contextSlug, $nodeSlug, Application::PERMISSION_READ);
+			[$tableId, $viewId] = $this->splitNodeId($nodeType, $nodeId);
+			if ($this->isFederated($tableId, $viewId)) {
+				throw new BadRequestError('Getting a single row is not supported for federated tables and views.');
+			}
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
 			return new DataResponse($this->rowService->findInNode($resolvedRowId, $tableId, $viewId, $this->userId)->jsonSerialize());
 		} catch (BadRequestError $e) {
@@ -241,15 +253,17 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'POST', url: '/api/2/contexts/{contextSlug}/{nodeSlug}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
 	public function createContextRow(string $contextSlug, string $nodeSlug, mixed $data): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
+			[$nodeType, $nodeId] = $this->resolveContextNode($contextSlug, $nodeSlug, Application::PERMISSION_CREATE);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
 			return $this->handleNotFoundError($e);
-		} catch (\Exception $e) {
+		} catch (PermissionError $e) {
+			return $this->handlePermissionError($e);
+		} catch (InternalError|\Exception $e) {
 			return $this->handleError($e);
 		}
-		return $this->createRowInNode($nodeRelation->getNodeType(), $nodeRelation->getNodeId(), $data);
+		return $this->createRowInNode($nodeType, $nodeId, $data);
 	}
 
 	/**
@@ -273,15 +287,17 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'PUT', url: '/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
 	public function updateContextRow(string $contextSlug, string $nodeSlug, string $rowId, mixed $data): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
+			[$nodeType, $nodeId] = $this->resolveContextNode($contextSlug, $nodeSlug, Application::PERMISSION_UPDATE);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
 			return $this->handleNotFoundError($e);
-		} catch (\Exception $e) {
+		} catch (PermissionError $e) {
+			return $this->handlePermissionError($e);
+		} catch (InternalError|\Exception $e) {
 			return $this->handleError($e);
 		}
-		return $this->updateRowInNode($nodeRelation->getNodeType(), $nodeRelation->getNodeId(), $rowId, $data);
+		return $this->updateRowInNode($nodeType, $nodeId, $rowId, $data);
 	}
 
 	/**
@@ -304,15 +320,50 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'DELETE', url: '/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}', requirements: ['contextSlug' => SlugValidator::ROUTE_PATTERN, 'nodeSlug' => SlugValidator::ROUTE_PATTERN])]
 	public function deleteContextRow(string $contextSlug, string $nodeSlug, string $rowId): DataResponse {
 		try {
-			$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
+			[$nodeType, $nodeId] = $this->resolveContextNode($contextSlug, $nodeSlug, Application::PERMISSION_DELETE);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
 			return $this->handleNotFoundError($e);
-		} catch (\Exception $e) {
+		} catch (PermissionError $e) {
+			return $this->handlePermissionError($e);
+		} catch (InternalError|\Exception $e) {
 			return $this->handleError($e);
 		}
-		return $this->deleteRowInNode($nodeRelation->getNodeType(), $nodeRelation->getNodeId(), $rowId);
+		return $this->deleteRowInNode($nodeType, $nodeId, $rowId);
+	}
+
+	/**
+	 * Resolves a node of an application by slug and runs the checks that
+	 * PermissionMiddleware runs before the id routes: a node the user cannot
+	 * access is not found, a missing row permission is forbidden.
+	 *
+	 * @return array{0: int, 1: int} the node type and the node id
+	 * @throws BadRequestError|NotFoundError|PermissionError|InternalError|\OCP\DB\Exception
+	 */
+	private function resolveContextNode(string $contextSlug, string $nodeSlug, int $permission): array {
+		$nodeRelation = $this->contextService->resolveNode($contextSlug, $nodeSlug, $this->userId);
+		$nodeType = $nodeRelation->getNodeType();
+		$nodeId = $nodeRelation->getNodeId();
+
+		if (!$this->permissionsService->canAccessNodeById($nodeType, $nodeId, $this->userId)) {
+			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.');
+		}
+		$isView = $nodeType === Application::NODE_TYPE_VIEW;
+		$isAllowed = match ($permission) {
+			Application::PERMISSION_CREATE => $this->permissionsService->canCreateRowsById($nodeType, $nodeId, $this->userId),
+			Application::PERMISSION_UPDATE => $isView
+				? $this->permissionsService->canUpdateRowsByViewId($nodeId, $this->userId)
+				: $this->permissionsService->canUpdateRowsByTableId($nodeId, $this->userId),
+			Application::PERMISSION_DELETE => $isView
+				? $this->permissionsService->canDeleteRowsByViewId($nodeId, $this->userId)
+				: $this->permissionsService->canDeleteRowsByTableId($nodeId, $this->userId),
+			default => true,
+		};
+		if (!$isAllowed) {
+			throw new PermissionError('You are not allowed to change rows of the table or view ' . $nodeSlug . '.');
+		}
+		return [$nodeType, $nodeId];
 	}
 
 	/**
