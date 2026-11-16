@@ -291,12 +291,12 @@ class ContextMapper extends QBMapper {
 			->andWhere($qb->expr()->eq('owner_id', $qb->createNamedParameter($ownerId)));
 
 		$result = $qb->executeQuery();
-		$names = [];
+		$slugs = [];
 		while ($row = $result->fetchAssociative()) {
-			$names[(string)$row['slug']] = true;
+			$slugs[(string)$row['slug']] = true;
 		}
 		$result->closeCursor();
-		return $names;
+		return $slugs;
 	}
 
 	/**

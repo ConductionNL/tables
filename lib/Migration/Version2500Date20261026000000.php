@@ -22,7 +22,7 @@ use Override;
 /**
  * Adds a slug to applications and to the tables and views in them, and
  * fills it in for the existing ones. Version2500Date20261026000001 makes both
- * columns NOT NULL and unique once every row has a name.
+ * columns NOT NULL and unique once every row has a slug.
  */
 class Version2500Date20261026000000 extends SimpleMigrationStep {
 	private const CONTEXT_TABLE = 'tables_contexts_context';
@@ -101,7 +101,7 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 		$rows = $result->fetchAllAssociative();
 		$result->closeCursor();
 
-		$names = self::backfillNodeNames($rows);
+		$slugs = self::backfillNodeSlugs($rows);
 
 		$update = $this->connection->getQueryBuilder();
 		$update->update(self::NODE_REL_TABLE)
@@ -109,7 +109,7 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 			->where($update->expr()->eq('id', $update->createParameter('id')));
 
 		$count = 0;
-		foreach ($names as $nodeRelId => $slug) {
+		foreach ($slugs as $nodeRelId => $slug) {
 			$update->setParameter('slug', $slug);
 			$update->setParameter('id', $nodeRelId, IQueryBuilder::PARAM_INT);
 			$count += $update->executeStatement();
@@ -118,14 +118,14 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 	}
 
 	/**
-	 * The names for the relations that have none: table_{node_id} or view_{node_id},
-	 * with a suffix when the application already uses that name. The same node can be
+	 * The slugs for the relations that have none: table-{node_id} or view-{node_id},
+	 * with a suffix when the application already uses that slug. The same node can be
 	 * in an application twice, so the suffix is needed even without renamed nodes.
 	 *
 	 * @param list<array{id: int|string, context_id: int|string, node_id: int|string, node_type: int|string, slug: ?string}> $rows
-	 * @return array<int, string> the new name by relation id
+	 * @return array<int, string> the new slug by relation id
 	 */
-	public static function backfillNodeNames(array $rows): array {
+	public static function backfillNodeSlugs(array $rows): array {
 		$takenByContext = [];
 		foreach ($rows as $row) {
 			if ($row['slug'] !== null && $row['slug'] !== '') {
@@ -133,7 +133,7 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 			}
 		}
 
-		$names = [];
+		$slugs = [];
 		foreach ($rows as $row) {
 			if ($row['slug'] !== null && $row['slug'] !== '') {
 				continue;
@@ -144,8 +144,8 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 				$takenByContext[$contextId] ?? [],
 			);
 			$takenByContext[$contextId][$slug] = true;
-			$names[(int)$row['id']] = $slug;
+			$slugs[(int)$row['id']] = $slug;
 		}
-		return $names;
+		return $slugs;
 	}
 }

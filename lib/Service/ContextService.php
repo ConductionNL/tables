@@ -132,7 +132,7 @@ class ContextService {
 
 	/**
 	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
-	 * @param ?string $slug the name, unique among the owner's applications; application-{id} when null
+	 * @param ?string $slug unique among the owner's applications; application-{id} when null
 	 * @throws Exception|PermissionError|InvalidArgumentException|BadRequestError
 	 */
 	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $slug = null): Context {
@@ -574,7 +574,7 @@ class ContextService {
 	}
 
 	/**
-	 * @param ?string $slug the name, unique within the application; table-{id} or view-{id} when null
+	 * @param ?string $slug unique within the application; table-{id} or view-{id} when null
 	 * @throws Exception
 	 * @throws BadRequestError
 	 */
@@ -778,7 +778,7 @@ class ContextService {
 	}
 
 	/**
-	 * The requested name when it is valid and free, else null.
+	 * The requested slug when it is valid and free, else null.
 	 *
 	 * @param array<string, true> $taken
 	 */
@@ -888,12 +888,12 @@ class ContextService {
 		// insert nodes
 		$nodeRelMap = [];
 		if (!empty($context['nodes'])) {
-			$takenNodeNames = [];
+			$takenNodeSlugs = [];
 			foreach ($context['nodes'] as $nodeArr) {
 				$nodeType = (int)($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
-				$slug = self::availableSlug($nodeArr['slug'] ?? null, $takenNodeNames)
-					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeNames);
-				$takenNodeNames[$slug] = true;
+				$slug = self::availableSlug($nodeArr['slug'] ?? null, $takenNodeSlugs)
+					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeSlugs);
+				$takenNodeSlugs[$slug] = true;
 
 				$contextNodeRel = new ContextNodeRelation();
 				$contextNodeRel->setContextId($newContext->getId());
