@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace OCA\Tables\Migration;
 
 use Closure;
-use OCA\Tables\Service\ContextService;
 use OCP\DB\ISchemaWrapper;
 use OCP\DB\QueryBuilder\IQueryBuilder;
 use OCP\DB\Types;
@@ -27,6 +26,8 @@ use Override;
 class Version2500Date20261026000000 extends SimpleMigrationStep {
 	private const CONTEXT_TABLE = 'tables_contexts_context';
 	private const NODE_REL_TABLE = 'tables_contexts_rel_context_node';
+	// Application::NODE_TYPE_VIEW, copied so the backfill stays as it shipped
+	private const NODE_TYPE_VIEW = 1;
 
 	public function __construct(
 		private readonly IDBConnection $connection,
@@ -139,10 +140,11 @@ class Version2500Date20261026000000 extends SimpleMigrationStep {
 				continue;
 			}
 			$contextId = (int)$row['context_id'];
-			$slug = ContextService::uniqueSlug(
-				ContextService::defaultNodeSlug((int)$row['node_type'], (int)$row['node_id']),
-				$takenByContext[$contextId] ?? [],
-			);
+			$base = ((int)$row['node_type'] === self::NODE_TYPE_VIEW ? 'view-' : 'table-') . (int)$row['node_id'];
+			$slug = $base;
+			for ($suffix = 2; isset($takenByContext[$contextId][$slug]); $suffix++) {
+				$slug = $base . '-' . $suffix;
+			}
 			$takenByContext[$contextId][$slug] = true;
 			$slugs[(int)$row['id']] = $slug;
 		}
