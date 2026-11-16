@@ -10,12 +10,14 @@ declare(strict_types=1);
 namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\AuditLog\Operation;
+use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextNavigationMapper;
 use OCA\Tables\Db\Share;
 use OCA\Tables\Db\ShareMapper;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\ViewMapper;
+use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Helper\CircleHelper;
 use OCA\Tables\Helper\GroupHelper;
@@ -350,5 +352,55 @@ class ShareServiceTest extends TestCase {
 
 		$this->expectException(Exception::class);
 		$this->shareService->deleteForShareReview(5);
+	}
+
+	public function testContextWithoutSharesIsNotShared(): void {
+		$this->mapper->method('findAllSharesForNode')->with('context', 7)->willReturn([]);
+
+		$this->assertFalse($this->shareService->isContextShared($this->ownedContext()));
+	}
+
+	public function testContextSharedOnlyWithItsOwnerIsNotShared(): void {
+		$this->mapper->method('findAllSharesForNode')->willReturn([$this->contextShare('alice', 'user')]);
+
+		$this->assertFalse($this->shareService->isContextShared($this->ownedContext()));
+	}
+
+	public function testContextSharedWithAnotherUserIsShared(): void {
+		$this->mapper->method('findAllSharesForNode')->willReturn([
+			$this->contextShare('alice', 'user'),
+			$this->contextShare('bob', 'user'),
+		]);
+
+		$this->assertTrue($this->shareService->isContextShared($this->ownedContext()));
+	}
+
+	public function testContextSharedWithAGroupNamedLikeItsOwnerIsShared(): void {
+		$this->mapper->method('findAllSharesForNode')->willReturn([$this->contextShare('alice', 'group')]);
+
+		$this->assertTrue($this->shareService->isContextShared($this->ownedContext()));
+	}
+
+	public function testContextShareLookupFailureIsAnInternalError(): void {
+		$this->mapper->method('findAllSharesForNode')->willThrowException($this->createMock(Exception::class));
+
+		$this->expectException(InternalError::class);
+		$this->shareService->isContextShared($this->ownedContext());
+	}
+
+	private function ownedContext(): Context {
+		$context = new Context();
+		$context->setId(7);
+		$context->setOwnerId('alice');
+		return $context;
+	}
+
+	private function contextShare(string $receiver, string $receiverType): Share {
+		$share = new Share();
+		$share->setNodeType('context');
+		$share->setNodeId(7);
+		$share->setReceiver($receiver);
+		$share->setReceiverType($receiverType);
+		return $share;
 	}
 }

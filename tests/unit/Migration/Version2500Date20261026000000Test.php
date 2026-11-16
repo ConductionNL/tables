@@ -19,16 +19,16 @@ final class Version2500Date20261026000000Test extends TestCase {
 			$this->row(2, 10, 7, Application::NODE_TYPE_VIEW),
 		]);
 
-		$this->assertSame([1 => 'table_5', 2 => 'view_7'], $names);
+		$this->assertSame([1 => 'table-5', 2 => 'view-7'], $names);
 	}
 
 	public function testKeepsExistingNamesAndAvoidsThem(): void {
 		$names = Version2500Date20261026000000::backfillNodeNames([
 			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE),
-			$this->row(2, 10, 6, Application::NODE_TYPE_TABLE, 'table_5'),
+			$this->row(2, 10, 6, Application::NODE_TYPE_TABLE, 'table-5'),
 		]);
 
-		$this->assertSame([1 => 'table_5_2'], $names);
+		$this->assertSame([1 => 'table-5-2'], $names);
 	}
 
 	public function testAddsASuffixWhenTheSameNodeIsInAnApplicationTwice(): void {
@@ -38,7 +38,7 @@ final class Version2500Date20261026000000Test extends TestCase {
 			$this->row(3, 11, 5, Application::NODE_TYPE_TABLE),
 		]);
 
-		$this->assertSame([1 => 'table_5', 2 => 'table_5_2', 3 => 'table_5'], $names);
+		$this->assertSame([1 => 'table-5', 2 => 'table-5-2', 3 => 'table-5'], $names);
 	}
 
 	public function testTreatsAnEmptyNameAsMissing(): void {
@@ -46,19 +46,19 @@ final class Version2500Date20261026000000Test extends TestCase {
 			$this->row(1, 10, 5, Application::NODE_TYPE_TABLE, ''),
 		]);
 
-		$this->assertSame([1 => 'table_5'], $names);
+		$this->assertSame([1 => 'table-5'], $names);
 	}
 
 	/**
-	 * @return array{id: int, context_id: int, node_id: int, node_type: int, technical_name: ?string}
+	 * @return array{id: int, context_id: int, node_id: int, node_type: int, slug: ?string}
 	 */
-	private function row(int $id, int $contextId, int $nodeId, int $nodeType, ?string $technicalName = null): array {
+	private function row(int $id, int $contextId, int $nodeId, int $nodeType, ?string $slug = null): array {
 		return [
 			'id' => $id,
 			'context_id' => $contextId,
 			'node_id' => $nodeId,
 			'node_type' => $nodeType,
-			'technical_name' => $technicalName,
+			'slug' => $slug,
 		];
 	}
 }

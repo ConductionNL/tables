@@ -36,7 +36,7 @@ class ContextMapper extends QBMapper {
 
 		$qb->select(
 			'c.*',
-			'r.id as node_rel_id', 'r.node_id', 'r.node_type', 'r.permissions', 'r.technical_name as node_technical_name',
+			'r.id as node_rel_id', 'r.node_id', 'r.node_type', 'r.permissions', 'r.slug as node_slug',
 			'p.id as page_id', 'p.page_type',
 			'pc.id as content_id', 'pc.order',
 			'n.display_mode as display_mode_default',
@@ -80,7 +80,7 @@ class ContextMapper extends QBMapper {
 		$formatted = [
 			'id' => $rows[0]['id'],
 			'name' => $rows[0]['name'],
-			'technical_name' => $rows[0]['technical_name'],
+			'slug' => $rows[0]['slug'],
 			'icon' => $rows[0]['icon'],
 			'description' => $rows[0]['description'],
 			'owner_id' => $rows[0]['owner_id'],
@@ -120,7 +120,7 @@ class ContextMapper extends QBMapper {
 				'node_id' => (int)$item['node_id'],
 				'node_type' => (int)$item['node_type'],
 				'permissions' => (int)$item['permissions'],
-				'technical_name' => $item['node_technical_name'],
+				'slug' => $item['node_slug'],
 			];
 			return $carry;
 		}, []);
@@ -304,12 +304,12 @@ class ContextMapper extends QBMapper {
 	}
 
 	/**
-	 * @return array<string, true> the technical names of the owner's applications
+	 * @return array<string, true> the slugs of the owner's applications
 	 * @throws Exception
 	 */
-	public function findTechnicalNamesForOwner(int $ownerType, string $ownerId): array {
+	public function findSlugsForOwner(int $ownerType, string $ownerId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('technical_name')
+		$qb->select('slug')
 			->from($this->table)
 			->where($qb->expr()->eq('owner_type', $qb->createNamedParameter($ownerType, IQueryBuilder::PARAM_INT)))
 			->andWhere($qb->expr()->eq('owner_id', $qb->createNamedParameter($ownerId)));
@@ -317,7 +317,7 @@ class ContextMapper extends QBMapper {
 		$result = $qb->executeQuery();
 		$names = [];
 		while ($row = $result->fetchAssociative()) {
-			$names[(string)$row['technical_name']] = true;
+			$names[(string)$row['slug']] = true;
 		}
 		$result->closeCursor();
 		return $names;

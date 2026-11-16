@@ -99,8 +99,8 @@ class ContextController extends AOCSController {
 	 * @param string $name Name of the context
 	 * @param string $iconName Material design icon name of the context
 	 * @param string $description Descriptive text of the context
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, technicalName?: string}> $nodes optional nodes to be connected to this context, each with an optional technical name unique within the context
-	 * @param ?string $technicalName Technical name of the context, unique among the owner's contexts; application_{id} when omitted
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, slug?: string}> $nodes optional nodes to be connected to this context, each with an optional slug unique within the context
+	 * @param ?string $slug Slug of the context, unique among the owner's contexts; application-{id} when omitted
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_BAD_REQUEST|Http::STATUS_FORBIDDEN, array{message: string}, array{}>
 	 *
@@ -109,7 +109,7 @@ class ContextController extends AOCSController {
 	 * 403: lacking permissions on a resource
 	 */
 	#[NoAdminRequired]
-	public function create(string $name, string $iconName, string $description = '', array $nodes = [], ?string $technicalName = null): DataResponse {
+	public function create(string $name, string $iconName, string $description = '', array $nodes = [], ?string $slug = null): DataResponse {
 		try {
 			if (!$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -121,7 +121,7 @@ class ContextController extends AOCSController {
 				$this->sanitizeInputNodes($nodes),
 				$this->userId,
 				0,
-				$technicalName,
+				$slug,
 			)->jsonSerialize());
 		} catch (Exception $e) {
 			return $this->handleError($e);
@@ -141,20 +141,20 @@ class ContextController extends AOCSController {
 	 * @param ?string $name provide this parameter to set a new name
 	 * @param ?string $iconName provide this parameter to set a new icon
 	 * @param ?string $description provide this parameter to set a new description
-	 * @param ?array{id: int, type: int, permissions: int, order: int, technicalName?: string} $nodes provide this parameter to set a new list of nodes, optionally renaming them by technical name.
-	 * @param ?string $technicalName provide this parameter to set a new technical name
+	 * @param ?array{id: int, type: int, permissions: int, order: int, slug?: string} $nodes provide this parameter to set a new list of nodes, optionally with a new slug; slugs cannot change while the context is shared.
+	 * @param ?string $slug provide this parameter to set a new slug; not possible while the context is shared
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
 	 * 200: returning the full context information
-	 * 400: bad request
+	 * 400: invalid or taken slug, a slug change on a shared context, or another bad request
 	 * 403: No permissions
 	 * 404: Not found
 	 *
 	 * @CanManageContext
 	 */
 	#[NoAdminRequired]
-	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $technicalName = null): DataResponse {
+	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $slug = null): DataResponse {
 		try {
 			if ($iconName !== null && !$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -167,7 +167,7 @@ class ContextController extends AOCSController {
 				$iconName,
 				$description,
 				$nodes,
-				$technicalName,
+				$slug,
 			)->jsonSerialize());
 		} catch (Exception|MultipleObjectsReturnedException $e) {
 			return $this->handleError($e);
@@ -175,14 +175,16 @@ class ContextController extends AOCSController {
 			return $this->handlePermissionError($e);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
+		} catch (InternalError $e) {
+			return $this->handleError($e);
 		} catch (DoesNotExistException $e) {
 			return $this->handleNotFoundError(new NotFoundError($e->getMessage(), $e->getCode(), $e));
 		}
 	}
 
 	/**
-	 * @psalm-param list<array{id: mixed, type: mixed, permissions?: mixed, order?: mixed, technicalName?: mixed}> $nodes
-	 * @psalm-return list<array{id: int, type: int, permissions?: int, order?: int, technicalName?: string}>
+	 * @psalm-param list<array{id: mixed, type: mixed, permissions?: mixed, order?: mixed, slug?: mixed}> $nodes
+	 * @psalm-return list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}>
 	 */
 	protected function sanitizeInputNodes(array $nodes): array {
 		foreach ($nodes as &$node) {
@@ -204,8 +206,8 @@ class ContextController extends AOCSController {
 				$node['order'] = (int)$node['order'];
 			}
 
-			if (isset($node['technicalName']) && !is_string($node['technicalName'])) {
-				throw new InvalidArgumentException('Unexpected node technical name');
+			if (isset($node['slug']) && !is_string($node['slug'])) {
+				throw new InvalidArgumentException('Unexpected node slug');
 			}
 		}
 		return $nodes;

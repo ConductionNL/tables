@@ -14,6 +14,7 @@ use OCA\Tables\Db\Context;
 use OCA\Tables\Db\ContextMapper;
 use OCA\Tables\Db\ContextNodeRelation;
 use OCA\Tables\Db\ContextNodeRelationMapper;
+use OCA\Tables\Db\Page;
 use OCA\Tables\Db\PageContentMapper;
 use OCA\Tables\Db\PageMapper;
 use OCA\Tables\Db\TableMapper;
@@ -30,11 +31,13 @@ use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\LoggerInterface;
 
-final class ContextServiceTechnicalNameTest extends TestCase {
+final class ContextServiceSlugTest extends TestCase {
 	private ContextService $service;
 	private ContextMapper&MockObject $contextMapper;
 	private ContextNodeRelationMapper&MockObject $contextNodeRelMapper;
 	private IUserManager&MockObject $userManager;
+	private ShareService&MockObject $shareService;
+	private PageMapper&MockObject $pageMapper;
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -42,18 +45,20 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 		$this->contextMapper = $this->createMock(ContextMapper::class);
 		$this->contextNodeRelMapper = $this->createMock(ContextNodeRelationMapper::class);
 		$this->userManager = $this->createMock(IUserManager::class);
+		$this->shareService = $this->createMock(ShareService::class);
+		$this->pageMapper = $this->createMock(PageMapper::class);
 
 		$this->service = new ContextService(
 			$this->contextMapper,
 			$this->contextNodeRelMapper,
-			$this->createMock(PageMapper::class),
+			$this->pageMapper,
 			$this->createMock(PageContentMapper::class),
 			$this->createMock(LoggerInterface::class),
 			$this->createMock(PermissionsService::class),
 			$this->userManager,
 			$this->createMock(AuditLogServiceInterface::class),
 			$this->createMock(IDBConnection::class),
-			$this->createMock(ShareService::class),
+			$this->shareService,
 			false,
 			$this->createMock(INavigationManager::class),
 			$this->createMock(IURLGenerator::class),
@@ -63,37 +68,67 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 	}
 
 	public function testDefaultNodeNameDependsOnTheNodeType(): void {
-		$this->assertSame('table_5', ContextService::defaultNodeTechnicalName(Application::NODE_TYPE_TABLE, 5));
-		$this->assertSame('view_5', ContextService::defaultNodeTechnicalName(Application::NODE_TYPE_VIEW, 5));
+		$this->assertSame('table-5', ContextService::defaultNodeSlug(Application::NODE_TYPE_TABLE, 5));
+		$this->assertSame('view-5', ContextService::defaultNodeSlug(Application::NODE_TYPE_VIEW, 5));
 	}
 
 	public function testUniqueNameTakesTheLowestFreeSuffix(): void {
-		$this->assertSame('table_5', ContextService::uniqueTechnicalName('table_5', []));
-		$this->assertSame('table_5_3', ContextService::uniqueTechnicalName('table_5', ['table_5' => true, 'table_5_2' => true]));
+		$this->assertSame('table-5', ContextService::uniqueSlug('table-5', []));
+		$this->assertSame('table-5-3', ContextService::uniqueSlug('table-5', ['table-5' => true, 'table-5-2' => true]));
 	}
 
 	/**
-	 * @dataProvider invalidTechnicalNames
+	 * @dataProvider invalidSlugs
 	 */
-	public function testCreateRefusesAnInvalidName(string $technicalName): void {
+	public function testCreateRefusesAnInvalidName(string $slug): void {
 		$this->contextMapper->expects($this->never())->method('insert');
 
 		$this->expectException(BadRequestError::class);
-		$this->service->create('CRM', 'icon', '', [], 'alice', Application::OWNER_TYPE_USER, $technicalName);
+		$this->service->create('CRM', 'icon', '', [], 'alice', Application::OWNER_TYPE_USER, $slug);
 	}
 
-	public static function invalidTechnicalNames(): array {
+	public static function invalidSlugs(): array {
 		return [
 			'empty' => [''],
 			'starts with a digit' => ['1crm'],
 			'upper case' => ['Crm'],
-			'dash' => ['my-crm'],
+			'underscore' => ['my_crm'],
+			'leading dash' => ['-crm'],
+			'trailing dash' => ['crm-'],
+			'double dash' => ['my--crm'],
 			'too long' => [str_repeat('a', 201)],
 		];
 	}
 
+	/**
+	 * @dataProvider validSlugs
+	 */
+	public function testCreateAcceptsAKebabCaseSlug(string $slug): void {
+		$this->contextMapper->method('findSlugsForOwner')->willReturn([]);
+		$this->contextMapper->expects($this->once())->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(7);
+			return $context;
+		});
+		$this->pageMapper->method('insert')->willReturnCallback(static function (Page $page): Page {
+			$page->setId(1);
+			return $page;
+		});
+
+		$context = $this->service->create('CRM', 'icon', '', [], 'alice', Application::OWNER_TYPE_USER, $slug);
+
+		$this->assertSame($slug, $context->getSlug());
+	}
+
+	public static function validSlugs(): array {
+		return [
+			'single word' => ['crm'],
+			'with dashes' => ['my-crm-2'],
+			'longest' => [str_repeat('a', 200)],
+		];
+	}
+
 	public function testCreateRefusesANameTheOwnerAlreadyUses(): void {
-		$this->contextMapper->method('findTechnicalNamesForOwner')
+		$this->contextMapper->method('findSlugsForOwner')
 			->with(Application::OWNER_TYPE_USER, 'alice')
 			->willReturn(['crm' => true]);
 		$this->contextMapper->expects($this->never())->method('insert');
@@ -103,19 +138,65 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 	}
 
 	public function testUpdateRenamesTheContext(): void {
-		$context = $this->context(7, 'application_7', 'alice');
+		$context = $this->context(7, 'application-7', 'alice');
 		$this->contextMapper->method('findById')->willReturn($context);
-		$this->contextMapper->method('findTechnicalNamesForOwner')->willReturn(['application_7' => true]);
+		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true]);
 		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
 
 		$updated = $this->service->update(7, 'alice', null, null, null, null, 'crm');
 
-		$this->assertSame('crm', $updated->getTechnicalName());
+		$this->assertSame('crm', $updated->getSlug());
+	}
+
+	public function testUpdateRefusesToRenameASharedContext(): void {
+		$this->contextMapper->method('findById')->willReturn($this->context(7, 'application-7', 'alice'));
+		$this->shareService->method('isContextShared')->willReturn(true);
+		$this->contextMapper->expects($this->never())->method('update');
+
+		$this->expectException(BadRequestError::class);
+		$this->service->update(7, 'alice', null, null, null, null, 'crm');
+	}
+
+	public function testUpdateOfASharedContextKeepingItsSlugSucceeds(): void {
+		$this->contextMapper->method('findById')->willReturn($this->context(7, 'crm', 'alice'));
+		$this->shareService->expects($this->never())->method('isContextShared');
+		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
+
+		$updated = $this->service->update(7, 'alice', 'CRM 2', null, null, null, 'crm');
+
+		$this->assertSame('crm', $updated->getSlug());
+		$this->assertSame('CRM 2', $updated->getName());
+	}
+
+	public function testUpdateRefusesToRenameANodeOfASharedContext(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTable(7, 5, 'customers'));
+		$this->contextNodeRelMapper->method('findById')->willReturn(new ContextNodeRelation());
+		$this->shareService->method('isContextShared')->willReturn(true);
+		$this->contextNodeRelMapper->expects($this->never())->method('update');
+
+		$this->expectException(BadRequestError::class);
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'clients'],
+		]);
+	}
+
+	public function testUpdateRenamesANodeOfAnUnsharedContext(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTable(7, 5, 'customers'));
+		$this->contextNodeRelMapper->method('findById')->willReturn(new ContextNodeRelation());
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn(['customers' => true]);
+		$this->shareService->method('isContextShared')->willReturn(false);
+		$this->contextNodeRelMapper->expects($this->once())->method('update')
+			->with($this->callback(static fn (ContextNodeRelation $relation): bool => $relation->getSlug() === 'clients'));
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'clients'],
+		]);
 	}
 
 	public function testUpdateRefusesANameTheOwnerAlreadyUses(): void {
-		$this->contextMapper->method('findById')->willReturn($this->context(7, 'application_7', 'alice'));
-		$this->contextMapper->method('findTechnicalNamesForOwner')->willReturn(['application_7' => true, 'crm' => true]);
+		$this->contextMapper->method('findById')->willReturn($this->context(7, 'application-7', 'alice'));
+		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true, 'crm' => true]);
 		$this->contextMapper->expects($this->never())->method('update');
 
 		$this->expectException(BadRequestError::class);
@@ -125,7 +206,7 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 	public function testTransferRefusesAnOwnerWhoUsesTheNameAlready(): void {
 		$this->contextMapper->method('findById')->willReturn($this->context(7, 'crm', 'alice'));
 		$this->userManager->method('userExists')->willReturn(true);
-		$this->contextMapper->method('findTechnicalNamesForOwner')
+		$this->contextMapper->method('findSlugsForOwner')
 			->with(Application::OWNER_TYPE_USER, 'bob')
 			->willReturn(['crm' => true]);
 		$this->contextMapper->expects($this->never())->method('update');
@@ -135,25 +216,25 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 	}
 
 	public function testAddNodeGetsTheDefaultNameWithASuffixWhenTaken(): void {
-		$this->contextNodeRelMapper->method('findTechnicalNamesByContextId')->with(7)->willReturn(['table_5' => true]);
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->with(7)->willReturn(['table-5' => true]);
 		$this->contextNodeRelMapper->expects($this->once())->method('insert')->willReturnArgument(0);
 
 		$relation = $this->service->addNodeToContext($this->context(7, 'crm', 'alice'), 5, Application::NODE_TYPE_TABLE, Application::PERMISSION_READ);
 
-		$this->assertSame('table_5_2', $relation->getTechnicalName());
+		$this->assertSame('table-5-2', $relation->getSlug());
 	}
 
 	public function testAddNodeKeepsAFreeGivenName(): void {
-		$this->contextNodeRelMapper->method('findTechnicalNamesByContextId')->willReturn(['table_5' => true]);
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn(['table-5' => true]);
 		$this->contextNodeRelMapper->expects($this->once())->method('insert')->willReturnArgument(0);
 
 		$relation = $this->service->addNodeToContext($this->context(7, 'crm', 'alice'), 6, Application::NODE_TYPE_TABLE, Application::PERMISSION_READ, 'customers');
 
-		$this->assertSame('customers', $relation->getTechnicalName());
+		$this->assertSame('customers', $relation->getSlug());
 	}
 
 	public function testAddNodeRefusesAGivenNameThatIsTaken(): void {
-		$this->contextNodeRelMapper->method('findTechnicalNamesByContextId')->willReturn(['customers' => true]);
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn(['customers' => true]);
 		$this->contextNodeRelMapper->expects($this->never())->method('insert');
 
 		$this->expectException(BadRequestError::class);
@@ -193,10 +274,19 @@ final class ContextServiceTechnicalNameTest extends TestCase {
 		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
-	private function context(int $id, string $technicalName, string $ownerId): Context {
+	private function contextWithTable(int $contextId, int $tableId, string $nodeSlug): Context {
+		$context = $this->context($contextId, 'crm', 'alice');
+		$context->setNodes([
+			1 => ['id' => 1, 'node_id' => $tableId, 'node_type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'slug' => $nodeSlug],
+		]);
+		$context->setPages([]);
+		return $context;
+	}
+
+	private function context(int $id, string $slug, string $ownerId): Context {
 		$context = new Context();
 		$context->setId($id);
-		$context->setTechnicalName($technicalName);
+		$context->setSlug($slug);
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType(Application::OWNER_TYPE_USER);
 		$context->resetUpdatedFields();
