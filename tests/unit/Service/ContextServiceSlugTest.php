@@ -429,6 +429,20 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->service->importScheme(7, 'CRM', 'icon', '', [], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
 	}
 
+	public function testImportedContextNeverKeepsTheRandomSlug(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(7);
+			return $context;
+		});
+		$this->contextMapper->method('findSlugsForOwner')->willReturn([]);
+		$this->contextMapper->method('update')->willThrowException($this->createMock(Exception::class));
+		$this->dbc->expects($this->once())->method('beginTransaction');
+		$this->dbc->expects($this->once())->method('rollBack');
+
+		$this->expectException(Exception::class);
+		$this->service->importContext($this->table(5), ['name' => 'CRM', 'nodes' => [['id' => 1, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE]]], 3);
+	}
+
 	/**
 	 * @param array<string, true> $ownerSlugs
 	 */
@@ -465,6 +479,13 @@ final class ContextServiceSlugTest extends TestCase {
 		$context->setNodes($nodes);
 		$context->setPages([3 => ['id' => 3, 'page_type' => Page::TYPE_STARTPAGE]]);
 		return $context;
+	}
+
+	private function table(int $id): Table {
+		$table = new Table();
+		$table->setId($id);
+		$table->setOwnership('alice');
+		return $table;
 	}
 
 	private function relation(int $id): ContextNodeRelation {

@@ -677,7 +677,8 @@ class ContextService {
 	/**
 	 * Inserts the context under the given slug, or under
 	 * application-{id} when it is null. The id only exists after the insert, so the
-	 * row first gets a random name that no client can choose.
+	 * row first gets a random slug that no client can choose, within one
+	 * transaction so the random slug never stays.
 	 *
 	 * @throws Exception
 	 */
@@ -688,13 +689,15 @@ class ContextService {
 			return;
 		}
 
-		$context->setSlug('_' . bin2hex(random_bytes(16)));
-		$this->contextMapper->insert($context);
-		$context->setSlug(self::uniqueSlug(
-			'application-' . $context->getId(),
-			$this->contextMapper->findSlugsForOwner($context->getOwnerType(), $context->getOwnerId()),
-		));
-		$this->contextMapper->update($context);
+		$this->atomic(function () use ($context): void {
+			$context->setSlug('_' . bin2hex(random_bytes(16)));
+			$this->contextMapper->insert($context);
+			$context->setSlug(self::uniqueSlug(
+				'application-' . $context->getId(),
+				$this->contextMapper->findSlugsForOwner($context->getOwnerType(), $context->getOwnerId()),
+			));
+			$this->contextMapper->update($context);
+		}, $this->dbc);
 	}
 
 	/**
