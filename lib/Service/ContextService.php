@@ -616,7 +616,7 @@ class ContextService {
 
 	/**
 	 * Finds the table or view that an application, both given by slug,
-	 * calls by the given slug.
+	 * calls by the given slug. A relation to any other node type is not found.
 	 *
 	 * @throws BadRequestError when more than one application the user can access has the slug
 	 * @throws NotFoundError
@@ -632,10 +632,14 @@ class ContextService {
 		}
 
 		try {
-			return $this->contextNodeRelMapper->findByContextAndSlug($contexts[0]->getId(), $nodeSlug);
+			$nodeRelation = $this->contextNodeRelMapper->findByContextAndSlug($contexts[0]->getId(), $nodeSlug);
 		} catch (DoesNotExistException|MultipleObjectsReturnedException $e) {
 			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.', 0, $e);
 		}
+		if (!in_array($nodeRelation->getNodeType(), [Application::NODE_TYPE_TABLE, Application::NODE_TYPE_VIEW], true)) {
+			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.');
+		}
+		return $nodeRelation;
 	}
 
 	public function addNodeRelToPage(ContextNodeRelation $nodeRel, ?int $order = null, ?int $pageId = null): PageContent {

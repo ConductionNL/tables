@@ -264,10 +264,21 @@ final class ContextServiceSlugTest extends TestCase {
 
 	public function testResolveNodeFindsTheNodeOfTheOnlyMatchingContext(): void {
 		$relation = new ContextNodeRelation();
+		$relation->setNodeType(Application::NODE_TYPE_VIEW);
 		$this->contextMapper->method('findAllBySlug')->with('crm', 'alice')->willReturn([$this->context(7, 'crm', 'alice')]);
 		$this->contextNodeRelMapper->method('findByContextAndSlug')->with(7, 'customers')->willReturn($relation);
 
 		$this->assertSame($relation, $this->service->resolveNode('crm', 'customers', 'alice'));
+	}
+
+	public function testResolveNodeDoesNotFindANodeOfAnotherType(): void {
+		$relation = new ContextNodeRelation();
+		$relation->setNodeType(2);
+		$this->contextMapper->method('findAllBySlug')->willReturn([$this->context(7, 'crm', 'alice')]);
+		$this->contextNodeRelMapper->method('findByContextAndSlug')->willReturn($relation);
+
+		$this->expectException(NotFoundError::class);
+		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
 	public function testResolveNodeRefusesAnAmbiguousContextName(): void {
