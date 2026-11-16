@@ -33,6 +33,7 @@ use Psr\Log\LoggerInterface;
 
 /**
  * @psalm-import-type TablesRow from ResponseDefinitions
+ * @psalm-import-type TablesPublicRow from ResponseDefinitions
  */
 class RowOCSController extends AOCSController {
 
@@ -160,9 +161,9 @@ class RowOCSController extends AOCSController {
 	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param int|null $limit Limit the number of returned rows
 	 * @param int|null $offset Skip this number of rows
-	 * @return DataResponse<Http::STATUS_OK, list<TablesRow>, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, list<TablesRow>|list<TablesPublicRow>, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
-	 * 200: Rows returned
+	 * 200: Rows returned; for a federated table or view, the rows of the remote link share, without tableId, createdBy and lastEditBy
 	 * 400: The slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found

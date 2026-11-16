@@ -9308,7 +9308,7 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
-            /** @description Rows returned */
+            /** @description Rows returned; for a federated table or view, the rows of the remote link share, without tableId, createdBy and lastEditBy */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9317,7 +9317,7 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: readonly components["schemas"]["Row"][];
+                            readonly data: readonly components["schemas"]["Row"][] | readonly components["schemas"]["PublicRow"][];
                         };
                     };
                 };

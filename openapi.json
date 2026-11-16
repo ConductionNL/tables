@@ -17435,7 +17435,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Rows returned",
+                        "description": "Rows returned; for a federated table or view, the rows of the remote link share, without tableId, createdBy and lastEditBy",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17455,10 +17455,20 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "type": "array",
-                                                    "items": {
-                                                        "$ref": "#/components/schemas/Row"
-                                                    }
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/Row"
+                                                            }
+                                                        },
+                                                        {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "$ref": "#/components/schemas/PublicRow"
+                                                            }
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
