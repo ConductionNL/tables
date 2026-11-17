@@ -3201,6 +3201,15 @@ class FeatureContext implements Context {
 	}
 
 	/**
+	 * @Then the row fetched by slug is :rowAlias
+	 */
+	public function theRowFetchedBySlugIs(string $rowAlias): void {
+		$expected = $this->collectionManager->getByAlias('row', $rowAlias);
+		$actual = $this->getDataFromResponse($this->response)['ocs']['data'];
+		Assert::assertSame((int)$expected['id'], (int)$actual['id']);
+	}
+
+	/**
 	 * @When user :user creates a row in :nodeType :nodeAlias of Context :contextAlias by slug with following values:
 	 */
 	public function userCreatesARowInANodeOfAContextBySlug(string $user, string $nodeType, string $nodeAlias, string $contextAlias, TableNode $properties): void {

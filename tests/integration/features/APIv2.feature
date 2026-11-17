@@ -1094,6 +1094,7 @@ Feature: APIv2
     And the rows listed by slug are "r-existing"
     When user "participant2-v2" fetches row "r-existing" of "table" "t1" in Context "c1" by slug
     Then the reported status is "200"
+    And the row fetched by slug is "r-existing"
     When user "participant2-v2" creates a row in "table" "t1" of Context "c1" by slug with following values:
       | statement | not allowed |
     Then the reported status is "403"
@@ -1102,12 +1103,13 @@ Feature: APIv2
     Then the reported status is "403"
     When user "participant2-v2" deletes row "r-existing" of "table" "t1" in Context "c1" by slug
     Then the reported status is "403"
+    And the user "participant1-v2" fetches table "t1", it has exactly these rows "r-existing"
+    And the column "statement" of row "r-existing" has the value "already there"
     When user "participant3-v2" lists the rows of "table" "t1" in Context "c1" by slug
     Then the reported status is "404"
     When user "participant1-v2" creates a row in "table" "t1" of Context "c1" by slug with following values:
       | statement | the owner may |
     Then the reported status is "200"
-    And the column "statement" of row "r-existing" has the value "already there"
 
   @api2 @contexts @contexts-content
   Scenario: Execute CRU permissions on a table available through a context, ensure D is not possible
