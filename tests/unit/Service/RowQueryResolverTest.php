@@ -164,6 +164,15 @@ class RowQueryResolverTest extends TestCase {
 			'a date that is no date' => [['due' => ['is-greater-than' => 'soon']]],
 			'a relation that is no row id' => [['parent' => 'abc']],
 			'an id that is no integer' => [['id' => 'abc']],
+			'an id with decimals' => [['id' => '2.5']],
+			'an id in exponent notation' => [['id' => '1e3']],
+			'an id beyond the INTEGER column' => [['id' => '99999999999999999999']],
+			'a relation beyond the INTEGER column' => [['parent' => '2147483648']],
+			'a number in exponent notation' => [['age' => '1e999']],
+			'a number beyond the precision' => [['age' => '1234567890123456']],
+			'a relative date' => [['due' => ['is-greater-than' => 'tomorrow']]],
+			'a relative date on a meta field' => [['createdAt' => ['is-greater-than' => 'now']]],
+			'an impossible date' => [['due' => '2026-02-30']],
 		];
 	}
 
@@ -177,15 +186,16 @@ class RowQueryResolverTest extends TestCase {
 
 	public function testFiltersThatFitTheirFieldsAreAccepted(): void {
 		$criteria = $this->resolve(['filter' => [
-			'age' => ['is-greater-than' => '2.5'],
+			'age' => ['is-greater-than' => '-2.5'],
 			'due' => ['is-lower-than' => '2026-12-31'],
 			'parent' => '42',
-			'createdAt' => ['is-greater-than-or-equal' => '2026-01-01'],
+			'createdAt' => ['is-greater-than-or-equal' => '2026-01-01 08:30'],
 			'createdBy' => ['begins-with' => 'ja'],
 			'name' => ['ends-with' => 'ne'],
+			'id' => '2147483647',
 		]], [], [], $this->columnsWithDateAndRelation());
 
-		$this->assertCount(6, $criteria['filter'][0]);
+		$this->assertCount(7, $criteria['filter'][0]);
 	}
 
 	/**

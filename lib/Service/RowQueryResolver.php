@@ -9,8 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Service;
 
-use DateTimeImmutable;
-use Exception;
 use OCA\Tables\Constants\FilterOperator;
 use OCA\Tables\Db\Column;
 use OCA\Tables\Errors\BadRequestError;
@@ -47,7 +45,10 @@ class RowQueryResolver {
 		Column::TYPE_META_CREATED_AT => 'meta-datetime',
 		Column::TYPE_META_UPDATED_AT => 'meta-datetime',
 	];
-	private const NUMBER_TYPES = ['number', 'number-stars', 'number-progress', 'meta-id'];
+	private const NUMBER_TYPES = ['number', 'number-stars', 'number-progress'];
+	// row ids, stored in INTEGER columns
+	private const ID_TYPES = ['relation', 'meta-id'];
+	private const MAX_ID = 2147483647;
 	private const DATE_TYPES = ['datetime', 'datetime-date', 'meta-datetime'];
 	private const COMPARISONS = [
 		FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL,
@@ -216,6 +217,13 @@ class RowQueryResolver {
 			|| ($column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === self::SUBTYPE_MULTI);
 	}
 
+	private function isDate(string $value): bool {
+		if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[ T]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)?\z/', $value, $parts) !== 1) {
+			return false;
+		}
+		return checkdate((int)$parts[2], (int)$parts[3], (int)$parts[1]);
+	}
+
 	private function columnTypeKey(Column $column): string {
 		$subtype = (string)$column->getSubtype();
 		return $column->getType() . ($subtype === '' ? '' : '-' . $subtype);
@@ -233,18 +241,18 @@ class RowQueryResolver {
 		if (in_array($operator, [FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY], true)) {
 			return;
 		}
-		if (in_array($typeKey, self::NUMBER_TYPES, true) && !is_numeric($value)) {
-			throw new BadRequestError(sprintf('%s can only be filtered by a number.', $field));
+		if (in_array($typeKey, self::NUMBER_TYPES, true) && preg_match('/^-?\d{1,15}(\.\d+)?\z/', $value) !== 1) {
+			throw new BadRequestError(sprintf('%s can only be filtered by a number, written with digits and an optional decimal point.', $field));
 		}
-		if ($typeKey === 'relation' && preg_match('/^\d+$/', $value) !== 1) {
+		if (in_array($typeKey, self::ID_TYPES, true)
+			&& (preg_match('/^\d{1,10}\z/', $value) !== 1 || (int)$value > self::MAX_ID)) {
 			throw new BadRequestError(sprintf('%s can only be filtered by a row id.', $field));
 		}
-		if (in_array($typeKey, self::DATE_TYPES, true)) {
-			try {
-				new DateTimeImmutable($value);
-			} catch (Exception) {
-				throw new BadRequestError(sprintf('%s can only be filtered by a date.', $field));
-			}
+		if (in_array($typeKey, self::DATE_TYPES, true) && !$this->isDate($value)) {
+			throw new BadRequestError(sprintf('%s can only be filtered by a date as YYYY-MM-DD, optionally followed by a time as HH:MM or HH:MM:SS.', $field));
+		}
+		if ($typeKey === 'datetime-time' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?\z/', $value) !== 1) {
+			throw new BadRequestError(sprintf('%s can only be filtered by a time as HH:MM or HH:MM:SS.', $field));
 		}
 	}
 
