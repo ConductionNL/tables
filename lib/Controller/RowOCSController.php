@@ -110,8 +110,10 @@ class RowOCSController extends AOCSController {
 	/**
 	 * [api v2] List the rows of a table or a view
 	 *
-	 * Filters, search and sort only apply to the columns the table or view shows, and on a view
-	 * they narrow its own filter, never widen it.
+	 * Filters, search and sort apply to the columns the table or view shows and to the meta
+	 * fields, which every row carries; on a view they narrow its own filter, never widen it.
+	 * Filter values and the search term are compared as given, placeholders such as @me only
+	 * work in the view's own filter.
 	 *
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to list the rows of a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
@@ -121,7 +123,7 @@ class RowOCSController extends AOCSController {
 	 * @param string|null $sort Comma separated technical names, column ids or meta fields (id, createdBy, createdAt, updatedBy, updatedAt), a minus sorts descending. Defaults to the sort of the table or view
 	 * @param string|null $search Text to look for in the text cells and the selection labels
 	 * @param string|null $fields Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned
-	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match
+	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns); a value is compared as given
 	 * @return DataResponse<Http::STATUS_OK, TablesRowPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Rows returned

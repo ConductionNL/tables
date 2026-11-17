@@ -1066,7 +1066,7 @@ export type paths = {
         };
         /**
          * [api v2] List the rows of a table or a view
-         * @description Filters, search and sort only apply to the columns the table or view shows, and on a view they narrow its own filter, never widen it.
+         * @description Filters, search and sort apply to the columns the table or view shows and to the meta fields, which every row carries; on a view they narrow its own filter, never widen it. Filter values and the search term are compared as given, placeholders such as @me only work in the view's own filter.
          */
         readonly get: operations["rowocs-get-rows"];
         readonly put?: never;
@@ -8777,7 +8777,7 @@ export interface operations {
                 readonly search?: string | null;
                 /** @description Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned */
                 readonly fields?: string | null;
-                /** @description Filters as filter[field]=value or filter[field][operator]=value, all of which must match */
+                /** @description Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns); a value is compared as given */
                 readonly filter?: string | null;
             };
             readonly header: {
