@@ -30,6 +30,7 @@ class ContextMapperSlugTest extends DatabaseTestCase {
 		$userHelper = $this->createMock(UserHelper::class);
 		$userHelper->method('getGroupIdsForUser')->willReturnMap([
 			['carol', ['sales']],
+			['dave', ['sales']],
 		]);
 		$this->contextMapper = new ContextMapper($this->connectionAdapter, $userHelper, $this->createMock(GroupHelper::class));
 		$this->shareMapper = new ShareMapper($this->createMock(LoggerInterface::class), $this->connectionAdapter);
@@ -62,6 +63,21 @@ class ContextMapperSlugTest extends DatabaseTestCase {
 		$this->assertSame([$id], $this->contextMapper->findIdsBySlug('crm', 'carol'));
 	}
 
+	public function testFindsAnApplicationSharedOnlyWithAGroupOfTheUser(): void {
+		$id = $this->insertContext('alice', 'crm');
+		$this->share($id, 'group', 'sales');
+
+		$this->assertSame([$id], $this->contextMapper->findIdsBySlug('crm', 'dave'));
+		$this->assertSame([], $this->contextMapper->findIdsBySlug('crm', 'bob'));
+	}
+
+	public function testFindsAnApplicationTheUserSharedWithSomeoneElse(): void {
+		$id = $this->insertContext('alice', 'crm');
+		$this->share($id, 'user', 'bob', 'erin');
+
+		$this->assertSame([$id], $this->contextMapper->findIdsBySlug('crm', 'erin'));
+	}
+
 	public function testFindsEveryAccessibleApplicationWithTheSlugOnce(): void {
 		$own = $this->insertContext('bob', 'crm');
 		$shared = $this->insertContext('alice', 'crm');
@@ -86,9 +102,9 @@ class ContextMapperSlugTest extends DatabaseTestCase {
 		return $this->contextMapper->insert($context)->getId();
 	}
 
-	private function share(int $contextId, string $receiverType, string $receiver): void {
+	private function share(int $contextId, string $receiverType, string $receiver, string $sender = 'alice'): void {
 		$share = new Share();
-		$share->setSender('alice');
+		$share->setSender($sender);
 		$share->setReceiver($receiver);
 		$share->setReceiverType($receiverType);
 		$share->setNodeId($contextId);
