@@ -86,7 +86,7 @@ class RowListQueryTest extends TestCase {
 			'page whose offset overflows' => ['99999999999999999', null, '500'],
 			'page beyond the integer range' => ['99999999999999999999', null, null],
 			'offset beyond the integer range' => [null, '99999999999999999999', null],
-			'limit beyond the integer range' => [null, null, '99999999999999999999'],
+			'page with a trailing newline' => ["5\n", null, null],
 		];
 	}
 
@@ -96,6 +96,16 @@ class RowListQueryTest extends TestCase {
 	public function testInvalidPagingIsRejected(?string $page, ?string $offset, ?string $limit): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->query(page: $page, offset: $offset, limit: $limit);
+	}
+
+	public function testLeadingZerosAreAccepted(): void {
+		$query = $this->query(page: '002', limit: '010');
+
+		$this->assertSame(10, $query->offset);
+	}
+
+	public function testALimitBeyondTheIntegerRangeIsLoweredToTheMaximum(): void {
+		$this->assertSame(500, $this->query(limit: '99999999999999999999')->limit);
 	}
 
 	public function testTheLargestPageThatFitsIsAccepted(): void {

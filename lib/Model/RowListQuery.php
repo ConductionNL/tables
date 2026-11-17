@@ -58,7 +58,7 @@ final class RowListQuery {
 		if ($page !== null && $offset !== null) {
 			throw new InvalidArgumentException('Use either page or offset, not both.');
 		}
-		$parsedLimit = $limit === null ? self::DEFAULT_LIMIT : min(self::parseInteger('limit', $limit, 1), self::MAX_LIMIT);
+		$parsedLimit = $limit === null ? self::DEFAULT_LIMIT : min(self::parseInteger('limit', $limit, 1, true), self::MAX_LIMIT);
 		$parsedOffset = $offset === null ? 0 : self::parseInteger('offset', $offset, 0);
 		if ($page !== null) {
 			$parsedPage = self::parseInteger('page', $page, 1);
@@ -83,9 +83,24 @@ final class RowListQuery {
 	/**
 	 * @throws InvalidArgumentException
 	 */
-	private static function parseInteger(string $name, string $value, int $minimum): int {
-		$parsed = preg_match('/^\d+$/', $value) === 1 ? filter_var($value, FILTER_VALIDATE_INT) : false;
-		if ($parsed === false || $parsed < $minimum) {
+	/**
+	 * A whole number of digits, leading zeros allowed. A number beyond the integer range is
+	 * PHP_INT_MAX when it may be lowered afterwards, as the limit is, and a 400 otherwise.
+	 *
+	 * @throws InvalidArgumentException
+	 */
+	private static function parseInteger(string $name, string $value, int $minimum, bool $mayBeLowered = false): int {
+		if (preg_match('/^\d+\z/', $value) !== 1) {
+			throw new InvalidArgumentException(sprintf('%s must be an integer of at least %d.', $name, $minimum));
+		}
+		$parsed = filter_var(ltrim($value, '0') ?: '0', FILTER_VALIDATE_INT);
+		if ($parsed === false) {
+			if ($mayBeLowered) {
+				return PHP_INT_MAX;
+			}
+			throw new InvalidArgumentException(sprintf('%s is too large.', $name));
+		}
+		if ($parsed < $minimum) {
 			throw new InvalidArgumentException(sprintf('%s must be an integer of at least %d.', $name, $minimum));
 		}
 		return $parsed;
