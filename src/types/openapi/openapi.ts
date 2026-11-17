@@ -2431,8 +2431,11 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description Permission type that should be changed */
-                    readonly permissionType: string;
+                    /**
+                     * @description Permission type that should be changed
+                     * @enum {string}
+                     */
+                    readonly permissionType: "read" | "create" | "update" | "delete" | "manage";
                     /** @description New permission value */
                     readonly permissionValue: boolean;
                 };
@@ -2805,7 +2808,7 @@ export interface operations {
                      * @description Receiver type
                      * @enum {string}
                      */
-                    readonly receiverType: "user" | "group";
+                    readonly receiverType: "user" | "group" | "circle" | "remote";
                     /**
                      * @description Permission if receiver can read data
                      * @default false
@@ -7343,7 +7346,7 @@ export interface operations {
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
                     /** @description provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug. */
-                    readonly nodes?: {
+                    readonly nodes?: readonly {
                         /** Format: int64 */
                         readonly id: number;
                         /** Format: int64 */
@@ -7351,9 +7354,9 @@ export interface operations {
                         /** Format: int64 */
                         readonly permissions: number;
                         /** Format: int64 */
-                        readonly order: number;
+                        readonly order?: number;
                         readonly slug?: string;
-                    } | null;
+                    }[] | null;
                     /**
                      * @description provide this parameter to set a new slug; not possible while the context is shared
                      * @default null
