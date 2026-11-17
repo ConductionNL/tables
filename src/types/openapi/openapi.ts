@@ -9431,7 +9431,7 @@ export interface operations {
             };
         };
         readonly responses: {
-            /** @description Row returned */
+            /** @description Row returned; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9440,7 +9440,7 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["PublicRow"];
                         };
                     };
                 };
@@ -9666,7 +9666,7 @@ export interface operations {
             };
         };
         readonly responses: {
-            /** @description Row updated */
+            /** @description Row updated; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9675,7 +9675,7 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["PublicRow"];
                         };
                     };
                 };
@@ -9779,7 +9779,7 @@ export interface operations {
         };
         readonly requestBody?: never;
         readonly responses: {
-            /** @description Row deleted */
+            /** @description Row deleted; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy */
             readonly 200: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9788,7 +9788,7 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["PublicRow"];
                         };
                     };
                 };

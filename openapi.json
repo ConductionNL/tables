@@ -17746,7 +17746,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Row returned",
+                        "description": "Row returned; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17766,7 +17766,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/PublicRow"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -18311,7 +18318,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Row updated",
+                        "description": "Row updated; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -18331,7 +18338,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/PublicRow"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -18578,7 +18592,7 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "Row deleted",
+                        "description": "Row deleted; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -18598,7 +18612,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/PublicRow"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }

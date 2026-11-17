@@ -242,9 +242,9 @@ class RowOCSController extends AOCSController {
 	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
 	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesPublicRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
-	 * 200: Row returned
+	 * 200: Row returned; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy
 	 * 400: Invalid request parameters, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
@@ -276,9 +276,9 @@ class RowOCSController extends AOCSController {
 	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string $rowId The identifier of the row to update, either its integer id or its uuid
 	 * @param string|array<string, mixed> $data An array containing the column identifiers and their values
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesPublicRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
-	 * 200: Row updated
+	 * 200: Row updated; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy
 	 * 400: Invalid request parameters or row identifier, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
@@ -309,9 +309,9 @@ class RowOCSController extends AOCSController {
 	 * @param string $contextSlug The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter
 	 * @param string $nodeSlug The slug of the table or view within the context, by the same rule
 	 * @param string $rowId The identifier of the row to delete, either its integer id or its uuid
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesPublicRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
-	 * 200: Row deleted
+	 * 200: Row deleted; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy
 	 * 400: Invalid row identifier, or the slug matches more than one context
 	 * 403: No permissions
 	 * 404: Not found
