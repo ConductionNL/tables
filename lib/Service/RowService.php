@@ -204,10 +204,10 @@ class RowService extends SuperService {
 		$allColumnIds = array_map(static fn (Column $column): int => $column->getId(), $columns);
 		$total = $this->row2Mapper->countRows($tableId, $allColumnIds, $criteria['filter'], $filterUserId);
 		// Row2Mapper only returns rows that have columns to load, so a request for metadata only
-		// loads all columns and drops their values afterwards
+		// loads a single column and drops its values afterwards
 		$isMetadataOnly = $criteria['columnIds'] === [];
 		$rows = $this->row2Mapper->findAll(
-			$isMetadataOnly ? $allColumnIds : $criteria['columnIds'],
+			$isMetadataOnly ? array_slice($allColumnIds, 0, 1) : $criteria['columnIds'],
 			$tableId,
 			$query->limit,
 			$query->offset,
