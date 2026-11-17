@@ -205,6 +205,28 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$this->rowService->findPage($this->query([]), null, self::VIEW_ID, 'test_user');
 	}
 
+	public static function filterThatDoesNotFitProvider(): array {
+		return [
+			'contains on createdAt' => [['createdAt' => ['contains' => '2023']]],
+			'a number that is no number' => [['age' => 'abc']],
+			'contains on a number' => [['age' => ['contains' => '3']]],
+		];
+	}
+
+	/**
+	 * @dataProvider filterThatDoesNotFitProvider
+	 */
+	public function testAFilterThatDoesNotFitTheFieldIsABadRequest(array $filter): void {
+		$this->expectException(BadRequestError::class);
+		$this->listTable(['filter' => $filter]);
+	}
+
+	public function testASearchTermIsNotAPlaceholder(): void {
+		$found = $this->rowService->findPage($this->query(['search' => '@my-name']), self::$testTableId, null, 'Alice');
+
+		$this->assertSame(['names' => [], 'total' => 0], $this->namesOf($found));
+	}
+
 	public function testFieldsLimitTheReturnedColumns(): void {
 		$found = $this->rowService->findPage($this->query(['fields' => 'name', 'sort' => 'name', 'limit' => '1']), self::$testTableId, null, 'test_user');
 

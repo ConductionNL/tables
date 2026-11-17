@@ -204,6 +204,12 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame('salary is not a column of this table or view.', $response->getData()['message']);
 	}
 
+	public function testGetRowsRejectsAPageWhoseOffsetDoesNotFit(): void {
+		$this->rowService->expects($this->never())->method('findPage');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, page: '99999999999999999', limit: '500')->getStatus());
+	}
+
 	public function testGetRowsIsForbiddenWithoutReadAccess(): void {
 		$this->rowService->method('findPage')->willThrowException(new PermissionError('no read access to table id = 3'));
 
