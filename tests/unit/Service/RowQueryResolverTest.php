@@ -103,15 +103,15 @@ class RowQueryResolverTest extends TestCase {
 	public function testAFilterWithoutOperatorChecksEquality(): void {
 		$criteria = $this->resolve(['filter' => ['name' => 'jane']]);
 
-		$this->assertSame([[['columnId' => 1, 'operator' => 'is-equal', 'value' => 'jane']]], $criteria['filter']);
+		$this->assertSame([[['columnId' => 1, 'operator' => 'is-equal', 'value' => 'jane', 'literal' => true]]], $criteria['filter']);
 	}
 
 	public function testAFilterWithoutOperatorOnAMultiValueColumnChecksForTheItem(): void {
 		$criteria = $this->resolve(['filter' => ['tags' => '5', 'owner' => 'jane']]);
 
 		$this->assertSame([[
-			['columnId' => 4, 'operator' => 'contains-item', 'value' => '5'],
-			['columnId' => 5, 'operator' => 'contains-item', 'value' => 'jane'],
+			['columnId' => 4, 'operator' => 'contains-item', 'value' => '5', 'literal' => true],
+			['columnId' => 5, 'operator' => 'contains-item', 'value' => 'jane', 'literal' => true],
 		]], $criteria['filter']);
 	}
 
@@ -123,7 +123,7 @@ class RowQueryResolverTest extends TestCase {
 
 		$criteria = $this->resolve(['filter' => ['name' => ['begins-with' => 'j']]], $viewFilter);
 
-		$requestFilter = ['columnId' => 1, 'operator' => 'begins-with', 'value' => 'j'];
+		$requestFilter = ['columnId' => 1, 'operator' => 'begins-with', 'value' => 'j', 'literal' => true];
 		$this->assertSame([
 			[$viewFilter[0][0], $requestFilter],
 			[$viewFilter[1][0], $requestFilter],
@@ -134,8 +134,8 @@ class RowQueryResolverTest extends TestCase {
 		$criteria = $this->resolve(['filter' => ['createdBy' => 'jane', 'createdAt' => ['is-greater-than' => '2026-01-01']]]);
 
 		$this->assertSame([[
-			['columnId' => Column::TYPE_META_CREATED_BY, 'operator' => 'is-equal', 'value' => 'jane'],
-			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than', 'value' => '2026-01-01'],
+			['columnId' => Column::TYPE_META_CREATED_BY, 'operator' => 'is-equal', 'value' => 'jane', 'literal' => true],
+			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than', 'value' => '2026-01-01', 'literal' => true],
 		]], $criteria['filter']);
 	}
 
@@ -210,8 +210,8 @@ class RowQueryResolverTest extends TestCase {
 		$criteria = $this->resolve(['filter' => ['id' => '3', '7' => 'x']], [], [], $columns);
 
 		$this->assertSame([[
-			['columnId' => Column::TYPE_META_ID, 'operator' => 'is-equal', 'value' => '3'],
-			['columnId' => 7, 'operator' => 'is-equal', 'value' => 'x'],
+			['columnId' => Column::TYPE_META_ID, 'operator' => 'is-equal', 'value' => '3', 'literal' => true],
+			['columnId' => 7, 'operator' => 'is-equal', 'value' => 'x', 'literal' => true],
 		]], $criteria['filter']);
 	}
 
@@ -219,16 +219,16 @@ class RowQueryResolverTest extends TestCase {
 		$criteria = $this->resolve(['search' => 'act']);
 
 		$this->assertSame([
-			[['columnId' => 1, 'operator' => 'contains', 'value' => 'act']],
-			[['columnId' => 3, 'operator' => 'is-equal', 'value' => '0']],
-			[['columnId' => 3, 'operator' => 'is-equal', 'value' => '1']],
+			[['columnId' => 1, 'operator' => 'contains', 'value' => 'act', 'literal' => true]],
+			[['columnId' => 3, 'operator' => 'is-equal', 'value' => '0', 'literal' => true]],
+			[['columnId' => 3, 'operator' => 'is-equal', 'value' => '1', 'literal' => true]],
 		], $criteria['filter']);
 	}
 
 	public function testSearchOnAMultiSelectionMatchesTheItem(): void {
 		$criteria = $this->resolve(['search' => 'urg', 'fields' => 'tags'], [], [], [$this->columns[3]]);
 
-		$this->assertSame([[['columnId' => 4, 'operator' => 'contains', 'value' => '5']]], $criteria['filter']);
+		$this->assertSame([[['columnId' => 4, 'operator' => 'contains', 'value' => '5', 'literal' => true]]], $criteria['filter']);
 	}
 
 	public function testSearchIsCombinedWithTheViewFilterAndTheRequestFilters(): void {
@@ -238,12 +238,12 @@ class RowQueryResolverTest extends TestCase {
 
 		$this->assertSame([[
 			['columnId' => 2, 'operator' => 'is-greater-than', 'value' => '18'],
-			['columnId' => 1, 'operator' => 'is-equal', 'value' => 'jane'],
-			['columnId' => 1, 'operator' => 'contains', 'value' => 'later'],
+			['columnId' => 1, 'operator' => 'is-equal', 'value' => 'jane', 'literal' => true],
+			['columnId' => 1, 'operator' => 'contains', 'value' => 'later', 'literal' => true],
 		], [
 			['columnId' => 2, 'operator' => 'is-greater-than', 'value' => '18'],
-			['columnId' => 1, 'operator' => 'is-equal', 'value' => 'jane'],
-			['columnId' => 4, 'operator' => 'contains', 'value' => '6'],
+			['columnId' => 1, 'operator' => 'is-equal', 'value' => 'jane', 'literal' => true],
+			['columnId' => 4, 'operator' => 'contains', 'value' => '6', 'literal' => true],
 		]], $criteria['filter']);
 	}
 

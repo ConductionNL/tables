@@ -356,10 +356,14 @@ class Row2Mapper {
 		}
 	}
 
+	/**
+	 * Resolves the placeholders (@me, @selection-id-…) of view filters. A filter marked
+	 * literal, from a request or a search, compares its value as given.
+	 */
 	private function replacePlaceholderValues(array &$filters, string $userId): void {
 		foreach ($filters as &$filterGroup) {
 			foreach ($filterGroup as &$filter) {
-				if (is_array($filter['value'])) {
+				if (is_array($filter['value']) || ($filter['literal'] ?? false)) {
 					continue;
 				}
 				if (str_starts_with((string)$filter['value'], '@')) {

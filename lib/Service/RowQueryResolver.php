@@ -24,7 +24,7 @@ use OCA\Tables\Model\RowListQuery;
  * filter always applies: the request filters and one search condition are added to each
  * of its OR groups, so a request can never widen the view.
  *
- * @psalm-type ResolvedFilter = array{columnId: int, operator: string, value: string}
+ * @psalm-type ResolvedFilter = array{columnId: int, operator: string, value: string, literal?: true}
  * @psalm-type ResolvedSortRule = array{columnId: int, mode: 'ASC'|'DESC'}
  * @psalm-type RowListCriteria = array{columnIds: list<int>, filter: list<list<ResolvedFilter>>, sort: list<ResolvedSortRule>, matchesNothing: bool}
  */
@@ -197,7 +197,7 @@ class RowQueryResolver {
 
 		$this->assertFilterFitsField($filter['field'], $column === null ? (self::META_FIELD_TYPES[$columnId] ?? '') : $this->columnTypeKey($column), $operator, $filter['value']);
 
-		return ['columnId' => $columnId, 'operator' => $operator->value, 'value' => $filter['value']];
+		return ['columnId' => $columnId, 'operator' => $operator->value, 'value' => $filter['value'], 'literal' => true];
 	}
 
 	/**
@@ -259,7 +259,7 @@ class RowQueryResolver {
 		$searchFilters = [];
 		foreach ($columns as $column) {
 			if ($column->getType() === Column::TYPE_TEXT) {
-				$searchFilters[] = ['columnId' => $column->getId(), 'operator' => FilterOperator::CONTAINS->value, 'value' => $search];
+				$searchFilters[] = ['columnId' => $column->getId(), 'operator' => FilterOperator::CONTAINS->value, 'value' => $search, 'literal' => true];
 				continue;
 			}
 			if ($column->getType() === Column::TYPE_SELECTION && $column->getSubtype() !== Column::SUBTYPE_SELECTION_CHECK) {
@@ -280,7 +280,7 @@ class RowQueryResolver {
 		$searchFilters = [];
 		foreach ($column->getSelectionOptionsArray() ?? [] as $option) {
 			if (mb_stripos((string)$option['label'], $search) !== false) {
-				$searchFilters[] = ['columnId' => $column->getId(), 'operator' => $operator->value, 'value' => (string)$option['id']];
+				$searchFilters[] = ['columnId' => $column->getId(), 'operator' => $operator->value, 'value' => (string)$option['id'], 'literal' => true];
 			}
 		}
 		return $searchFilters;

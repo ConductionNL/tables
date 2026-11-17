@@ -165,6 +165,25 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$this->assertSame(['names' => [], 'total' => 0], $this->listTable(['search' => 'zzz-no-match']));
 	}
 
+	public function testARequestFilterValueIsNotAPlaceholder(): void {
+		$found = $this->rowService->findPage($this->query(['filter' => ['createdBy' => '@me']]), self::$testTableId, null, 'user_alice');
+
+		$this->assertSame(['names' => [], 'total' => 0], $this->namesOf($found));
+	}
+
+	public function testTheViewFilterStillResolvesItsPlaceholders(): void {
+		$view = new View();
+		$view->setId(self::VIEW_ID);
+		$view->setTableId(self::$testTableId);
+		$view->setColumns(json_encode([$this->columnsByName['name']->getId()]));
+		$view->setFilter(json_encode([[['columnId' => Column::TYPE_META_CREATED_BY, 'operator' => 'is-equal', 'value' => '@me']]]));
+		$this->viewMapper->method('find')->willReturn($view);
+
+		$found = $this->rowService->findPage($this->query([]), null, self::VIEW_ID, 'user_alice');
+
+		$this->assertSame(['names' => ['Alice'], 'total' => 1], $this->namesOf($found));
+	}
+
 	public function testFieldsLimitTheReturnedColumns(): void {
 		$found = $this->rowService->findPage($this->query(['fields' => 'name', 'sort' => 'name', 'limit' => '1']), self::$testTableId, null, 'test_user');
 
