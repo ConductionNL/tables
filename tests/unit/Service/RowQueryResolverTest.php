@@ -149,6 +149,56 @@ class RowQueryResolverTest extends TestCase {
 		$this->resolve(['filter' => ['id' => 'abc']]);
 	}
 
+	public static function filterThatDoesNotFitProvider(): array {
+		return [
+			'contains on a number' => [['age' => ['contains' => '3']]],
+			'begins-with on a number' => [['age' => ['begins-with' => '3']]],
+			'contains on a relation' => [['parent' => ['contains' => '3']]],
+			'is-greater-than on text' => [['name' => ['is-greater-than' => 'b']]],
+			'contains on a checkbox' => [['done' => ['contains' => 'true']]],
+			'contains on createdAt' => [['createdAt' => ['contains' => '2026']]],
+			'ends-with on updatedAt' => [['updatedAt' => ['ends-with' => '01']]],
+			'contains on id' => [['id' => ['contains' => '1']]],
+			'contains-item on a meta field' => [['createdBy' => ['contains-item' => 'jane']]],
+			'a number that is no number' => [['age' => 'thirty']],
+			'a date that is no date' => [['due' => ['is-greater-than' => 'soon']]],
+			'a relation that is no row id' => [['parent' => 'abc']],
+			'an id that is no integer' => [['id' => 'abc']],
+		];
+	}
+
+	/**
+	 * @dataProvider filterThatDoesNotFitProvider
+	 */
+	public function testAFilterThatDoesNotFitTheFieldIsABadRequest(array $filter): void {
+		$this->expectException(BadRequestError::class);
+		$this->resolve(['filter' => $filter], [], [], $this->columnsWithDateAndRelation());
+	}
+
+	public function testFiltersThatFitTheirFieldsAreAccepted(): void {
+		$criteria = $this->resolve(['filter' => [
+			'age' => ['is-greater-than' => '2.5'],
+			'due' => ['is-lower-than' => '2026-12-31'],
+			'parent' => '42',
+			'createdAt' => ['is-greater-than-or-equal' => '2026-01-01'],
+			'createdBy' => ['begins-with' => 'ja'],
+			'name' => ['ends-with' => 'ne'],
+		]], [], [], $this->columnsWithDateAndRelation());
+
+		$this->assertCount(6, $criteria['filter'][0]);
+	}
+
+	/**
+	 * @return Column[]
+	 */
+	private function columnsWithDateAndRelation(): array {
+		return [
+			...$this->columns,
+			$this->column(7, 'due', Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_DATE),
+			$this->column(8, 'parent', Column::TYPE_RELATION),
+		];
+	}
+
 	public function testMetaFieldsDoNotSupportContainsItem(): void {
 		$this->expectException(BadRequestError::class);
 		$this->resolve(['filter' => ['createdBy' => ['contains-item' => 'jane']]]);

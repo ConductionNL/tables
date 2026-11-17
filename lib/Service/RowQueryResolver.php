@@ -36,9 +36,53 @@ class RowQueryResolver {
 		'createdAt' => Column::TYPE_META_CREATED_AT,
 		'updatedAt' => Column::TYPE_META_UPDATED_AT,
 	];
-	private const META_DATE_FIELDS = [Column::TYPE_META_CREATED_AT, Column::TYPE_META_UPDATED_AT];
 	private const RESERVED_FIELDS = ['uuid'];
 	private const SUBTYPE_MULTI = 'multi';
+
+	// the type a meta field holds, as a key of OPERATORS_BY_TYPE
+	private const META_FIELD_TYPES = [
+		Column::TYPE_META_ID => 'meta-id',
+		Column::TYPE_META_CREATED_BY => 'meta-user',
+		Column::TYPE_META_UPDATED_BY => 'meta-user',
+		Column::TYPE_META_CREATED_AT => 'meta-datetime',
+		Column::TYPE_META_UPDATED_AT => 'meta-datetime',
+	];
+	private const NUMBER_TYPES = ['number', 'number-stars', 'number-progress', 'meta-id'];
+	private const DATE_TYPES = ['datetime', 'datetime-date', 'meta-datetime'];
+	private const COMPARISONS = [
+		FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL,
+		FilterOperator::IS_GREATER_THAN, FilterOperator::IS_GREATER_THAN_OR_EQUAL,
+		FilterOperator::IS_LESS_THAN, FilterOperator::IS_LESS_THAN_OR_EQUAL,
+	];
+	/**
+	 * The operators per column type (type-subtype), as the view filter in the UI offers
+	 * them (src/shared/components/ncTable/mixins/filter.js, goodFor), except contains and
+	 * does-not-contain on relations, whose values are integers that LIKE cannot compare.
+	 * A text column without a subtype is a line of text.
+	 *
+	 * @var array<string, list<FilterOperator>>
+	 */
+	private const OPERATORS_BY_TYPE = [
+		'text' => [FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::BEGINS_WITH, FilterOperator::ENDS_WITH, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'text-line' => [FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::BEGINS_WITH, FilterOperator::ENDS_WITH, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'text-link' => [FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::BEGINS_WITH, FilterOperator::ENDS_WITH, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'text-long' => [FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'text-rich' => [FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'number' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'number-stars' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'number-progress' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'datetime' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'datetime-date' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'datetime-time' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'selection' => [FilterOperator::CONTAINS_ITEM, FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'selection-multi' => [FilterOperator::CONTAINS_ITEM, FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'selection-check' => [FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY],
+		'usergroup' => [FilterOperator::CONTAINS_ITEM, FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'relation' => [FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'meta-id' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'meta-user' => [FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::BEGINS_WITH, FilterOperator::ENDS_WITH, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'meta-datetime' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+	];
 
 	/**
 	 * @param Column[] $columns the columns the user can see, in display order
@@ -151,9 +195,7 @@ class RowQueryResolver {
 		$column = $columnId > 0 ? $columnsByName[(string)$columnId] : null;
 		$operator = $filter['operator'] ?? $this->defaultOperator($column);
 
-		if ($column === null) {
-			$this->assertValidMetaFilter($filter['field'], $columnId, $operator, $filter['value']);
-		}
+		$this->assertFilterFitsField($filter['field'], $column === null ? (self::META_FIELD_TYPES[$columnId] ?? '') : $this->columnTypeKey($column), $operator, $filter['value']);
 
 		return ['columnId' => $columnId, 'operator' => $operator->value, 'value' => $filter['value']];
 	}
@@ -174,20 +216,30 @@ class RowQueryResolver {
 			|| ($column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === self::SUBTYPE_MULTI);
 	}
 
+	private function columnTypeKey(Column $column): string {
+		$subtype = (string)$column->getSubtype();
+		return $column->getType() . ($subtype === '' ? '' : '-' . $subtype);
+	}
+
 	/**
+	 * The operators the view filter offers for the field's type, and a value that type can hold.
+	 *
 	 * @throws BadRequestError
 	 */
-	private function assertValidMetaFilter(string $field, int $columnId, FilterOperator $operator, string $value): void {
-		if ($operator === FilterOperator::CONTAINS_ITEM) {
-			throw new BadRequestError(sprintf('%s does not support the contains-item operator.', $field));
+	private function assertFilterFitsField(string $field, string $typeKey, FilterOperator $operator, string $value): void {
+		if (!in_array($operator, self::OPERATORS_BY_TYPE[$typeKey] ?? [], true)) {
+			throw new BadRequestError(sprintf('%s does not support the %s operator.', $field, $operator->value));
 		}
 		if (in_array($operator, [FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY], true)) {
 			return;
 		}
-		if ($columnId === Column::TYPE_META_ID && preg_match('/^\d+$/', $value) !== 1) {
-			throw new BadRequestError('id can only be filtered by an integer.');
+		if (in_array($typeKey, self::NUMBER_TYPES, true) && !is_numeric($value)) {
+			throw new BadRequestError(sprintf('%s can only be filtered by a number.', $field));
 		}
-		if (in_array($columnId, self::META_DATE_FIELDS, true)) {
+		if ($typeKey === 'relation' && preg_match('/^\d+$/', $value) !== 1) {
+			throw new BadRequestError(sprintf('%s can only be filtered by a row id.', $field));
+		}
+		if (in_array($typeKey, self::DATE_TYPES, true)) {
 			try {
 				new DateTimeImmutable($value);
 			} catch (Exception) {
