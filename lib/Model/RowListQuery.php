@@ -61,7 +61,11 @@ final class RowListQuery {
 		$parsedLimit = $limit === null ? self::DEFAULT_LIMIT : min(self::parseInteger('limit', $limit, 1), self::MAX_LIMIT);
 		$parsedOffset = $offset === null ? 0 : self::parseInteger('offset', $offset, 0);
 		if ($page !== null) {
-			$parsedOffset = (self::parseInteger('page', $page, 1) - 1) * $parsedLimit;
+			$parsedPage = self::parseInteger('page', $page, 1);
+			if ($parsedPage - 1 > intdiv(PHP_INT_MAX, $parsedLimit)) {
+				throw new InvalidArgumentException('page is too large.');
+			}
+			$parsedOffset = ($parsedPage - 1) * $parsedLimit;
 		}
 
 		$trimmedSearch = $search === null ? '' : trim($search);
@@ -80,10 +84,11 @@ final class RowListQuery {
 	 * @throws InvalidArgumentException
 	 */
 	private static function parseInteger(string $name, string $value, int $minimum): int {
-		if (preg_match('/^\d+$/', $value) !== 1 || (int)$value < $minimum) {
+		$parsed = preg_match('/^\d+$/', $value) === 1 ? filter_var($value, FILTER_VALIDATE_INT) : false;
+		if ($parsed === false || $parsed < $minimum) {
 			throw new InvalidArgumentException(sprintf('%s must be an integer of at least %d.', $name, $minimum));
 		}
-		return (int)$value;
+		return $parsed;
 	}
 
 	/**

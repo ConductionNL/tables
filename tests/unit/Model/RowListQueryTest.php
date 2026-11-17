@@ -83,6 +83,10 @@ class RowListQueryTest extends TestCase {
 			'limit not a number' => [null, null, 'all'],
 			'negative offset' => [null, '-1', null],
 			'page and offset' => ['1', '0', null],
+			'page whose offset overflows' => ['99999999999999999', null, '500'],
+			'page beyond the integer range' => ['99999999999999999999', null, null],
+			'offset beyond the integer range' => [null, '99999999999999999999', null],
+			'limit beyond the integer range' => [null, null, '99999999999999999999'],
 		];
 	}
 
@@ -92,6 +96,12 @@ class RowListQueryTest extends TestCase {
 	public function testInvalidPagingIsRejected(?string $page, ?string $offset, ?string $limit): void {
 		$this->expectException(InvalidArgumentException::class);
 		$this->query(page: $page, offset: $offset, limit: $limit);
+	}
+
+	public function testTheLargestPageThatFitsIsAccepted(): void {
+		$query = $this->query(page: (string)(intdiv(PHP_INT_MAX, 500) + 1), limit: '500');
+
+		$this->assertSame(intdiv(PHP_INT_MAX, 500) * 500, $query->offset);
 	}
 
 	public function testSortIsParsedWithDirections(): void {
