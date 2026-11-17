@@ -57,9 +57,12 @@ class RowQueryResolver {
 	];
 	/**
 	 * The operators per column type (type-subtype), as the view filter in the UI offers
-	 * them (src/shared/components/ncTable/mixins/filter.js, goodFor), except contains and
-	 * does-not-contain on relations, whose values are integers that LIKE cannot compare.
-	 * A text column without a subtype is a line of text.
+	 * them (src/shared/components/ncTable/mixins/filter.js, goodFor), with two differences:
+	 * contains and does-not-contain are left out on relations, whose values are integers
+	 * that LIKE cannot compare, and contains-item is added on usergroup columns, as the
+	 * operator a filter without one uses there. Long and rich text have no is-equal, so a
+	 * filter without an operator on them is refused. A text column without a subtype is a
+	 * line of text.
 	 *
 	 * @var array<string, list<FilterOperator>>
 	 */

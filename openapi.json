@@ -16623,7 +16623,7 @@
                     {
                         "name": "filter",
                         "in": "query",
-                        "description": "Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns); a value is compared as given",
+                        "description": "Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and must fit the type: a decimal number, a row id, a date as YYYY-MM-DD with an optional HH:MM[:SS], or a time as HH:MM[:SS]",
                         "schema": {
                             "type": "string",
                             "nullable": true
