@@ -30,7 +30,7 @@
 			</div>
 		</div>
 
-		<div v-if="previewData.slug" class="preview-section preview-section--option">
+		<div v-if="previewData.slug && previewData.slug.from !== previewData.slug.to" class="preview-section preview-section--option">
 			<div class="preview-option">
 				<NcCheckboxRadioSwitch v-model="importSlug" class="preview-option__label" type="switch">
 					{{ t('tables', 'Slug') }}
@@ -365,7 +365,7 @@ export default {
 				},
 				nodes: this.importNodes ? this.previewData.nodes.to : this.previewData.nodes.from,
 			}
-			if (this.importSlug && this.previewData.slug) {
+			if (this.importSlug && this.previewData.slug && this.previewData.slug.from !== this.previewData.slug.to) {
 				payload.slug = this.previewData.slug.to
 			}
 

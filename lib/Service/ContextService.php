@@ -1060,7 +1060,7 @@ class ContextService {
 			],
 			'slug' => [
 				'from' => $context->getSlug(),
-				'to' => is_string($updateScheme['slug'] ?? null) ? $updateScheme['slug'] : $context->getSlug(),
+				'to' => $this->importableContextSlug($context, is_string($updateScheme['slug'] ?? null) ? $updateScheme['slug'] : null) ?? $context->getSlug(),
 			],
 			'nodes' => [
 				'from' => $currentScheme->getNodes(),
