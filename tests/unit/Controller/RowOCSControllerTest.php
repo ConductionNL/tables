@@ -14,6 +14,7 @@ use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
+use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowService;
@@ -201,6 +202,18 @@ class RowOCSControllerTest extends TestCase {
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
 		$this->assertSame('salary is not a column of this table or view.', $response->getData()['message']);
+	}
+
+	public function testGetRowsIsForbiddenWithoutReadAccess(): void {
+		$this->rowService->method('findPage')->willThrowException(new PermissionError('no read access to table id = 3'));
+
+		$this->assertSame(Http::STATUS_FORBIDDEN, $this->controller->getRows('tables', 3)->getStatus());
+	}
+
+	public function testGetRowsReportsAMissingViewAsNotFound(): void {
+		$this->rowService->method('findPage')->willThrowException(new NotFoundError('View not found.'));
+
+		$this->assertSame(Http::STATUS_NOT_FOUND, $this->controller->getRows('views', 5)->getStatus());
 	}
 
 	public function testGetRowsIsNotSupportedOnAFederatedView(): void {

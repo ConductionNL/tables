@@ -16,6 +16,7 @@ use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\BadRequestError;
+use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Notification\NotificationHelper;
 use OCA\Tables\Service\PermissionsService;
@@ -42,6 +43,8 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 	/** @var array<string, Column> */
 	private array $columnsByName = [];
 
+	private bool $canRead = true;
+
 	protected function setUp(): void {
 		parent::setUp();
 		$this->setupDependencies();
@@ -60,7 +63,7 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		);
 
 		$permissionsService = $this->createMock(PermissionsService::class);
-		$permissionsService->method('canReadRowsByElementId')->willReturn(true);
+		$permissionsService->method('canReadRowsByElementId')->willReturnCallback(fn (): bool => $this->canRead);
 		$tableMapper = $this->createMock(TableMapper::class);
 		$tableMapper->method('find')->willReturn(new Table());
 		$this->viewMapper = $this->createMock(ViewMapper::class);
@@ -182,6 +185,24 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$found = $this->rowService->findPage($this->query([]), null, self::VIEW_ID, 'user_alice');
 
 		$this->assertSame(['names' => ['Alice'], 'total' => 1], $this->namesOf($found));
+	}
+
+	public function testATableWithoutReadAccessIsForbidden(): void {
+		$this->canRead = false;
+
+		$this->expectException(PermissionError::class);
+		$this->listTable([]);
+	}
+
+	public function testAViewWithoutReadAccessIsForbidden(): void {
+		$this->canRead = false;
+		$view = new View();
+		$view->setId(self::VIEW_ID);
+		$view->setTableId(self::$testTableId);
+		$this->viewMapper->method('find')->willReturn($view);
+
+		$this->expectException(PermissionError::class);
+		$this->rowService->findPage($this->query([]), null, self::VIEW_ID, 'test_user');
 	}
 
 	public function testFieldsLimitTheReturnedColumns(): void {
