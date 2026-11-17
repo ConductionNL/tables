@@ -2346,6 +2346,46 @@ class FeatureContext implements Context {
 	}
 
 	/**
+	 * @When user :user previews a scheme for Context :contextAlias with the slug :slug
+	 */
+	public function userPreviewsASchemeWithTheSlug(string $user, string $contextAlias, string $slug): void {
+		$this->setCurrentUser($user);
+		$context = $this->collectionManager->getByAlias('context', $contextAlias);
+		$this->sendOcsRequest(
+			'POST',
+			sprintf('/apps/tables/api/2/contexts/%d/scheme/preview-changes', $context['id']),
+			['updateScheme' => ['slug' => $slug, 'nodes' => [], 'tables' => []]],
+		);
+		Assert::assertEquals(200, $this->response->getStatusCode());
+	}
+
+	/**
+	 * @When user :user previews a scheme for Context :contextAlias with the slug of Context :otherContextAlias
+	 */
+	public function userPreviewsASchemeWithTheSlugOfAnotherContext(string $user, string $contextAlias, string $otherContextAlias): void {
+		$otherContext = $this->collectionManager->getByAlias('context', $otherContextAlias);
+		$this->userPreviewsASchemeWithTheSlug($user, $contextAlias, $otherContext['slug']);
+	}
+
+	/**
+	 * @Then the previewed slug of Context :contextAlias changes to :slug
+	 */
+	public function thePreviewedSlugChangesTo(string $contextAlias, string $slug): void {
+		$context = $this->collectionManager->getByAlias('context', $contextAlias);
+		$change = $this->getDataFromResponse($this->response)['ocs']['data']['slug'];
+		Assert::assertSame(['from' => $context['slug'], 'to' => $slug], $change);
+	}
+
+	/**
+	 * @Then the previewed slug of Context :contextAlias stays
+	 */
+	public function thePreviewedSlugStays(string $contextAlias): void {
+		$context = $this->collectionManager->getByAlias('context', $contextAlias);
+		$change = $this->getDataFromResponse($this->response)['ocs']['data']['slug'];
+		Assert::assertSame(['from' => $context['slug'], 'to' => $context['slug']], $change);
+	}
+
+	/**
 	 * @Then user :user has access to Context :contextAlias
 	 */
 	public function userHasAccessToContext(string $user, string $contextAlias) {
