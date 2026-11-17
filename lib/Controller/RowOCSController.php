@@ -368,7 +368,7 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesPublicRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 */
 	private function createRowInNode(int $nodeType, int $nodeId, mixed $data): DataResponse {
 		if (is_string($data)) {
@@ -407,7 +407,7 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesPublicRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 */
 	private function updateRowInNode(int $nodeType, int $nodeId, string $rowId, mixed $data): DataResponse {
 		if (is_string($data)) {
@@ -442,7 +442,7 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * @return DataResponse<Http::STATUS_OK, TablesRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
+	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesPublicRow, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 */
 	private function deleteRowInNode(int $nodeType, int $nodeId, string $rowId): DataResponse {
 		[$tableId, $viewId] = $this->splitNodeId($nodeType, $nodeId);
