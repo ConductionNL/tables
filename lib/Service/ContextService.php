@@ -1058,6 +1058,10 @@ class ContextService {
 				'from' => $context->getDescription(),
 				'to' => $updateScheme['description'] ?? $context->getDescription()
 			],
+			'slug' => [
+				'from' => $context->getSlug(),
+				'to' => is_string($updateScheme['slug'] ?? null) ? $updateScheme['slug'] : $context->getSlug(),
+			],
 			'nodes' => [
 				'from' => $currentScheme->getNodes(),
 				'to' => $updateScheme['nodes'] ?? $currentScheme->getNodes()
