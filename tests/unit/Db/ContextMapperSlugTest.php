@@ -53,7 +53,7 @@ class ContextMapperSlugTest extends DatabaseTestCase {
 		$this->assertSame([], $this->contextMapper->findIdsBySlug('crm', 'bob'));
 	}
 
-	public function testFindsAnApplicationSharedWithTheUserOrTheirGroup(): void {
+	public function testFindsAnApplicationSharedWithTheUserOnceAlsoWithAGroupShare(): void {
 		$id = $this->insertContext('alice', 'crm');
 		$this->share($id, 'user', 'bob');
 		$this->share($id, 'group', 'sales');

@@ -1089,9 +1089,11 @@ Feature: APIv2
     And using table "t1"
     And user "participant1-v2" creates row "r-existing" with following values:
       | statement | already there |
+    And user "participant1-v2" creates row "r-other" with following values:
+      | statement | another row |
     When user "participant2-v2" lists the rows of "table" "t1" in Context "c1" by slug
     Then the reported status is "200"
-    And the rows listed by slug are "r-existing"
+    And the rows listed by slug are "r-existing,r-other"
     When user "participant2-v2" fetches row "r-existing" of "table" "t1" in Context "c1" by slug
     Then the reported status is "200"
     And the row fetched by slug is "r-existing"
@@ -1103,7 +1105,7 @@ Feature: APIv2
     Then the reported status is "403"
     When user "participant2-v2" deletes row "r-existing" of "table" "t1" in Context "c1" by slug
     Then the reported status is "403"
-    And the user "participant1-v2" fetches table "t1", it has exactly these rows "r-existing"
+    And the user "participant1-v2" fetches table "t1", it has exactly these rows "r-existing,r-other"
     And the column "statement" of row "r-existing" has the value "already there"
     When user "participant3-v2" lists the rows of "table" "t1" in Context "c1" by slug
     Then the reported status is "404"
