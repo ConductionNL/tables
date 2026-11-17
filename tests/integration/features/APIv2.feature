@@ -1055,6 +1055,41 @@ Feature: APIv2
     And the user "participant1-v2" fetches table "t1", it has exactly these rows "r-updatable,r-inserted"
     And the column "statement" of row "r-updatable" has the value "update accomplished"
 
+  @api2 @contexts @contexts-content @slugs
+  Scenario: A read-only member reaches the rows of an application by slug, but cannot change them
+    Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2
+    And column "statement" exists with following properties
+      | type          | text                |
+      | subtype       | line                |
+      | mandatory     | 0                   |
+      | description   | State your business |
+    And user "participant1-v2" creates the Context "c1" with name "Enchanting Guitar" with icon "tennis" and description "Lorem ipsum dolor etc pp" and nodes:
+      | alias | type  | permissions |
+      | t1    | table | read        |
+    And user "participant1-v2" shares the Context "c1" to "user" "participant2-v2"
+    And using table "t1"
+    And user "participant1-v2" creates row "r-existing" with following values:
+      | statement | already there |
+    When user "participant2-v2" lists the rows of "table" "t1" in Context "c1" by slug
+    Then the reported status is "200"
+    And the rows listed by slug are "r-existing"
+    When user "participant2-v2" fetches row "r-existing" of "table" "t1" in Context "c1" by slug
+    Then the reported status is "200"
+    When user "participant2-v2" creates a row in "table" "t1" of Context "c1" by slug with following values:
+      | statement | not allowed |
+    Then the reported status is "403"
+    When user "participant2-v2" updates row "r-existing" of "table" "t1" in Context "c1" by slug with following values:
+      | statement | not allowed |
+    Then the reported status is "403"
+    When user "participant2-v2" deletes row "r-existing" of "table" "t1" in Context "c1" by slug
+    Then the reported status is "403"
+    When user "participant3-v2" lists the rows of "table" "t1" in Context "c1" by slug
+    Then the reported status is "404"
+    When user "participant1-v2" creates a row in "table" "t1" of Context "c1" by slug with following values:
+      | statement | the owner may |
+    Then the reported status is "200"
+    And the column "statement" of row "r-existing" has the value "already there"
+
   @api2 @contexts @contexts-content
   Scenario: Execute CRU permissions on a table available through a context, ensure D is not possible
     Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2
