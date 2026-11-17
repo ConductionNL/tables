@@ -1227,7 +1227,7 @@ class ContextService {
 	/**
 	 * Nodes the application already has keep their slug. A new node takes the
 	 * slug from the scheme when it is valid and free, else it gets the default.
-	 * A node the scheme lists more than once is imported once, with its last entry.
+	 * A node the scheme lists more than once is imported once, with its last entry and at its place.
 	 *
 	 * @param list<array{id: int, type: int, permissions: int, slug: mixed}> $nodes
 	 * @param array<string, string> $currentNodeSlugs
@@ -1242,10 +1242,12 @@ class ContextService {
 			}
 		}
 
-		// like the update, the last entry of a node listed more than once wins
+		// like the update, the last entry of a node listed more than once wins, values and position
 		$nodesByKey = [];
 		foreach ($nodes as $node) {
-			$nodesByKey[sprintf('t%di%d', $node['type'], $node['id'])] = $node;
+			$key = sprintf('t%di%d', $node['type'], $node['id']);
+			unset($nodesByKey[$key]);
+			$nodesByKey[$key] = $node;
 		}
 
 		$importableNodes = [];
