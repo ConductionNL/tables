@@ -356,8 +356,8 @@ class ContextService {
 
 			$hasUpdatedNodeInformation = $hasUpdatedNodeInformation || !empty($nodesBeingAdded) || !empty($removedNodes);
 
-			// nodes with a requested slug go first, so a default slug cannot take it
-			uasort($nodesBeingAdded, static fn (array $a, array $b): int => (int)!isset($a['slug']) <=> (int)!isset($b['slug']));
+			// a default slug must not take a slug that a later node of this request asks for
+			$requestedSlugs = self::requestedSlugs($nodesBeingAdded);
 			foreach ($nodesBeingAdded as $node) {
 				$nodeType = (int)($node['type']);
 				$nodeId = (int)($node['id']);
@@ -376,6 +376,7 @@ class ContextService {
 					$node['order'] ?? 100,
 					$userId,
 					$node['slug'] ?? null,
+					$requestedSlugs,
 				);
 				$currentNodes[$addedNode->getId()] = $addedNode->jsonSerialize();
 				$currentPages[$updatedContent->getPageId()]['content'][$updatedContent->getId()] = $updatedContent->jsonSerialize();
@@ -541,9 +542,9 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId, ?string $slug = null): ContextNodeRelation {
+	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId, ?string $slug = null, array $reservedSlugs = []): ContextNodeRelation {
 		$context = $this->contextMapper->findById($contextId, $userId);
-		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions, $slug);
+		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions, $slug, $reservedSlugs);
 	}
 
 	/**
@@ -568,8 +569,8 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId, ?string $slug = null): array {
-		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId, $slug);
+	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId, ?string $slug = null, array $reservedSlugs = []): array {
+		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId, $slug, $reservedSlugs);
 		$pageContent = $this->addNodeRelToPage($relation, $order);
 		return [$relation, $pageContent];
 	}
@@ -587,14 +588,15 @@ class ContextService {
 
 	/**
 	 * @param ?string $slug unique within the application; table-{id} or view-{id} when null
+	 * @param array<string, true> $reservedSlugs slugs a default slug must avoid, because other nodes of the same request ask for them
 	 * @throws Exception
 	 * @throws BadRequestError
 	 */
-	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions, ?string $slug = null): ContextNodeRelation {
+	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions, ?string $slug = null, array $reservedSlugs = []): ContextNodeRelation {
 		if ($slug === null) {
 			$slug = self::uniqueSlug(
 				self::defaultNodeSlug($nodeType, $nodeId),
-				$this->contextNodeRelMapper->findSlugsByContextId($context->getId()),
+				$this->contextNodeRelMapper->findSlugsByContextId($context->getId()) + $reservedSlugs,
 			);
 		} else {
 			$this->assertNodeSlugAvailable($context->getId(), $slug);
@@ -795,6 +797,22 @@ class ContextService {
 	}
 
 	/**
+	 * The valid slugs the given nodes ask for.
+	 *
+	 * @param array<array-key, array<string, mixed>> $nodes
+	 * @return array<string, true>
+	 */
+	private static function requestedSlugs(array $nodes): array {
+		$slugs = [];
+		foreach ($nodes as $node) {
+			if (isset($node['slug']) && is_string($node['slug']) && SlugValidator::isValid($node['slug'])) {
+				$slugs[$node['slug']] = true;
+			}
+		}
+		return $slugs;
+	}
+
+	/**
 	 * The requested slug when it is valid and free, else null.
 	 *
 	 * @param array<string, true> $taken
@@ -842,6 +860,7 @@ class ContextService {
 		$addedNodes = [];
 
 		$userId = $context->getOwnerType() === Application::OWNER_TYPE_USER ? $context->getOwnerId() : null;
+		$requestedSlugs = self::requestedSlugs($nodes);
 		foreach ($nodes as $node) {
 			try {
 				$nodeType = (int)($node['type']);
@@ -850,7 +869,7 @@ class ContextService {
 				if (!$this->permissionsService->canManageNodeById($nodeType, $nodeId, $userId)) {
 					throw new PermissionError(sprintf('Owner cannot manage node %d (type %d)', $nodeId, $nodeType));
 				}
-				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ, $node['slug'] ?? null);
+				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ, $node['slug'] ?? null, $requestedSlugs);
 				$addedNodes[] = $contextNodeRel->jsonSerialize();
 			} catch (Exception $e) {
 				$this->logger->warning('Could not add node {ntype}/{nid} to context {cid}, skipping.', [
@@ -906,10 +925,11 @@ class ContextService {
 		$nodeRelMap = [];
 		if (!empty($context['nodes'])) {
 			$takenNodeSlugs = [];
+			$requestedSlugs = self::requestedSlugs($context['nodes']);
 			foreach ($context['nodes'] as $nodeArr) {
 				$nodeType = (int)($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
 				$slug = self::availableSlug($nodeArr['slug'] ?? null, $takenNodeSlugs)
-					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeSlugs);
+					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeSlugs + $requestedSlugs);
 				$takenNodeSlugs[$slug] = true;
 
 				$contextNodeRel = new ContextNodeRelation();
@@ -1175,7 +1195,7 @@ class ContextService {
 	/**
 	 * Nodes the application already has keep their slug. A new node takes the
 	 * slug from the scheme when it is valid and free, else it gets the default.
-	 * A node the scheme lists more than once is imported once.
+	 * A node the scheme lists more than once is imported once, with its last entry.
 	 *
 	 * @param list<array{id: int, type: int, permissions: int, slug: mixed}> $nodes
 	 * @param array<string, string> $currentNodeSlugs
@@ -1190,14 +1210,14 @@ class ContextService {
 			}
 		}
 
-		$importableNodes = [];
-		$importedKeys = [];
+		// like the update, the last entry of a node listed more than once wins
+		$nodesByKey = [];
 		foreach ($nodes as $node) {
-			$key = sprintf('t%di%d', $node['type'], $node['id']);
-			if (isset($importedKeys[$key])) {
-				continue;
-			}
-			$importedKeys[$key] = true;
+			$nodesByKey[sprintf('t%di%d', $node['type'], $node['id'])] = $node;
+		}
+
+		$importableNodes = [];
+		foreach ($nodesByKey as $key => $node) {
 			$requestedSlug = $node['slug'];
 			unset($node['slug']);
 			$isNew = !isset($currentNodeSlugs[$key]);

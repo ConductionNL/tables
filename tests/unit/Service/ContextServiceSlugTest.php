@@ -551,21 +551,28 @@ final class ContextServiceSlugTest extends TestCase {
 	public function testUpdateAcceptsANodeListedTwice(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
 		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
-		$this->contextNodeRelMapper->method('update')->willReturnArgument(0);
+		$writtenPermissions = [];
+		$this->contextNodeRelMapper->method('update')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$writtenPermissions): ContextNodeRelation {
+				$writtenPermissions[] = $relation->getPermissions();
+				return $relation;
+			});
 		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
 
 		$this->service->update(7, 'alice', null, null, null, [
 			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10],
 			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_MANAGE, 'order' => 20],
 		]);
+
+		$this->assertSame([Application::PERMISSION_MANAGE], $writtenPermissions);
 	}
 
-	public function testSchemeImportAddsANodeListedTwiceOnceWithItsSlug(): void {
+	public function testSchemeImportAddsANodeListedTwiceOnceWithItsLastEntry(): void {
 		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true]);
-		$insertedSlugs = [];
+		$inserted = [];
 		$this->contextNodeRelMapper->method('insert')
-			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$insertedSlugs): ContextNodeRelation {
-				$insertedSlugs[] = $relation->getSlug();
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
+				$inserted[] = [$relation->getSlug(), $relation->getPermissions()];
 				$relation->setId(10 + $relation->getNodeId());
 				return $relation;
 			});
@@ -573,11 +580,77 @@ final class ContextServiceSlugTest extends TestCase {
 
 		$this->service->importScheme(7, 'CRM', 'icon', '', [
 			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-5', 'permissions' => Application::PERMISSION_READ],
-			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'clients'],
-			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'clients'],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'Not A Slug'],
+			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_MANAGE, 'slug' => 'clients'],
 		], ['addTables' => [], 'modifyTables' => []], 'alice');
 
-		$this->assertSame(['clients'], $insertedSlugs);
+		$this->assertSame([['clients', Application::PERMISSION_MANAGE]], $inserted);
+	}
+
+	public function testUpdateKeepsTheOrderOfAddedNodesAndLeavesARequestedSlugToItsNode(): void {
+		$this->prepareSchemeImport(shared: false, ownerSlugs: []);
+		$inserted = [];
+		$this->contextNodeRelMapper->method('insert')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
+				$inserted[] = [$relation->getNodeId(), $relation->getSlug()];
+				$relation->setId(10 + $relation->getNodeId());
+				return $relation;
+			});
+		$this->contextMapper->method('update')->willReturnArgument(0);
+
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10],
+			['id' => 8, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 20],
+			['id' => 9, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 30, 'slug' => 'table-8'],
+		]);
+
+		$this->assertSame([[8, 'table-8-2'], [9, 'table-8']], $inserted);
+	}
+
+	public function testCreateLeavesARequestedSlugToTheNodeThatAsksForIt(): void {
+		$this->contextMapper->method('insert')->willReturnCallback(static function (Context $context): Context {
+			$context->setId(7);
+			return $context;
+		});
+		$this->contextMapper->method('findSlugsForOwner')->willReturn([]);
+		$this->contextMapper->method('update')->willReturnArgument(0);
+		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
+		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$inserted = [];
+		$this->contextNodeRelMapper->method('insert')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
+				$inserted[] = [$relation->getNodeId(), $relation->getSlug()];
+				return $relation;
+			});
+
+		$this->service->create('CRM', 'icon', '', [
+			['id' => 8, 'type' => Application::NODE_TYPE_TABLE],
+			['id' => 9, 'type' => Application::NODE_TYPE_TABLE, 'slug' => 'table-8'],
+		], 'alice', Application::OWNER_TYPE_USER);
+
+		$this->assertSame([[8, 'table-8-2'], [9, 'table-8']], $inserted);
+	}
+
+	public function testImportedContextLeavesARequestedSlugToTheNodeThatAsksForIt(): void {
+		$this->contextMapper->method('insert')->willReturnArgument(0);
+		$this->contextMapper->method('findSlugsForOwner')->willReturn([]);
+		$insertedSlugs = [];
+		$this->contextNodeRelMapper->method('insert')
+			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$insertedSlugs): ContextNodeRelation {
+				$insertedSlugs[] = $relation->getSlug();
+				return $relation;
+			});
+
+		$this->service->importContext($this->table(5), [
+			'name' => 'CRM',
+			'slug' => 'crm',
+			'nodes' => [
+				['id' => 1, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE],
+				['id' => 2, 'node_id' => 3, 'node_type' => Application::NODE_TYPE_TABLE, 'slug' => 'table-5'],
+			],
+		], 3);
+
+		$this->assertSame(['table-5-2', 'table-5'], $insertedSlugs);
 	}
 
 	/**
