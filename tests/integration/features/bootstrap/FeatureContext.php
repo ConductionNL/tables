@@ -72,6 +72,8 @@ class FeatureContext implements Context {
 
 	/** @var array|null Decoded relations response data, stored to allow multiple assertion steps */
 	private ?array $relationsData = null;
+	/** @var list<array<string, mixed>> */
+	private array $listedObjects = [];
 
 	/**
 	 * FeatureContext constructor.
@@ -1760,6 +1762,63 @@ class FeatureContext implements Context {
 	}
 
 	/**
+	 * @When user :user lists the rows of :nodeType :nodeAlias using v2 in the object shape
+	 */
+	public function userListsRowsV2InTheObjectShape(string $user, string $nodeType, string $nodeAlias): void {
+		$this->setCurrentUser($user);
+		$node = $this->collectionManager->getByAlias($nodeType, $nodeAlias);
+		$this->sendOcsRequest('GET', sprintf('/apps/tables/api/2/%ss/%d/rows?shape=object', $nodeType, $node['id']));
+		Assert::assertEquals(200, $this->response->getStatusCode());
+		$this->listedObjects = $this->getDataFromResponse($this->response)['ocs']['data']['results'];
+	}
+
+	/**
+	 * @Then the listed objects have exactly the properties :columnAliasList
+	 */
+	public function theListedObjectsHaveExactlyTheProperties(string $columnAliasList): void {
+		$expected = ['@self'];
+		foreach (explode(',', $columnAliasList) as $columnAlias) {
+			$expected[] = $this->collectionManager->getByAlias('column', $columnAlias)['technicalName'];
+		}
+		Assert::assertNotEmpty($this->listedObjects);
+		foreach ($this->listedObjects as $object) {
+			Assert::assertSame($expected, array_keys($object));
+		}
+	}
+
+	/**
+	 * @Then the listed object of row :rowAlias has following values
+	 *
+	 * @param TableNode $properties column aliases and the expected value as JSON
+	 */
+	public function theListedObjectOfRowHas(string $rowAlias, TableNode $properties): void {
+		$object = $this->findListedObject($rowAlias);
+		foreach ($properties->getRows() as $row) {
+			$technicalName = $this->collectionManager->getByAlias('column', $row[0])['technicalName'];
+			Assert::assertArrayHasKey($technicalName, $object);
+			Assert::assertSame(json_decode($row[1], true, 512, JSON_THROW_ON_ERROR), $object[$technicalName]);
+		}
+	}
+
+	/**
+	 * @Then the listed object of row :rowAlias has the uuid of row :targetRowAlias as :columnAlias
+	 */
+	public function theListedObjectOfRowRelatesTo(string $rowAlias, string $targetRowAlias, string $columnAlias): void {
+		$object = $this->findListedObject($rowAlias);
+		$technicalName = $this->collectionManager->getByAlias('column', $columnAlias)['technicalName'];
+		Assert::assertSame($this->collectionManager->getByAlias('row', $targetRowAlias)['uuid'], $object[$technicalName]);
+	}
+
+	private function findListedObject(string $rowAlias): array {
+		$row = $this->collectionManager->getByAlias('row', $rowAlias);
+		$matching = array_values(array_filter($this->listedObjects, static fn (array $object): bool => $object['@self']['rowId'] === $row['id']));
+		Assert::assertCount(1, $matching);
+		Assert::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $matching[0]['@self']['id']);
+		Assert::assertSame($row['uuid'], $matching[0]['@self']['id']);
+		return $matching[0];
+	}
+
+	/**
 	 * @Then row exists with following values via legacy interface
 	 *
 	 * @param TableNode|null $properties
@@ -3049,13 +3108,33 @@ class FeatureContext implements Context {
 	 * @Given user :user creates row :rowAlias with following values:
 	 */
 	public function userCreatesRowWithFollowingValues(string $user, string $rowAlias, TableNode $properties): void {
-		$this->setCurrentUser($user);
-
 		$props = [];
 		foreach ($properties->getRows() as $row) {
 			$columnId = $this->collectionManager->getByAlias('column', $row[0])['id'];
 			$props[$columnId] = $row[1];
 		}
+		$this->createRowInActiveNode($user, $rowAlias, $props);
+	}
+
+	/**
+	 * @Given user :user creates row :rowAlias relating :columnAlias to row :targetRowAlias with following values:
+	 */
+	public function userCreatesRelatingRowWithFollowingValues(string $user, string $rowAlias, string $columnAlias, string $targetRowAlias, TableNode $properties): void {
+		$props = [];
+		foreach ($properties->getRows() as $row) {
+			$columnId = $this->collectionManager->getByAlias('column', $row[0])['id'];
+			$props[$columnId] = $row[1];
+		}
+		$props[$this->collectionManager->getByAlias('column', $columnAlias)['id']] = $this->collectionManager->getByAlias('row', $targetRowAlias)['id'];
+		$this->createRowInActiveNode($user, $rowAlias, $props);
+		Assert::assertEquals(200, $this->response->getStatusCode());
+	}
+
+	/**
+	 * @param array<int, mixed> $props
+	 */
+	private function createRowInActiveNode(string $user, string $rowAlias, array $props): void {
+		$this->setCurrentUser($user);
 
 		if (!$this->activeNode) {
 			throw new \LogicException('Set an active node via "@And using table|view nodeAlias"');
