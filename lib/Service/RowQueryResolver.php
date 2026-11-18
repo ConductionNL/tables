@@ -62,7 +62,7 @@ class RowQueryResolver {
 		'datetime' => [['Y-m-d H:i'], 'a date and time as YYYY-MM-DD HH:MM'],
 		'datetime-date' => [['Y-m-d'], 'a date as YYYY-MM-DD'],
 		'datetime-time' => [['H:i'], 'a time as HH:MM'],
-		'meta-datetime' => [['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s'], 'a date as YYYY-MM-DD, optionally followed by a time as HH:MM or HH:MM:SS'],
+		'meta-datetime' => [['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d\\TH:i', 'Y-m-d\\TH:i:s'], 'a date as YYYY-MM-DD, optionally followed by a space or T and a time as HH:MM or HH:MM:SS'],
 	];
 	private const COMPARISONS = [
 		FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL,
@@ -280,7 +280,7 @@ class RowQueryResolver {
 		if ($storedFormat !== null && !$this->hasStoredFormat($value, $storedFormat[0])) {
 			throw new BadRequestError(sprintf('%s can only be filtered by %s.', $field, $storedFormat[1]));
 		}
-		if (in_array($typeKey, ['selection', 'selection-multi'], true) && preg_match('/^\d+\z/', $value) !== 1) {
+		if (in_array($typeKey, ['selection', 'selection-multi'], true) && preg_match('/^(0|[1-9]\d{0,9})\z/', $value) !== 1) {
 			throw new BadRequestError(sprintf('%s can only be filtered by the id of one of its options.', $field));
 		}
 		if ($typeKey === 'selection-check' && !in_array($value, ['true', 'false'], true)) {

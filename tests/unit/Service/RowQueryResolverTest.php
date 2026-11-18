@@ -186,6 +186,9 @@ class RowQueryResolverTest extends TestCase {
 			'contains on a single selection' => [['status' => ['contains' => '1']]],
 			'a multi selection contains by label' => [['tags' => ['contains' => 'Urgent']]],
 			'long text without an operator' => [['notes' => 'x']],
+			'a selection option id with a leading zero' => [['status' => '01']],
+			'a multi selection item id with a leading zero' => [['tags' => '01']],
+			'a meta date with a T but no time' => [['createdAt' => '2026-01-01T']],
 		];
 	}
 
@@ -203,12 +206,13 @@ class RowQueryResolverTest extends TestCase {
 			'due' => ['is-lower-than' => '2026-12-31'],
 			'parent' => '42',
 			'createdAt' => ['is-greater-than-or-equal' => '2026-01-01 08:30'],
+			'updatedAt' => ['is-lower-than' => '2026-01-01 08:30:15'],
 			'createdBy' => ['begins-with' => 'ja'],
 			'name' => ['ends-with' => 'ne'],
 			'id' => '2147483647',
 			'at' => ['is-greater-than' => '09:30'],
 			'stamp' => ['is-lower-than' => '2026-01-01 10:00'],
-			'status' => '1',
+			'status' => '0',
 			'tags' => '5',
 			'done' => 'true',
 		]], [], [], $this->columnsWithDateAndRelation());
@@ -218,15 +222,40 @@ class RowQueryResolverTest extends TestCase {
 			['columnId' => 7, 'operator' => 'is-lower-than', 'value' => '2026-12-31', 'literal' => true],
 			['columnId' => 8, 'operator' => 'is-equal', 'value' => '42', 'literal' => true],
 			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than-or-equal', 'value' => '2026-01-01 08:30', 'literal' => true],
+			['columnId' => Column::TYPE_META_UPDATED_AT, 'operator' => 'is-lower-than', 'value' => '2026-01-01 08:30:15', 'literal' => true],
 			['columnId' => Column::TYPE_META_CREATED_BY, 'operator' => 'begins-with', 'value' => 'ja', 'literal' => true],
 			['columnId' => 1, 'operator' => 'ends-with', 'value' => 'ne', 'literal' => true],
 			['columnId' => Column::TYPE_META_ID, 'operator' => 'is-equal', 'value' => '2147483647', 'literal' => true],
 			['columnId' => 9, 'operator' => 'is-greater-than', 'value' => '09:30', 'literal' => true],
 			['columnId' => 10, 'operator' => 'is-lower-than', 'value' => '2026-01-01 10:00', 'literal' => true],
-			['columnId' => 3, 'operator' => 'is-equal', 'value' => '1', 'literal' => true],
+			['columnId' => 3, 'operator' => 'is-equal', 'value' => '0', 'literal' => true],
 			['columnId' => 4, 'operator' => 'contains-item', 'value' => '5', 'literal' => true],
 			['columnId' => 6, 'operator' => 'is-equal', 'value' => 'true', 'literal' => true],
 		], $criteria['filter'][0]);
+	}
+
+	public function testMetaDatesAcceptAnIsoTimeSeparator(): void {
+		$criteria = $this->resolve(['filter' => [
+			'createdAt' => ['is-greater-than' => '2026-01-01T08:30'],
+			'updatedAt' => ['is-lower-than' => '2026-01-01T08:30:15'],
+		]]);
+
+		$this->assertSame([
+			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than', 'value' => '2026-01-01T08:30', 'literal' => true],
+			['columnId' => Column::TYPE_META_UPDATED_AT, 'operator' => 'is-lower-than', 'value' => '2026-01-01T08:30:15', 'literal' => true],
+		], $criteria['filter'][0]);
+	}
+
+	public function testADateInADaylightSavingGapIsAccepted(): void {
+		$timeZone = date_default_timezone_get();
+		date_default_timezone_set('Europe/Amsterdam');
+		try {
+			$criteria = $this->resolve(['filter' => ['stamp' => '2026-03-29 02:30']], [], [], $this->columnsWithDateAndRelation());
+		} finally {
+			date_default_timezone_set($timeZone);
+		}
+
+		$this->assertSame('2026-03-29 02:30', $criteria['filter'][0][0]['value']);
 	}
 
 	/**
