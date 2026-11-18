@@ -230,7 +230,7 @@ class RowQueryResolver {
 	 * written without it. Any other value is returned unchanged.
 	 */
 	private function metaDatetimeInUtc(string $value): string {
-		if (preg_match('/^(.+?)(Z|[+-](?:0\d|1[0-4]):[0-5]\d)\z/', $value, $matches) !== 1) {
+		if (preg_match('/^(.+?)(Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))\z/', $value, $matches) !== 1) {
 			return $value;
 		}
 		$offset = new DateTimeZone($matches[2] === 'Z' ? '+00:00' : $matches[2]);
