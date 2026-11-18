@@ -183,6 +183,9 @@ class RowQueryResolverTest extends TestCase {
 			'a selection option by its label' => [['status' => 'Active']],
 			'a multi selection item by its label' => [['tags' => 'Urgent']],
 			'a checkbox that is not true or false' => [['done' => 'yes']],
+			'contains on a single selection' => [['status' => ['contains' => '1']]],
+			'a multi selection contains by label' => [['tags' => ['contains' => 'Urgent']]],
+			'long text without an operator' => [['notes' => 'x']],
 		];
 	}
 
@@ -210,7 +213,20 @@ class RowQueryResolverTest extends TestCase {
 			'done' => 'true',
 		]], [], [], $this->columnsWithDateAndRelation());
 
-		$this->assertCount(12, $criteria['filter'][0]);
+		$this->assertSame([
+			['columnId' => 2, 'operator' => 'is-greater-than', 'value' => '-2.5', 'literal' => true],
+			['columnId' => 7, 'operator' => 'is-lower-than', 'value' => '2026-12-31', 'literal' => true],
+			['columnId' => 8, 'operator' => 'is-equal', 'value' => '42', 'literal' => true],
+			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than-or-equal', 'value' => '2026-01-01 08:30', 'literal' => true],
+			['columnId' => Column::TYPE_META_CREATED_BY, 'operator' => 'begins-with', 'value' => 'ja', 'literal' => true],
+			['columnId' => 1, 'operator' => 'ends-with', 'value' => 'ne', 'literal' => true],
+			['columnId' => Column::TYPE_META_ID, 'operator' => 'is-equal', 'value' => '2147483647', 'literal' => true],
+			['columnId' => 9, 'operator' => 'is-greater-than', 'value' => '09:30', 'literal' => true],
+			['columnId' => 10, 'operator' => 'is-lower-than', 'value' => '2026-01-01 10:00', 'literal' => true],
+			['columnId' => 3, 'operator' => 'is-equal', 'value' => '1', 'literal' => true],
+			['columnId' => 4, 'operator' => 'contains-item', 'value' => '5', 'literal' => true],
+			['columnId' => 6, 'operator' => 'is-equal', 'value' => 'true', 'literal' => true],
+		], $criteria['filter'][0]);
 	}
 
 	/**
@@ -223,6 +239,7 @@ class RowQueryResolverTest extends TestCase {
 			$this->column(8, 'parent', Column::TYPE_RELATION),
 			$this->column(9, 'at', Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_TIME),
 			$this->column(10, 'stamp', Column::TYPE_DATETIME),
+			$this->column(11, 'notes', Column::TYPE_TEXT, 'long'),
 		];
 	}
 

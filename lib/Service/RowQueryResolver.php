@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Tables\Service;
 
 use DateTimeImmutable;
+use DateTimeZone;
 use OCA\Tables\Constants\FilterOperator;
 use OCA\Tables\Db\Column;
 use OCA\Tables\Errors\BadRequestError;
@@ -70,10 +71,11 @@ class RowQueryResolver {
 	];
 	/**
 	 * The operators per column type (type-subtype), as the view filter in the UI offers
-	 * them (src/shared/components/ncTable/mixins/filter.js, goodFor), with two differences:
+	 * them (src/shared/components/ncTable/mixins/filter.js, goodFor), with three differences:
 	 * contains and does-not-contain are left out on relations, whose values are integers
-	 * that LIKE cannot compare, and contains-item is added on usergroup columns, as the
-	 * operator a filter without one uses there. Long and rich text have no is-equal, so a
+	 * that LIKE cannot compare, and on single selections, where they would match part of
+	 * an option id (1 in 10 and 21); and contains-item is added on usergroup columns, as
+	 * the operator a filter without one uses there. Long and rich text have no is-equal, so a
 	 * filter without an operator on them is refused. A text column without a subtype is a
 	 * line of text.
 	 *
@@ -91,7 +93,7 @@ class RowQueryResolver {
 		'datetime' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
 		'datetime-date' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
 		'datetime-time' => [...self::COMPARISONS, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
-		'selection' => [FilterOperator::CONTAINS_ITEM, FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
+		'selection' => [FilterOperator::CONTAINS_ITEM, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
 		'selection-multi' => [FilterOperator::CONTAINS_ITEM, FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
 		'selection-check' => [FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY],
 		'usergroup' => [FilterOperator::CONTAINS_ITEM, FilterOperator::CONTAINS, FilterOperator::DOES_NOT_CONTAIN, FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::IS_EMPTY, FilterOperator::IS_NOT_EMPTY],
@@ -237,13 +239,12 @@ class RowQueryResolver {
 	 * Whether the value is written exactly as the column stores its values: the cells of
 	 * date and time columns are text, compared as written, so any other spelling of the
 	 * same moment would match the wrong rows.
-	 */
-	/**
+	 *
 	 * @param list<string> $formats
 	 */
 	private function hasStoredFormat(string $value, array $formats): bool {
 		foreach ($formats as $format) {
-			$parsed = DateTimeImmutable::createFromFormat('!' . $format, $value);
+			$parsed = DateTimeImmutable::createFromFormat('!' . $format, $value, new DateTimeZone('UTC'));
 			if ($parsed !== false && $parsed->format($format) === $value) {
 				return true;
 			}
@@ -279,9 +280,7 @@ class RowQueryResolver {
 		if ($storedFormat !== null && !$this->hasStoredFormat($value, $storedFormat[0])) {
 			throw new BadRequestError(sprintf('%s can only be filtered by %s.', $field, $storedFormat[1]));
 		}
-		if (in_array($typeKey, ['selection', 'selection-multi'], true)
-			&& in_array($operator, [FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::CONTAINS_ITEM], true)
-			&& preg_match('/^\d+\z/', $value) !== 1) {
+		if (in_array($typeKey, ['selection', 'selection-multi'], true) && preg_match('/^\d+\z/', $value) !== 1) {
 			throw new BadRequestError(sprintf('%s can only be filtered by the id of one of its options.', $field));
 		}
 		if ($typeKey === 'selection-check' && !in_array($value, ['true', 'false'], true)) {
