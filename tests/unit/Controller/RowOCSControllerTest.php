@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Tests\Unit\Controller;
 
+use OC\AppFramework\OCS\V2Response;
 use OCA\Tables\Controller\RowOCSController;
 use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
@@ -326,16 +327,34 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['a'], 'object')->getStatus());
 	}
 
-	public function testErrorsAreAnObjectAlsoWhenEveryNameLooksLikeANumber(): void {
-		$this->rowService->expects($this->once())
-			->method('create')
-			->with(3, null, $this->callback(fn ($input): bool => $input instanceof RowObjectInput && $input->values === [0 => 'x', 'name' => 'ok']))
-			->willThrowException(new RowValidationError(['0' => 'There is no column with this technical name.']));
+	public function testObjectShapeRefusesANumericPropertyName(): void {
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
 
-		$response = $this->controller->createRow('tables', 3, ['0' => 'x', 'name' => 'ok'], 'object');
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['0' => 'x', 'name' => 'ok'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'ok', '-1' => 'x'], 'object')->getStatus());
+	}
 
-		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
-		$this->assertSame('{"0":"There is no column with this technical name."}', json_encode($response->getData()['errors']));
+	/**
+	 * @return array<string, array{string, string}>
+	 */
+	public static function ocsFormat(): array {
+		return [
+			'json' => ['json', '"errors":{"age":"Expected a number.","name":"Too long."}'],
+			'xml' => ['xml', '<errors><age>Expected a number.</age><name>Too long.</name></errors>'],
+		];
+	}
+
+	/**
+	 * @dataProvider ocsFormat
+	 */
+	public function testInvalidValuesAreNamedInEveryOcsFormat(string $format, string $expected): void {
+		$this->rowService->method('create')->willThrowException(new RowValidationError(['age' => 'Expected a number.', 'name' => 'Too long.']));
+
+		$response = new V2Response($this->controller->createRow('tables', 3, ['age' => 'many', 'name' => 'x'], 'object'), $format);
+
+		// without the indentation of the XML
+		$this->assertStringContainsString($expected, (string)preg_replace('/>\s+</', '><', $response->render()));
 	}
 
 	/**

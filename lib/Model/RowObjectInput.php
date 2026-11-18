@@ -17,14 +17,19 @@ use InvalidArgumentException;
  */
 final class RowObjectInput {
 	/**
-	 * @param array<array-key, mixed> $values keys that look like numbers arrive as integers
-	 * @throws InvalidArgumentException when the data is a list instead of an object
+	 * @param array<array-key, mixed> $values
+	 * @throws InvalidArgumentException when a property name is a number, as in a list; a
+	 *                                  technical name starts with a letter, and the errors
+	 *                                  of a row are keyed by property name, which keeps them
+	 *                                  an object in JSON and named elements in XML
 	 */
 	public function __construct(
 		public readonly array $values,
 	) {
-		if ($values !== [] && array_is_list($values)) {
-			throw new InvalidArgumentException('Data in the object shape must be an object keyed by technical name.');
+		foreach (array_keys($values) as $name) {
+			if (is_int($name)) {
+				throw new InvalidArgumentException('Data in the object shape must be an object keyed by technical name, which starts with a letter.');
+			}
 		}
 	}
 }
