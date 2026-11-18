@@ -189,6 +189,13 @@ class RowQueryResolverTest extends TestCase {
 			'a selection option id with a leading zero' => [['status' => '01']],
 			'a multi selection item id with a leading zero' => [['tags' => '01']],
 			'a meta date with a T but no time' => [['createdAt' => '2026-01-01T']],
+			'a meta date without a time but with an offset' => [['createdAt' => '2026-01-01+02:00']],
+			'a meta date with Z but no time' => [['createdAt' => '2026-01-01Z']],
+			'a meta date with a lowercase z' => [['createdAt' => '2026-01-01T08:30z']],
+			'a meta date with an offset without a colon' => [['createdAt' => '2026-01-01T08:30+0200']],
+			'a meta date with an offset beyond 14 hours' => [['createdAt' => '2026-01-01T08:30+15:00']],
+			'a meta date with an impossible time and an offset' => [['createdAt' => '2026-01-01T25:00+00:00']],
+			'an offset on a datetime cell' => [['stamp' => '2026-01-01 10:00+00:00']],
 		];
 	}
 
@@ -243,6 +250,31 @@ class RowQueryResolverTest extends TestCase {
 		$this->assertSame([
 			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than', 'value' => '2026-01-01T08:30', 'literal' => true],
 			['columnId' => Column::TYPE_META_UPDATED_AT, 'operator' => 'is-lower-than', 'value' => '2026-01-01T08:30:15', 'literal' => true],
+		], $criteria['filter'][0]);
+	}
+
+	public static function metaDateWithAnOffsetProvider(): array {
+		return [
+			'Z' => ['2026-10-16T12:30:00Z', '2026-10-16 12:30:00'],
+			'a zero offset, as the object shape returns it' => ['2026-10-16T12:30:00+00:00', '2026-10-16 12:30:00'],
+			'a positive offset' => ['2026-10-16T14:30:00+02:00', '2026-10-16 12:30:00'],
+			'a negative offset across midnight' => ['2026-10-15T19:00-05:30', '2026-10-16 00:30:00'],
+			'a space and minutes only' => ['2026-01-01 00:15+01:00', '2025-12-31 23:15:00'],
+		];
+	}
+
+	/**
+	 * @dataProvider metaDateWithAnOffsetProvider
+	 */
+	public function testAMetaDateWithAnOffsetIsFilteredInUtc(string $given, string $inUtc): void {
+		$criteria = $this->resolve(['filter' => [
+			'createdAt' => ['is-greater-than' => $given],
+			'updatedAt' => ['is-lower-than' => $given],
+		]]);
+
+		$this->assertSame([
+			['columnId' => Column::TYPE_META_CREATED_AT, 'operator' => 'is-greater-than', 'value' => $inUtc, 'literal' => true],
+			['columnId' => Column::TYPE_META_UPDATED_AT, 'operator' => 'is-lower-than', 'value' => $inUtc, 'literal' => true],
 		], $criteria['filter'][0]);
 	}
 
