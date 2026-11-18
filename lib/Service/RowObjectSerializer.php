@@ -91,7 +91,8 @@ class RowObjectSerializer {
 
 	/**
 	 * The metadata, with the times in UTC as they are stored, so that they can be used as
-	 * they are, offset included, in the createdAt and updatedAt filters of the listing.
+	 * they are, offset included, in the createdAt and updatedAt filters of the listing; in a
+	 * query string the + of the offset is written as %2B.
 	 *
 	 * @return TablesRowSelf
 	 */
