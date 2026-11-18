@@ -84,6 +84,14 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertSame([1 => '2026-10-16 14:30'], $this->convert(['datetime' => '2026-10-16T14:30:00.000+02:00'], $column)['cells']);
 	}
 
+	public function testWallTimeInTheDaylightSavingGapIsReported(): void {
+		$column = $this->column(1, Column::TYPE_DATETIME);
+		$result = $this->convert(['datetime' => '2026-03-29T02:30'], $column);
+		$this->assertSame([], $result['cells']);
+		$this->assertArrayHasKey('datetime', $result['errors']);
+		$this->assertSame([1 => '2026-03-29 03:30'], $this->convert(['datetime' => '2026-03-29T01:30:00Z'], $column)['cells']);
+	}
+
 	public function testDateAndTimeAreLeftToTheirColumnType(): void {
 		$result = $this->convert(
 			['datetime_date' => '2026-10-16', 'datetime_time' => '14:30'],
@@ -184,10 +192,8 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertSame(['selection_check' => 'Expected true or false.'], $result['errors']);
 	}
 
-	public function testMultiSelectionTakesAListOfOptionIdsOrLabels(): void {
-		$column = $this->column(1, Column::TYPE_SELECTION, 'multi');
-		$this->assertSame([1 => [0, 2]], $this->convert(['selection_multi' => [0, 2]], $column)['cells']);
-		$this->assertSame([1 => 'PHP, SQL'], $this->convert(['selection_multi' => 'PHP, SQL'], $column)['cells']);
+	public function testMultiSelectionTakesAListOfOptionIds(): void {
+		$this->assertSame([1 => [0, 2]], $this->convert(['selection_multi' => [0, 2]], $this->column(1, Column::TYPE_SELECTION, 'multi'))['cells']);
 	}
 
 	/**
@@ -195,6 +201,7 @@ class RowObjectInputConverterTest extends TestCase {
 	 */
 	public static function notAListOfOptionIds(): array {
 		return [
+			'labels' => ['a,zzz'],
 			'list of labels' => [['PHP']],
 			'object' => [['php' => 0]],
 			'number' => [1],

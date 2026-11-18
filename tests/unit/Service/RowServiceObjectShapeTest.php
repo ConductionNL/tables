@@ -185,18 +185,41 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	/**
 	 * @return array<string, array{mixed}>
 	 */
-	public static function multiSelectionThatParsesToNothing(): array {
+	public static function multiSelectionThatIsNotAList(): array {
 		return [
 			'ids as a string' => ['0,2'],
 			'one id' => [1],
+			'labels' => ['a,zzz'],
 		];
 	}
 
 	/**
-	 * @dataProvider multiSelectionThatParsesToNothing
+	 * @dataProvider multiSelectionThatIsNotAList
 	 */
-	public function testMultiSelectionThatWouldBeStoredAsEmptyIsReported(mixed $skills): void {
+	public function testMultiSelectionThatIsNotAListIsReported(mixed $skills): void {
 		$this->assertArrayHasKey('skills', $this->errorsOfCreating(['name' => 'Zed', 'skills' => $skills]));
+	}
+
+	public function testMultiSelectionWithoutOptionZeroStoresTheGivenIds(): void {
+		$this->columnsByName['skills']->setSelectionOptions(json_encode([['id' => 1, 'label' => 'JavaScript'], ['id' => 2, 'label' => 'SQL'], ['id' => 3, 'label' => 'Go']]));
+
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Zed', 'skills' => [1, 2]]));
+
+		$this->assertSame([1, 2], $this->readObject($created->getId())['skills']);
+	}
+
+	public function testErrorsAreInTheSameOrderWhetherARelationUuidExistsOrNot(): void {
+		$otherTableId = $this->createTestTable()['id'];
+		// the database outlives a test run, so the uuids differ per run
+		$foreignUuid = sprintf('%08x-0000-4000-8000-%012x', random_int(0, 0xffffffff), random_int(0, 0xffffffffffff));
+		$this->createTestRow($otherTableId, ['uuid' => $foreignUuid]);
+		$unknownUuid = sprintf('%08x-0000-4000-8000-%012x', random_int(0, 0xffffffff), random_int(0, 0xffffffffffff));
+
+		$foreign = $this->errorsOfCreating(['status' => 99, 'mentor' => $foreignUuid]);
+		$unknown = $this->errorsOfCreating(['status' => 99, 'mentor' => $unknownUuid]);
+
+		$this->assertSame(array_keys($unknown), array_keys($foreign));
+		$this->assertSame($unknown['mentor'], $foreign['mentor']);
 	}
 
 	public function testListForATextColumnIsReported(): void {
@@ -295,6 +318,43 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 
 		$this->assertNull($this->readObject($created->getId())['mentor']);
 		$this->assertNull($this->storedValue($created->getId(), 'mentor'));
+	}
+
+	public function testWriteBackOfADeletedReadOnlyRelationTargetSucceeds(): void {
+		$target = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Gone']));
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Ida', 'mentor' => $target->getId()]));
+		$this->mapper->delete($target);
+		$this->useView(['mentor']);
+
+		$read = $this->readObject($created->getId());
+		$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput($read), 'test_user', null);
+
+		$this->assertNull($this->readObject($created->getId())['mentor']);
+	}
+
+	/**
+	 * @return array<string, array{list<string>}>
+	 */
+	public static function readOnlyNames(): array {
+		return [
+			'checkbox read-only' => [['is_available']],
+			'checkbox writable' => [[]],
+		];
+	}
+
+	/**
+	 * @dataProvider readOnlyNames
+	 * @param list<string> $readOnlyNames
+	 */
+	public function testMissingCheckboxIsWrittenBackThroughAViewAsNull(array $readOnlyNames): void {
+		$this->useView($readOnlyNames);
+		$created = $this->rowService->create(self::$testTableId, self::VIEW_ID, new RowObjectInput(['name' => 'Una', 'is_available' => null]));
+		$read = $this->readObject($created->getId());
+		$this->assertNull($read['is_available']);
+
+		$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput($read), 'test_user', null);
+
+		$this->assertNull($this->readObject($created->getId())['is_available']);
 	}
 
 	/**

@@ -641,6 +641,10 @@ class RowService extends SuperService {
 
 			// parse given value to respect the column type value format
 			$parsedValue = $this->parseValueByColumnType($column, $entry['value']);
+			// a checkbox parses null as "false", while the object shape reads a missing cell as null
+			if ($isStrict && $entry['value'] === null && !self::isEmptyCellValue($parsedValue)) {
+				$parsedValue = null;
+			}
 			if ($isStrict && $this->isBlankedByParsing($entry['value'], $parsedValue)) {
 				$errors[RowObjectInputConverter::nameOf($column)] = 'The value cannot be stored in a column of type ' . $column->getType() . ($column->getSubtype() ? '/' . $column->getSubtype() : '') . '.';
 				continue;
@@ -660,6 +664,8 @@ class RowService extends SuperService {
 		}
 
 		if ($errors !== []) {
+			// sorted by key, so that the order does not tell which check found an error
+			ksort($errors, SORT_STRING);
 			throw new RowValidationError($errors);
 		}
 		return $out;
@@ -670,15 +676,19 @@ class RowService extends SuperService {
 	 * silently.
 	 */
 	private function isBlankedByParsing(mixed $given, mixed $parsed): bool {
-		$isGivenEmpty = $given === null || $given === '' || $given === [];
-		$isParsedEmpty = $parsed === null || $parsed === '' || $parsed === [];
-		return !$isGivenEmpty && $isParsedEmpty;
+		return !self::isEmptyCellValue($given) && self::isEmptyCellValue($parsed);
+	}
+
+	private static function isEmptyCellValue(mixed $value): bool {
+		return $value === null || $value === '' || $value === [];
 	}
 
 	/**
 	 * Whether a value is the one the row already has in the column, so that a row that was
-	 * read can be written back through a view with read-only columns. A usergroup cell is
-	 * read with display names, which are not stored, so they are left out of the comparison.
+	 * read can be written back through a view with read-only columns. An empty value matches
+	 * a missing or empty cell, and a relation to a row that no longer exists, which is read
+	 * as null. A usergroup cell is read with display names, which are not stored, so they
+	 * are left out of the comparison.
 	 *
 	 * @param list<array{columnId: int, value: mixed}> $previousData
 	 */
@@ -690,6 +700,12 @@ class RowService extends SuperService {
 				break;
 			}
 		}
+		if ($column->getType() === Column::TYPE_RELATION && is_numeric($previousValue) && !$this->rowExists((int)$previousValue)) {
+			$previousValue = null;
+		}
+		if (self::isEmptyCellValue($value) || self::isEmptyCellValue($previousValue)) {
+			return self::isEmptyCellValue($value) && self::isEmptyCellValue($previousValue);
+		}
 		if ($column->getType() === Column::TYPE_USERGROUP && is_array($previousValue)) {
 			$previousValue = array_map(
 				static fn (mixed $entry): mixed => is_array($entry) ? array_diff_key($entry, ['displayName' => true]) : $entry,
@@ -697,12 +713,23 @@ class RowService extends SuperService {
 			);
 		}
 		$parsedValue = $this->parseValueByColumnType($column, $value);
-		$isEmpty = static fn (mixed $cellValue): bool => $cellValue === null || $cellValue === '' || $cellValue === [];
-		if ($isEmpty($parsedValue) || $isEmpty($previousValue)) {
-			return $isEmpty($parsedValue) && $isEmpty($previousValue);
-		}
 		// loosely, as Row2::insertOrUpdateCell decides whether a cell changed
 		return $parsedValue == $previousValue;
+	}
+
+	/**
+	 * @throws InternalError
+	 */
+	private function rowExists(int $rowId): bool {
+		try {
+			$this->row2Mapper->getTableIdForRow($rowId);
+			return true;
+		} catch (DoesNotExistException) {
+			return false;
+		} catch (MultipleObjectsReturnedException|Exception $e) {
+			$this->logger->error($e->getMessage(), ['exception' => $e]);
+			throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
+		}
 	}
 
 	/**

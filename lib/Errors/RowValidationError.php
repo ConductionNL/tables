@@ -19,6 +19,6 @@ class RowValidationError extends BadRequestError {
 	public function __construct(
 		public readonly array $errors,
 	) {
-		parent::__construct('The row has ' . count($errors) . ' invalid values.');
+		parent::__construct(count($errors) === 1 ? 'The row has 1 invalid value.' : 'The row has ' . count($errors) . ' invalid values.');
 	}
 }

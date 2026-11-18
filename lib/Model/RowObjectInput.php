@@ -18,13 +18,15 @@ use InvalidArgumentException;
 final class RowObjectInput {
 	/**
 	 * @param array<string, mixed> $values
-	 * @throws InvalidArgumentException when the values are a list instead of keyed by technical name
+	 * @throws InvalidArgumentException when a key is a number, which no technical name is, as in a list
 	 */
 	public function __construct(
 		public readonly array $values,
 	) {
-		if ($values !== [] && array_is_list($values)) {
-			throw new InvalidArgumentException('Data in the object shape must be an object keyed by technical name.');
+		foreach (array_keys($values) as $key) {
+			if (is_int($key)) {
+				throw new InvalidArgumentException('Data in the object shape must be an object keyed by technical name.');
+			}
 		}
 	}
 }

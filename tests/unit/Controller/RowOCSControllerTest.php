@@ -303,7 +303,7 @@ class RowOCSControllerTest extends TestCase {
 		$response = $this->controller->createRow('tables', 3, ['age' => 'many'], 'object');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
-		$this->assertSame(['message' => 'The row has 1 invalid values.', 'errors' => ['age' => 'Expected a number.']], $response->getData());
+		$this->assertSame(['message' => 'The row has 1 invalid value.', 'errors' => ['age' => 'Expected a number.']], $response->getData());
 	}
 
 	public function testUpdateRowInTheObjectShape(): void {
@@ -324,6 +324,8 @@ class RowOCSControllerTest extends TestCase {
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['a'], 'object')->getStatus());
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['a'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['0' => 'x', 'name' => 'ok'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['0' => 'x', 'name' => 'ok'], 'object')->getStatus());
 	}
 
 	/**

@@ -21,8 +21,9 @@ use OCA\Tables\Model\RowObjectInput;
  * Turns a row in the object shape into cells keyed by column id, in the input format the
  * column types already parse. It reverses RowObjectSerializer, so what was read can be
  * written back unchanged, unless a cell refers to a user, group or selection option that
- * no longer exists, which is reported on that property. It reports every property it
- * cannot convert instead of dropping it.
+ * no longer exists, or holds a datetime in an unknown format or with seconds other than
+ * 00, which the serializer returns as stored; these are reported on their property. It
+ * reports every property it cannot convert instead of dropping it.
  */
 class RowObjectInputConverter {
 	private const SELF_KEY = '@self';
@@ -111,7 +112,7 @@ class RowObjectInputConverter {
 		if ($value === '') {
 			return ['value' => null, 'error' => null];
 		}
-		if (!is_string($value) || preg_match(self::ISO_DATETIME_PATTERN, $value) !== 1) {
+		if (!is_string($value) || preg_match(self::ISO_DATETIME_PATTERN, $value, $matches) !== 1) {
 			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
 		}
 		try {
@@ -123,6 +124,11 @@ class RowObjectInputConverter {
 		$parseErrors = DateTimeImmutable::getLastErrors();
 		if ($parseErrors !== false && $parseErrors['warning_count'] > 0) {
 			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
+		}
+		// a wall time in the gap of a daylight saving change does not exist and is moved by PHP
+		$hasOffset = ($matches[3] ?? '') !== '';
+		if (!$hasOffset && $dateTime->format('Y-m-d H:i') !== str_replace('T', ' ', substr($value, 0, 16))) {
+			return ['value' => null, 'error' => 'This time does not exist in the timezone of the instance, give it with an offset.'];
 		}
 		if ($dateTime->format('s.u') !== '00.000000') {
 			return ['value' => null, 'error' => 'Expected a datetime to the minute, with 00 seconds, such as 2026-10-16T14:30:00+02:00.'];
@@ -223,15 +229,11 @@ class RowObjectInputConverter {
 	}
 
 	/**
-	 * A multi-selection as the list of its option ids, or as the comma separated labels the
-	 * column type also accepts.
+	 * A multi-selection as the list of its option ids, as it is read.
 	 *
-	 * @return array{value: list<int>|string|null, error: ?string}
+	 * @return array{value: list<int>|null, error: ?string}
 	 */
 	private function selectionList(mixed $value): array {
-		if (is_string($value)) {
-			return ['value' => $value, 'error' => null];
-		}
 		if (!is_array($value) || !array_is_list($value)) {
 			return ['value' => null, 'error' => 'Expected a list of option ids.'];
 		}
