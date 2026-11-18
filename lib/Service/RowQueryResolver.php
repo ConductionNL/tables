@@ -129,12 +129,12 @@ class RowQueryResolver {
 
 	/**
 	 * @param Column[] $columns
-	 * @return array<string, Column>
+	 * @return array<array-key, Column>
 	 */
 	private function indexColumnsByName(array $columns): array {
 		$columnsByName = [];
 		foreach ($columns as $column) {
-			$columnsByName[(string)$column->getId()] = $column;
+			$columnsByName[$column->getId()] = $column;
 			$technicalName = $column->getTechnicalName();
 			if ($technicalName !== null && $technicalName !== '' && !isset(self::META_FIELDS[$technicalName])) {
 				$columnsByName[$technicalName] = $column;
@@ -147,7 +147,7 @@ class RowQueryResolver {
 	 * Meta fields take precedence over technical names; a column whose technical name is a
 	 * meta field name stays reachable by its column id.
 	 *
-	 * @param array<string, Column> $columnsByName
+	 * @param array<array-key, Column> $columnsByName
 	 * @throws BadRequestError
 	 */
 	private function resolveColumnId(string $field, array $columnsByName): int {
@@ -166,7 +166,7 @@ class RowQueryResolver {
 	/**
 	 * @param list<string>|null $fields
 	 * @param Column[] $columns
-	 * @param array<string, Column> $columnsByName
+	 * @param array<array-key, Column> $columnsByName
 	 * @return list<int>
 	 * @throws BadRequestError
 	 */
@@ -189,7 +189,7 @@ class RowQueryResolver {
 
 	/**
 	 * @param list<array{field: string, mode: 'ASC'|'DESC'}> $sort
-	 * @param array<string, Column> $columnsByName
+	 * @param array<array-key, Column> $columnsByName
 	 * @return list<ResolvedSortRule>
 	 * @throws BadRequestError
 	 */
@@ -205,13 +205,13 @@ class RowQueryResolver {
 
 	/**
 	 * @param array{field: string, operator: ?FilterOperator, value: string} $filter
-	 * @param array<string, Column> $columnsByName
+	 * @param array<array-key, Column> $columnsByName
 	 * @return ResolvedFilter
 	 * @throws BadRequestError
 	 */
 	private function resolveFilter(array $filter, array $columnsByName): array {
 		$columnId = $this->resolveColumnId($filter['field'], $columnsByName);
-		$column = $columnId > 0 ? $columnsByName[(string)$columnId] : null;
+		$column = $columnId > 0 ? $columnsByName[$columnId] : null;
 		$operator = $filter['operator'] ?? $this->defaultOperator($column);
 
 		$this->assertFilterFitsField($filter['field'], $column === null ? (self::META_FIELD_TYPES[$columnId] ?? '') : $this->columnTypeKey($column), $operator, $filter['value']);
