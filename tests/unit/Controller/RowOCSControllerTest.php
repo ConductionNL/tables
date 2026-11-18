@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Tests\Unit\Controller;
 
+use OC\AppFramework\OCS\V2Response;
 use OCA\Tables\Controller\RowOCSController;
 use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
@@ -36,6 +37,7 @@ class RowOCSControllerTest extends TestCase {
 	private FederationService&MockObject $federationService;
 	private RowObjectSerializer&MockObject $rowObjectSerializer;
 	private RowOCSController $controller;
+	private ?string $responseFormat = 'json';
 
 	protected function setUp(): void {
 		$this->rowService = $this->createMock(RowService::class);
@@ -44,8 +46,10 @@ class RowOCSControllerTest extends TestCase {
 		$this->rowObjectSerializer = $this->createMock(RowObjectSerializer::class);
 		$l10n = $this->createMock(IL10N::class);
 		$l10n->method('t')->willReturnArgument(0);
+		$request = $this->createMock(IRequest::class);
+		$request->method('getFormat')->willReturnCallback(fn (): ?string => $this->responseFormat);
 		$this->controller = new RowOCSController(
-			$this->createMock(IRequest::class),
+			$request,
 			$this->createMock(LoggerInterface::class),
 			$l10n,
 			'user1',
@@ -259,6 +263,37 @@ class RowOCSControllerTest extends TestCase {
 		$data = $this->controller->getRows('tables', 3, shape: 'object')->getData();
 
 		$this->assertSame([['name' => 'Alice'], ['name' => 'Bob']], $data['results']);
+	}
+
+	/**
+	 * @return array<string, array{?string}>
+	 */
+	public static function xmlResponseFormat(): array {
+		return [
+			'format parameter or Accept header' => ['xml'],
+			'neither, which OCS answers in XML' => [null],
+			'a format OCS does not know' => ['yaml'],
+		];
+	}
+
+	/**
+	 * @dataProvider xmlResponseFormat
+	 */
+	public function testObjectShapeIsRefusedForAnXmlResponse(?string $format): void {
+		$this->responseFormat = $format;
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('findInNode')->willReturn($this->row(7));
+		$this->rowService->method('findPage')->willReturn(['rows' => [$this->row(7)], 'total' => 1]);
+		$this->rowObjectSerializer->method('serialize')->willReturn(['@self' => ['id' => self::UUID], 'name' => 'Alice']);
+		$this->rowObjectSerializer->method('serializeAll')->willReturn([['@self' => ['id' => self::UUID], 'name' => 'Alice']]);
+
+		foreach ([$this->controller->getRow('tables', 3, self::UUID, 'object'), $this->controller->getRows('tables', 3, shape: 'object')] as $response) {
+			$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+			$this->assertSame(['message' => 'The object shape is only available as JSON.'], $response->getData());
+			$this->assertStringContainsString('<message>The object shape is only available as JSON.</message>', (new V2Response($response, 'xml'))->render());
+		}
+		$this->assertSame(Http::STATUS_OK, $this->controller->getRow('tables', 3, self::UUID, 'cells')->getStatus());
+		$this->assertSame(Http::STATUS_OK, $this->controller->getRows('tables', 3, shape: 'cells')->getStatus());
 	}
 
 	public function testCellsShapeIsTheDefault(): void {
