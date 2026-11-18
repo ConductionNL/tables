@@ -667,7 +667,7 @@ class RowService extends SuperService {
 	 */
 	private function isBlankedByParsing(mixed $given, mixed $parsed): bool {
 		$isGivenEmpty = $given === null || $given === '' || $given === [];
-		$isParsedEmpty = $parsed === null || $parsed === '';
+		$isParsedEmpty = $parsed === null || $parsed === '' || $parsed === [];
 		return !$isGivenEmpty && $isParsedEmpty;
 	}
 

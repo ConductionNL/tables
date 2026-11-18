@@ -125,6 +125,27 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->assertSame(['age', 'birthday', 'nickname', 'status'], array_keys($errors));
 	}
 
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function multiSelectionThatParsesToNothing(): array {
+		return [
+			'ids as a string' => ['0,2'],
+			'one id' => [1],
+		];
+	}
+
+	/**
+	 * @dataProvider multiSelectionThatParsesToNothing
+	 */
+	public function testMultiSelectionThatWouldBeStoredAsEmptyIsReported(mixed $skills): void {
+		$this->assertArrayHasKey('skills', $this->errorsOfCreating(['name' => 'Zed', 'skills' => $skills]));
+	}
+
+	public function testListForATextColumnIsReported(): void {
+		$this->assertSame(['name'], array_keys($this->errorsOfCreating(['name' => ['a']])));
+	}
+
 	public function testMissingMandatoryValueIsReportedOnItsProperty(): void {
 		$this->columnsByName['surname']->setMandatory(true);
 

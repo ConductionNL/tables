@@ -70,6 +70,12 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertArrayHasKey('datetime', $result['errors']);
 	}
 
+	public function testImpossibleDatetimeIsReported(): void {
+		$result = $this->convert(['datetime' => '2026-02-30T10:00'], $this->column(1, Column::TYPE_DATETIME));
+		$this->assertSame([], $result['cells']);
+		$this->assertArrayHasKey('datetime', $result['errors']);
+	}
+
 	public function testDateAndTimeAreLeftToTheirColumnType(): void {
 		$result = $this->convert(
 			['datetime_date' => '2026-10-16', 'datetime_time' => '14:30'],
@@ -123,6 +129,74 @@ class RowObjectInputConverterTest extends TestCase {
 		$column = $this->column(1, Column::TYPE_SELECTION, Column::SUBTYPE_SELECTION_CHECK);
 		$this->assertSame([1 => 'true'], $this->convert(['selection_check' => true], $column)['cells']);
 		$this->assertSame([1 => 'false'], $this->convert(['selection_check' => 'false'], $column)['cells']);
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function notACheckValue(): array {
+		return [
+			'other string' => ['foo'],
+			'number' => [2],
+			'empty string' => [''],
+		];
+	}
+
+	/**
+	 * @dataProvider notACheckValue
+	 */
+	public function testCheckRefusesWhatIsNeitherTrueNorFalse(mixed $value): void {
+		$result = $this->convert(['selection_check' => $value], $this->column(1, Column::TYPE_SELECTION, Column::SUBTYPE_SELECTION_CHECK));
+		$this->assertSame([], $result['cells']);
+		$this->assertSame(['selection_check' => 'Expected true or false.'], $result['errors']);
+	}
+
+	public function testMultiSelectionTakesAListOfOptionIdsOrLabels(): void {
+		$column = $this->column(1, Column::TYPE_SELECTION, 'multi');
+		$this->assertSame([1 => [0, 2]], $this->convert(['selection_multi' => [0, 2]], $column)['cells']);
+		$this->assertSame([1 => 'PHP, SQL'], $this->convert(['selection_multi' => 'PHP, SQL'], $column)['cells']);
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function notAListOfOptionIds(): array {
+		return [
+			'list of labels' => [['PHP']],
+			'object' => [['php' => 0]],
+			'number' => [1],
+		];
+	}
+
+	/**
+	 * @dataProvider notAListOfOptionIds
+	 */
+	public function testMultiSelectionRefusesWhatIsNotAListOfOptionIds(mixed $value): void {
+		$result = $this->convert(['selection_multi' => $value], $this->column(1, Column::TYPE_SELECTION, 'multi'));
+		$this->assertSame([], $result['cells']);
+		$this->assertArrayHasKey('selection_multi', $result['errors']);
+	}
+
+	/**
+	 * @return array<string, array{string, string}>
+	 */
+	public static function columnStoringOneValue(): array {
+		return [
+			'text line' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE],
+			'long text' => [Column::TYPE_TEXT, 'long'],
+			'date' => [Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_DATE],
+			'time' => [Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_TIME],
+			'single selection' => [Column::TYPE_SELECTION, ''],
+		];
+	}
+
+	/**
+	 * @dataProvider columnStoringOneValue
+	 */
+	public function testListIsRefusedForAColumnThatStoresOneValue(string $type, string $subtype): void {
+		$result = $this->convert(['value' => ['a']], $this->column(1, $type, $subtype, 'value'));
+		$this->assertSame([], $result['cells']);
+		$this->assertSame(['value' => 'Unexpected value type for this column.'], $result['errors']);
 	}
 
 	public function testSelfIsIgnoredAndUnknownPropertiesAreReported(): void {

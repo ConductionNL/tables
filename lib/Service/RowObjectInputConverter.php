@@ -27,6 +27,8 @@ class RowObjectInputConverter {
 	private const SELF_KEY = '@self';
 	private const ISO_DATETIME_PATTERN = '/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2}(\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/';
 	private const UUID_PATTERN = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i';
+	/** the subtype multi-selections are stored with, which Column::SUBTYPE_SELECTION_MULTI does not match */
+	private const SUBTYPE_SELECTION_MULTI = 'multi';
 
 	public function __construct(
 		private readonly Row2Mapper $row2Mapper,
@@ -91,8 +93,9 @@ class RowObjectInputConverter {
 			$column->getType() === Column::TYPE_NUMBER => $this->number($value),
 			$column->getType() === Column::TYPE_RELATION => $this->relation($value),
 			$column->getType() === Column::TYPE_USERGROUP => $this->usergroups($value),
-			$column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK && is_bool($value) => ['value' => $value ? 'true' : 'false', 'error' => null],
-			default => $this->scalarOrList($value),
+			$column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK => $this->check($value),
+			$column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === self::SUBTYPE_SELECTION_MULTI => $this->selectionList($value),
+			default => $this->scalar($value),
 		};
 	}
 
@@ -112,6 +115,11 @@ class RowObjectInputConverter {
 		try {
 			$dateTime = new DateTimeImmutable($value, $this->instanceTimezone->get());
 		} catch (\Exception) {
+			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
+		}
+		// a day or time that does not exist, such as February 30, is rolled over with a warning
+		$parseErrors = DateTimeImmutable::getLastErrors();
+		if ($parseErrors !== false && $parseErrors['warning_count'] > 0) {
 			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
 		}
 		return ['value' => $dateTime->setTimezone($this->instanceTimezone->get())->format('Y-m-d H:i'), 'error' => null];
@@ -190,13 +198,48 @@ class RowObjectInputConverter {
 	}
 
 	/**
-	 * @return array{value: array|string|int|float|null, error: ?string}
+	 * A checkbox as true or false, or as the strings "true" and "false" it is stored as.
+	 *
+	 * @return array{value: ?string, error: ?string}
 	 */
-	private function scalarOrList(mixed $value): array {
-		if (is_string($value) || is_int($value) || is_float($value)) {
+	private function check(mixed $value): array {
+		if (is_bool($value)) {
+			return ['value' => $value ? 'true' : 'false', 'error' => null];
+		}
+		if ($value === 'true' || $value === 'false') {
 			return ['value' => $value, 'error' => null];
 		}
-		if (is_array($value) && array_is_list($value)) {
+		return ['value' => null, 'error' => 'Expected true or false.'];
+	}
+
+	/**
+	 * A multi-selection as the list of its option ids, or as the comma separated labels the
+	 * column type also accepts.
+	 *
+	 * @return array{value: list<int>|string|null, error: ?string}
+	 */
+	private function selectionList(mixed $value): array {
+		if (is_string($value)) {
+			return ['value' => $value, 'error' => null];
+		}
+		if (!is_array($value) || !array_is_list($value)) {
+			return ['value' => null, 'error' => 'Expected a list of option ids.'];
+		}
+		$optionIds = [];
+		foreach ($value as $optionId) {
+			if (!is_int($optionId)) {
+				return ['value' => null, 'error' => 'Expected a list of option ids.'];
+			}
+			$optionIds[] = $optionId;
+		}
+		return ['value' => $optionIds, 'error' => null];
+	}
+
+	/**
+	 * @return array{value: string|int|float|null, error: ?string}
+	 */
+	private function scalar(mixed $value): array {
+		if (is_string($value) || is_int($value) || is_float($value)) {
 			return ['value' => $value, 'error' => null];
 		}
 		return ['value' => null, 'error' => 'Unexpected value type for this column.'];
