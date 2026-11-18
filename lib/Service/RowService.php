@@ -703,9 +703,9 @@ class RowService extends SuperService {
 	 * out, so that a row that was read can be written back unchanged, also when a cell holds
 	 * a value that would no longer be accepted, and an unchanged cell is not rewritten. A
 	 * null for a cell that is read as null but still holds a value, a relation to a row that
-	 * no longer exists, is kept, so that it clears a writable cell. A column that is
-	 * read-only in the view is always left out, and reported when its value differs from
-	 * the one it is read as.
+	 * no longer exists, is kept, so that it clears a writable cell, unless the column is
+	 * mandatory, which keeps the stored value. A column that is read-only in the view is
+	 * always left out, and reported when its value differs from the one it is read as.
 	 *
 	 * @param Column[] $columns
 	 * @param list<array{columnId: int, value: mixed}> $previousData the cells of the row that is updated, none when a row is created
@@ -714,6 +714,7 @@ class RowService extends SuperService {
 	 */
 	private function leaveOutUnwrittenValues(RowObjectInput $input, array $columns, ?View $view, array $previousData): array {
 		$readOnlyColumns = $view ? $this->extractColumnsByProperty($view, 'isReadonly') : [];
+		$mandatoryInView = $view ? $this->extractColumnsByProperty($view, 'isMandatory') : [];
 		$columnsByName = [];
 		foreach ($columns as $column) {
 			$columnsByName[RowObjectInputConverter::nameOf($column)] = $column;
@@ -735,8 +736,9 @@ class RowService extends SuperService {
 			}
 			$stored = $storedValues[$column->getId()] ?? null;
 			$isReadOnly = !empty($readOnlyColumns[$column->getId()]);
-			if (isset($valuesAsRead[(string)$name])
-				&& ($isReadOnly || !self::isEmptyCellValue($value) || self::isEmptyCellValue($stored))) {
+			$clearsAStaleCell = self::isEmptyCellValue($value) && !self::isEmptyCellValue($stored)
+				&& !$column->getMandatory() && empty($mandatoryInView[$column->getId()]);
+			if (isset($valuesAsRead[(string)$name]) && ($isReadOnly || !$clearsAStaleCell)) {
 				continue;
 			}
 			if ($isReadOnly) {

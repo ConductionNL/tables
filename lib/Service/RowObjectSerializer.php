@@ -32,7 +32,7 @@ use Psr\Log\LoggerInterface;
  * outside the column's current limits or a relation outside its target view. A changed
  * value is converted and validated, and refused for a column that is read-only in the
  * view. A relation to a row that no longer exists reads as null, so writing it back
- * clears a writable relation and leaves a read-only one as it is.
+ * clears a writable relation and leaves a read-only or mandatory one as it is.
  *
  * @psalm-import-type TablesRowObject from ResponseDefinitions
  * @psalm-import-type TablesRowSelf from ResponseDefinitions

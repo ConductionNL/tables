@@ -335,6 +335,34 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	}
 
 	/**
+	 * @return array<string, array{bool, bool}>
+	 */
+	public static function mandatoryRelation(): array {
+		return [
+			'mandatory in the table' => [true, false],
+			'mandatory in the view' => [false, true],
+		];
+	}
+
+	/**
+	 * @dataProvider mandatoryRelation
+	 */
+	public function testWriteBackOfADeletedMandatoryRelationTargetKeepsTheRelation(bool $mandatoryInTable, bool $mandatoryInView): void {
+		$target = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Gone']));
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Ida', 'mentor' => $target->getId()]));
+		$this->mapper->delete($target);
+		$this->columnsByName['mentor']->setMandatory($mandatoryInTable);
+		$this->useView([], $mandatoryInView ? ['mentor'] : []);
+
+		$read = $this->readObject($created->getId());
+		$read['name'] = 'Ida B';
+		$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput($read), 'test_user', null);
+
+		$this->assertSame('Ida B', $this->readObject($created->getId())['name']);
+		$this->assertEquals($target->getId(), $this->storedValue($created->getId(), 'mentor'));
+	}
+
+	/**
 	 * @return array<string, array{list<string>}>
 	 */
 	public static function readOnlyNames(): array {
@@ -379,14 +407,16 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	}
 
 	/**
-	 * A view with every column of the table, of which the given ones are read-only.
+	 * A view with every column of the table, of which the given ones are read-only or mandatory.
 	 *
 	 * @param list<string> $readOnlyNames
+	 * @param list<string> $mandatoryNames
 	 */
-	private function useView(array $readOnlyNames): void {
+	private function useView(array $readOnlyNames, array $mandatoryNames = []): void {
 		$settings = [];
 		foreach (array_values($this->columnsByName) as $index => $column) {
-			$settings[] = ['columnId' => $column->getId(), 'order' => $index + 1, 'readonly' => in_array(RowObjectInputConverter::nameOf($column), $readOnlyNames, true)];
+			$name = RowObjectInputConverter::nameOf($column);
+			$settings[] = ['columnId' => $column->getId(), 'order' => $index + 1, 'readonly' => in_array($name, $readOnlyNames, true), 'mandatory' => in_array($name, $mandatoryNames, true)];
 		}
 		$view = new View();
 		$view->setId(self::VIEW_ID);
