@@ -276,10 +276,12 @@ class RowOCSControllerTest extends TestCase {
 		$this->rowService->expects($this->never())->method('findInNode');
 		$this->rowService->expects($this->never())->method('findPage');
 		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRow('tables', 3, '7', 'flat')->getStatus());
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, shape: 'flat')->getStatus());
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['name' => 'x'], 'flat')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'x'], 'flat')->getStatus());
 	}
 
 	public function testCreateRowInTheObjectShapeKeepsTheTechnicalNames(): void {
@@ -301,7 +303,7 @@ class RowOCSControllerTest extends TestCase {
 		$response = $this->controller->createRow('tables', 3, ['age' => 'many'], 'object');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
-		$this->assertSame(['age' => 'Expected a number.'], $response->getData()['errors']);
+		$this->assertSame(['message' => 'The row has 1 invalid values.', 'errors' => ['age' => 'Expected a number.']], $response->getData());
 	}
 
 	public function testUpdateRowInTheObjectShape(): void {
@@ -324,12 +326,37 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['a'], 'object')->getStatus());
 	}
 
-	public function testObjectShapeIsRefusedOnAFederatedTable(): void {
+	/**
+	 * @return array<string, array{'tables'|'views'}>
+	 */
+	public static function nodeCollection(): array {
+		return [
+			'table' => ['tables'],
+			'view' => ['views'],
+		];
+	}
+
+	/**
+	 * @dataProvider nodeCollection
+	 */
+	public function testObjectShapeIsRefusedOnAFederatedNode(string $nodeCollection): void {
 		$this->federationService->method('isNodeFederated')->willReturn(true);
 		$this->federationService->expects($this->never())->method('updateRow');
 		$this->federationService->expects($this->never())->method('createRow');
 
-		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'Bob'], 'object')->getStatus());
-		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['name' => 'Bob'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow($nodeCollection, 3, '7', ['name' => 'Bob'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow($nodeCollection, 3, ['name' => 'Bob'], 'object')->getStatus());
+	}
+
+	/**
+	 * @dataProvider nodeCollection
+	 */
+	public function testFederationIsLookedUpOncePerWrite(string $nodeCollection): void {
+		$this->federationService->expects($this->exactly(2))->method('isNodeFederated')->willReturn(false);
+		$this->rowService->method('create')->willReturn($this->row(7));
+		$this->rowService->method('updateSet')->willReturn($this->row(7));
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->createRow($nodeCollection, 3, ['name' => 'Bob'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_OK, $this->controller->updateRow($nodeCollection, 3, '7', ['name' => 'Bob'], 'object')->getStatus());
 	}
 }

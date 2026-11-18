@@ -76,6 +76,14 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertArrayHasKey('datetime', $result['errors']);
 	}
 
+	public function testDatetimeWithSecondsIsReported(): void {
+		$column = $this->column(1, Column::TYPE_DATETIME);
+		$result = $this->convert(['datetime' => '2026-10-16T14:30:45+02:00'], $column);
+		$this->assertSame([], $result['cells']);
+		$this->assertArrayHasKey('datetime', $result['errors']);
+		$this->assertSame([1 => '2026-10-16 14:30'], $this->convert(['datetime' => '2026-10-16T14:30:00.000+02:00'], $column)['cells']);
+	}
+
 	public function testDateAndTimeAreLeftToTheirColumnType(): void {
 		$result = $this->convert(
 			['datetime_date' => '2026-10-16', 'datetime_time' => '14:30'],
@@ -92,6 +100,31 @@ class RowObjectInputConverterTest extends TestCase {
 
 	public function testLinkWithoutUrlIsReported(): void {
 		$this->assertArrayHasKey('text_link', $this->convert(['text_link' => ['title' => 'Nextcloud']], $this->column(1, Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK))['errors']);
+	}
+
+	/**
+	 * @return array<string, array{mixed}>
+	 */
+	public static function linkWithANonStringPart(): array {
+		return [
+			'title' => [['url' => 'https://nextcloud.com', 'title' => [1]]],
+			'providerId' => [['url' => 'https://nextcloud.com', 'providerId' => 5]],
+		];
+	}
+
+	/**
+	 * @dataProvider linkWithANonStringPart
+	 */
+	public function testLinkWithANonStringPartIsReported(array $link): void {
+		$result = $this->convert(['text_link' => $link], $this->column(1, Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK));
+		$this->assertSame([], $result['cells']);
+		$this->assertArrayHasKey('text_link', $result['errors']);
+	}
+
+	public function testNumericStringIsPassedOnAsANumber(): void {
+		$column = $this->column(1, Column::TYPE_NUMBER);
+		$this->assertSame([1 => 0.0], $this->convert(['number' => '0.0'], $column)['cells']);
+		$this->assertSame([1 => -1.5], $this->convert(['number' => '-1.5'], $column)['cells']);
 	}
 
 	public function testNonNumericNumberIsReported(): void {

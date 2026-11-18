@@ -231,6 +231,12 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->assertArrayHasKey('surname', $this->errorsOfCreating(['name' => 'Zed', 'age' => 'many']));
 	}
 
+	public function testZeroAsADecimalStringIsStored(): void {
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Zero', 'age' => '0.0']));
+
+		$this->assertEquals(0, $this->readObject($created->getId())['age']);
+	}
+
 	public function testCellsInputStaysLenient(): void {
 		$row = $this->rowService->create(self::$testTableId, null, (new RowDataInput())
 			->add($this->columnsByName['name']->getId(), 'Zed')

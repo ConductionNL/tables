@@ -109,14 +109,13 @@ class RowOCSController extends AOCSController {
 		}
 
 		try {
-			if ($rowShape === RowShape::Object && $this->isFederated($tableId, $viewId)) {
-				throw new BadRequestError('The object shape is not supported for federated tables and views.');
-			}
 			if ($tableId !== null && $this->federationService->isNodeFederated($tableId, 'table')) {
+				$this->refuseObjectShapeOnFederation($rowShape);
 				$table = $this->tableService->find($nodeId, true);
 				return new DataResponse($this->federationService->createRow($table, $data));
 			}
 			if ($viewId !== null && $this->federationService->isNodeFederated($viewId, 'view')) {
+				$this->refuseObjectShapeOnFederation($rowShape);
 				$view = $this->viewService->find($nodeId, false, $this->userId);
 				return new DataResponse($this->federationService->createRow($view, $data));
 			}
@@ -286,14 +285,13 @@ class RowOCSController extends AOCSController {
 		}
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
-			if ($rowShape === RowShape::Object && $this->isFederated($tableId, $viewId)) {
-				throw new BadRequestError('The object shape is not supported for federated tables and views.');
-			}
 			if ($tableId !== null && $this->federationService->isNodeFederated($tableId, 'table')) {
+				$this->refuseObjectShapeOnFederation($rowShape);
 				$table = $this->tableService->find($nodeId, true);
 				return new DataResponse($this->federationService->updateRow($table, $this->federatedRowId($rowId), $data));
 			}
 			if ($viewId !== null && $this->federationService->isNodeFederated($viewId, 'view')) {
+				$this->refuseObjectShapeOnFederation($rowShape);
 				$view = $this->viewService->find($nodeId, false, $this->userId);
 				return new DataResponse($this->federationService->updateRow($view, $this->federatedRowId($rowId), $data));
 			}
@@ -357,6 +355,15 @@ class RowOCSController extends AOCSController {
 	 */
 	private function shapeRow(Row2 $row, RowShape $rowShape): array {
 		return $rowShape === RowShape::Object ? $this->rowObjectSerializer->serialize($row) : $row->jsonSerialize();
+	}
+
+	/**
+	 * @throws BadRequestError when a federated table or view is written in the object shape
+	 */
+	private function refuseObjectShapeOnFederation(RowShape $rowShape): void {
+		if ($rowShape === RowShape::Object) {
+			throw new BadRequestError('The object shape is not supported for federated tables and views.');
+		}
 	}
 
 	/**

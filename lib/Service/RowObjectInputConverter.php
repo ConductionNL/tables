@@ -102,7 +102,8 @@ class RowObjectInputConverter {
 
 	/**
 	 * An ISO 8601 datetime, read in the instance timezone when it carries no offset, stored
-	 * as the naive minute in the instance timezone.
+	 * as the naive minute in the instance timezone. Seconds other than 00 are refused, since
+	 * they cannot be stored.
 	 *
 	 * @return array{value: ?string, error: ?string}
 	 */
@@ -123,6 +124,9 @@ class RowObjectInputConverter {
 		if ($parseErrors !== false && $parseErrors['warning_count'] > 0) {
 			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
 		}
+		if ($dateTime->format('s.u') !== '00.000000') {
+			return ['value' => null, 'error' => 'Expected a datetime to the minute, with 00 seconds, such as 2026-10-16T14:30:00+02:00.'];
+		}
 		return ['value' => $dateTime->setTimezone($this->instanceTimezone->get())->format('Y-m-d H:i'), 'error' => null];
 	}
 
@@ -135,19 +139,23 @@ class RowObjectInputConverter {
 		if (is_string($value)) {
 			return ['value' => $value, 'error' => null];
 		}
-		if (!is_array($value) || !isset($value['url']) || !is_string($value['url'])) {
+		if (!is_array($value) || !isset($value['url']) || !is_string($value['url'])
+			|| (isset($value['title']) && !is_string($value['title']))
+			|| (isset($value['providerId']) && !is_string($value['providerId']))) {
 			return ['value' => null, 'error' => 'Expected a link as {"title": ..., "url": ...} or a URL.'];
 		}
 		$link = [
-			'title' => (string)($value['title'] ?? $value['url']),
+			'title' => $value['title'] ?? $value['url'],
 			'value' => $value['url'],
-			'providerId' => (string)($value['providerId'] ?? 'url'),
+			'providerId' => $value['providerId'] ?? 'url',
 		];
 		return ['value' => (string)json_encode($link), 'error' => null];
 	}
 
 	/**
-	 * @return array{value: int|float|string|null, error: ?string}
+	 * A number, or a numeric string, which is passed on as a number.
+	 *
+	 * @return array{value: int|float|null, error: ?string}
 	 */
 	private function number(mixed $value): array {
 		if ($value === '') {
@@ -156,7 +164,7 @@ class RowObjectInputConverter {
 		if ((!is_int($value) && !is_float($value) && !is_string($value)) || !is_numeric($value)) {
 			return ['value' => null, 'error' => 'Expected a number.'];
 		}
-		return ['value' => $value, 'error' => null];
+		return ['value' => is_string($value) ? (float)$value : $value, 'error' => null];
 	}
 
 	/**
