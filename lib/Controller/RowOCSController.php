@@ -13,6 +13,7 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Errors\RowValidationError;
 use OCA\Tables\Helper\ConversionHelper;
 use OCA\Tables\Middleware\Attribute\RequirePermission;
 use OCA\Tables\Model\RowDataInput;
@@ -120,6 +121,8 @@ class RowOCSController extends AOCSController {
 				return new DataResponse($this->federationService->createRow($view, $data));
 			}
 			return new DataResponse($this->shapeRow($this->rowService->create($tableId, $viewId, $newRowData), $rowShape));
+		} catch (RowValidationError $e) {
+			return $this->handleRowValidationError($e);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -297,6 +300,8 @@ class RowOCSController extends AOCSController {
 			}
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
 			return new DataResponse($this->shapeRow($this->rowService->updateSet($resolvedRowId, $viewId, $values, $this->userId, $tableId), $rowShape));
+		} catch (RowValidationError $e) {
+			return $this->handleRowValidationError($e);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {

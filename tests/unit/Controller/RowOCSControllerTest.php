@@ -307,6 +307,16 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame('{"message":"The row has 1 invalid value.","errors":{"age":"Expected a number."}}', json_encode($response->getData()));
 	}
 
+	public function testInvalidValuesOfAnUpdateComeBackPerProperty(): void {
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('updateSet')->willThrowException(new RowValidationError(['age' => 'Expected a number.']));
+
+		$response = $this->controller->updateRow('tables', 3, '7', ['age' => 'many'], 'object');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertSame(['message' => 'The row has 1 invalid value.', 'errors' => ['age' => 'Expected a number.']], $response->getData());
+	}
+
 	public function testUpdateRowInTheObjectShape(): void {
 		$row = $this->row(7);
 		$this->rowService->method('resolveRowId')->willReturn(7);
