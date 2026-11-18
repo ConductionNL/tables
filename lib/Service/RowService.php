@@ -1144,8 +1144,10 @@ class RowService extends SuperService {
 	 * @param Column[] $columns
 	 */
 	private function attachAliasPayloads(array $rows, array $columns): void {
+		$aliasByColumnId = $this->buildAliasByColumnId($columns);
+		$columnsByAlias = $this->buildColumnsByAlias($columns, $aliasByColumnId);
 		foreach ($rows as $row) {
-			$this->attachAliasPayload($row, $columns);
+			$this->attachAliasPayloadByAlias($row, $aliasByColumnId, $columnsByAlias);
 		}
 	}
 
@@ -1154,10 +1156,30 @@ class RowService extends SuperService {
 	 */
 	private function attachAliasPayload(Row2 $row, array $columns): void {
 		$aliasByColumnId = $this->buildAliasByColumnId($columns);
+		$this->attachAliasPayloadByAlias($row, $aliasByColumnId, $this->buildColumnsByAlias($columns, $aliasByColumnId));
+	}
+
+	/**
+	 * @param Column[] $columns
+	 * @param array<int, string> $aliasByColumnId
+	 * @return array<string, Column>
+	 */
+	private function buildColumnsByAlias(array $columns, array $aliasByColumnId): array {
 		$columnsByAlias = [];
 		foreach ($columns as $column) {
 			$columnsByAlias[$aliasByColumnId[$column->getId()] ?? ('column_' . $column->getId())] = $column;
 		}
+		return $columnsByAlias;
+	}
+
+	/**
+	 * The rows of one call share the same alias maps, so that a long listing does not hold
+	 * a copy per row.
+	 *
+	 * @param array<int, string> $aliasByColumnId
+	 * @param array<string, Column> $columnsByAlias
+	 */
+	private function attachAliasPayloadByAlias(Row2 $row, array $aliasByColumnId, array $columnsByAlias): void {
 		$row->setColumnsByAlias($columnsByAlias);
 
 		$data = $row->getData() ?? [];

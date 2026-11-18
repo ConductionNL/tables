@@ -263,6 +263,23 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$this->assertSame(['names' => ['Alice', 'Eve'], 'total' => 2], $this->namesOf($found));
 	}
 
+	public function testAViewCarriesOnlyItsOwnColumnsWithItsRows(): void {
+		$view = new View();
+		$view->setId(self::VIEW_ID);
+		$view->setTableId(self::$testTableId);
+		$view->setColumns(json_encode([$this->columnsByName['name']->getId(), $this->columnsByName['department']->getId()]));
+		$this->viewMapper->method('find')->willReturn($view);
+
+		$found = $this->rowService->findPage($this->query(['sort' => 'name']), null, self::VIEW_ID, 'test_user');
+		$this->assertNotSame([], $found['rows']);
+		foreach ($found['rows'] as $row) {
+			$this->assertSame(['name', 'department'], array_keys($row->getColumnsByAlias()));
+		}
+
+		$single = $this->rowService->findInNode($found['rows'][0]->getId(), null, self::VIEW_ID, 'test_user');
+		$this->assertSame(['name', 'department'], array_keys($single->getColumnsByAlias()));
+	}
+
 	public function testASearchInAViewWithoutSearchableColumnsReturnsNothing(): void {
 		$view = new View();
 		$view->setId(self::VIEW_ID);
