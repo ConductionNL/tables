@@ -140,6 +140,7 @@ class RowObjectInputConverterTest extends TestCase {
 	 * @dataProvider valueAsItIsRead
 	 */
 	public function testAValueAsItIsReadIsRecognised(string $type, string $subtype, mixed $given, mixed $stored): void {
+		$this->row2Mapper->method('findIdByUuid')->with(self::TARGET_UUID)->willReturn(42);
 		$this->rowSleeveMapper->method('findUuidsByIds')->willReturnCallback(static fn (array $ids): array => array_intersect_key([42 => self::TARGET_UUID], array_flip($ids)));
 
 		$this->assertTrue($this->isReadAs($this->column(1, $type, $subtype), $given, $stored));
@@ -166,6 +167,12 @@ class RowObjectInputConverterTest extends TestCase {
 			'a cleared relation' => [Column::TYPE_RELATION, '', null, 42],
 			'a value for an empty cell' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, 'x', null],
 			'null for a value' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, null, 'x'],
+			'a day that rolls over into the stored one' => [Column::TYPE_DATETIME, '', '2026-02-30T14:30', '2026-03-02 14:30'],
+			'options as strings' => [Column::TYPE_SELECTION, 'multi', ['1', '2'], [1, 2]],
+			'an option as a float' => [Column::TYPE_SELECTION, 'multi', [1.0, 2], [1, 2]],
+			'a usergroup type as a string' => [Column::TYPE_USERGROUP, '', [['id' => 'alice', 'type' => '0']], [['id' => 'alice', 'type' => 0, 'displayName' => 'Alice']]],
+			'a link title as a number' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, ['title' => 5, 'url' => 'https://nextcloud.com'], '{"title":"5","value":"https://nextcloud.com"}'],
+			'a list for an empty text' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, [], ''],
 		];
 	}
 

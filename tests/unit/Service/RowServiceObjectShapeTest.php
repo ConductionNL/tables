@@ -521,6 +521,17 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->assertSame($storedBefore, $this->storedValue($rowId, $technicalName));
 	}
 
+	public function testAValueTheConverterRefusesIsReportedAlsoWhenItReadsLikeTheStoredOne(): void {
+		$rowId = $this->storeRow(['name' => 'Rolf', 'birthday' => '2026-03-02 14:30', 'skills' => [0, 2]]);
+
+		try {
+			$this->rowService->updateSet($rowId, null, new RowObjectInput(['birthday' => '2026-02-30T14:30', 'skills' => ['0', '2']]), 'test_user', self::$testTableId);
+			$this->fail('A value the converter refuses was taken for the stored one.');
+		} catch (RowValidationError $e) {
+			$this->assertSame(['birthday', 'skills'], array_keys($e->errors));
+		}
+	}
+
 	public function testAChangedValueOfAColumnWithAStaleValueIsValidated(): void {
 		$rowId = $this->storeRow(['name' => 'Stan', 'age' => 500]);
 		$this->columnsByName['age']->setNumberMax(150.0);

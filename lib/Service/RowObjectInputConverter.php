@@ -76,7 +76,9 @@ class RowObjectInputConverter {
 	 * The names of the given properties whose value is the one their cell is read as, also
 	 * when it is spelled differently: a datetime with another offset for the same instant, a
 	 * number as a string, a checkbox as a boolean, a link without the parts the reader fills
-	 * in, a usergroup without display names, or a relation by row id.
+	 * in, a usergroup without display names, or a relation by row id. A value spelled
+	 * differently counts only when this class accepts it; the value exactly as it was read
+	 * always counts, also when this class would refuse it, such as a datetime with seconds.
 	 *
 	 * @param array<array-key, mixed> $values the given values by property name
 	 * @param array<string, Column> $columnsByName
@@ -107,9 +109,20 @@ class RowObjectInputConverter {
 
 	/**
 	 * @param array<int, ?string> $relationTargets
+	 * @throws InternalError
 	 */
 	private function isReadAs(Column $column, mixed $given, mixed $stored, array $relationTargets): bool {
 		$read = $this->serializer->readValue($column, $stored, $relationTargets);
+		if ($given === $read) {
+			return true;
+		}
+		if (!$this->matchesRead($column, $given, $stored, $read)) {
+			return false;
+		}
+		return $this->convert($column, $given)['error'] === null;
+	}
+
+	private function matchesRead(Column $column, mixed $given, mixed $stored, mixed $read): bool {
 		if ($column->getType() === Column::TYPE_RELATION && $read !== null && !self::isEmpty($given)) {
 			if (is_int($given) || (is_string($given) && ctype_digit($given))) {
 				return (int)$given === (int)$stored;
