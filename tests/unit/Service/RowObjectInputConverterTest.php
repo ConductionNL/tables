@@ -142,7 +142,7 @@ class RowObjectInputConverterTest extends TestCase {
 	public function testAValueAsItIsReadIsRecognised(string $type, string $subtype, mixed $given, mixed $stored): void {
 		$this->rowSleeveMapper->method('findUuidsByIds')->willReturnCallback(static fn (array $ids): array => array_intersect_key([42 => self::TARGET_UUID], array_flip($ids)));
 
-		$this->assertTrue($this->converter->isReadAs($this->column(1, $type, $subtype), $given, $stored));
+		$this->assertTrue($this->isReadAs($this->column(1, $type, $subtype), $given, $stored));
 	}
 
 	/**
@@ -175,7 +175,29 @@ class RowObjectInputConverterTest extends TestCase {
 	public function testAValueOtherThanTheOneReadIsNotTakenForIt(string $type, string $subtype, mixed $given, mixed $stored): void {
 		$this->rowSleeveMapper->method('findUuidsByIds')->willReturnCallback(static fn (array $ids): array => array_intersect_key([42 => self::TARGET_UUID], array_flip($ids)));
 
-		$this->assertFalse($this->converter->isReadAs($this->column(1, $type, $subtype), $given, $stored));
+		$this->assertFalse($this->isReadAs($this->column(1, $type, $subtype), $given, $stored));
+	}
+
+	private function isReadAs(Column $column, mixed $given, mixed $stored): bool {
+		$name = RowObjectInputConverter::nameOf($column);
+		return $this->converter->findValuesAsRead([$name => $given], [$name => $column], [$column->getId() => $stored]) === [$name => true];
+	}
+
+	public function testTheRelationTargetsOfOneWriteAreLookedUpAtOnce(): void {
+		$this->rowSleeveMapper->expects($this->once())
+			->method('findUuidsByIds')
+			->with([42, 43])
+			->willReturn([42 => self::TARGET_UUID, 43 => null]);
+		$mentor = $this->column(1, Column::TYPE_RELATION, '', 'mentor');
+		$project = $this->column(2, Column::TYPE_RELATION, '', 'project');
+
+		$valuesAsRead = $this->converter->findValuesAsRead(
+			['mentor' => self::TARGET_UUID, 'project' => 43],
+			['mentor' => $mentor, 'project' => $project],
+			[1 => 42, 2 => 43],
+		);
+
+		$this->assertSame(['mentor' => true, 'project' => true], $valuesAsRead);
 	}
 
 	public function testDateAndTimeAreLeftToTheirColumnType(): void {

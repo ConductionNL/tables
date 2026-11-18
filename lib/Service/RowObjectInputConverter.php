@@ -22,7 +22,7 @@ use OCA\Tables\Model\RowObjectInput;
  * Turns a row in the object shape into cells keyed by column id, in the input format the
  * column types already parse, reversing RowObjectSerializer. It reports every property it
  * cannot convert instead of dropping it. Whether a value is the one a cell is read as,
- * which is then not written again, is told by isReadAs(), so that a value read from a cell
+ * which is then not written again, is told by findValuesAsRead(), so that a value read from a cell
  * that this class would refuse, such as a datetime with seconds, can be written back.
  */
 class RowObjectInputConverter {
@@ -73,15 +73,43 @@ class RowObjectInputConverter {
 	}
 
 	/**
-	 * Whether a value given in the object shape is the value the stored cell is read as,
-	 * also when it is spelled differently: a datetime with another offset for the same
-	 * instant, a number as a string, a checkbox as a boolean, a link without the parts the
-	 * reader fills in, a usergroup without display names, or a relation by row id.
+	 * The names of the given properties whose value is the one their cell is read as, also
+	 * when it is spelled differently: a datetime with another offset for the same instant, a
+	 * number as a string, a checkbox as a boolean, a link without the parts the reader fills
+	 * in, a usergroup without display names, or a relation by row id.
 	 *
+	 * @param array<array-key, mixed> $values the given values by property name
+	 * @param array<string, Column> $columnsByName
+	 * @param array<int, mixed> $storedValues the stored value per column id
+	 * @return array<string, true>
 	 * @throws InternalError
 	 */
-	public function isReadAs(Column $column, mixed $given, mixed $stored): bool {
-		$read = $this->serializer->readValue($column, $stored);
+	public function findValuesAsRead(array $values, array $columnsByName, array $storedValues): array {
+		$relationRowIds = [];
+		foreach (array_keys($values) as $name) {
+			$column = $columnsByName[(string)$name] ?? null;
+			$stored = $column === null ? null : ($storedValues[$column->getId()] ?? null);
+			if ($column?->getType() === Column::TYPE_RELATION && is_numeric($stored)) {
+				$relationRowIds[] = (int)$stored;
+			}
+		}
+		$relationTargets = $this->serializer->findRelationTargets($relationRowIds);
+
+		$valuesAsRead = [];
+		foreach ($values as $name => $given) {
+			$column = $columnsByName[(string)$name] ?? null;
+			if ($column !== null && $this->isReadAs($column, $given, $storedValues[$column->getId()] ?? null, $relationTargets)) {
+				$valuesAsRead[(string)$name] = true;
+			}
+		}
+		return $valuesAsRead;
+	}
+
+	/**
+	 * @param array<int, ?string> $relationTargets
+	 */
+	private function isReadAs(Column $column, mixed $given, mixed $stored, array $relationTargets): bool {
+		$read = $this->serializer->readValue($column, $stored, $relationTargets);
 		if ($column->getType() === Column::TYPE_RELATION && $read !== null && !self::isEmpty($given)) {
 			if (is_int($given) || (is_string($given) && ctype_digit($given))) {
 				return (int)$given === (int)$stored;

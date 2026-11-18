@@ -91,12 +91,9 @@ class RowObjectSerializer {
 	/**
 	 * The value one stored cell is read as, in the object shape.
 	 *
-	 * @throws InternalError
+	 * @param array<int, ?string> $relationTargets from findRelationTargets(), for a relation cell
 	 */
-	public function readValue(Column $column, mixed $stored): mixed {
-		$relationTargets = $column->getType() === Column::TYPE_RELATION && is_numeric($stored)
-			? $this->findRelationTargets([(int)$stored])
-			: [];
+	public function readValue(Column $column, mixed $stored, array $relationTargets): mixed {
 		$value = $this->value($column, $stored, $relationTargets);
 		$this->takeUnknownDatetimes();
 		return $value;
@@ -223,7 +220,7 @@ class RowObjectSerializer {
 	 * @return array<int, ?string> the uuid per existing target row id, null while it has none
 	 * @throws InternalError
 	 */
-	private function findRelationTargets(array $targetRowIds): array {
+	public function findRelationTargets(array $targetRowIds): array {
 		if ($targetRowIds === []) {
 			return [];
 		}

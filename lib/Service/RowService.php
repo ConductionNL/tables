@@ -723,6 +723,8 @@ class RowService extends SuperService {
 			$storedValues[(int)$cell['columnId']] = $cell['value'];
 		}
 
+		$valuesAsRead = $this->rowObjectInputConverter->findValuesAsRead($input->values, $columnsByName, $storedValues);
+
 		$values = [];
 		$errors = [];
 		foreach ($input->values as $name => $value) {
@@ -733,7 +735,7 @@ class RowService extends SuperService {
 			}
 			$stored = $storedValues[$column->getId()] ?? null;
 			$isReadOnly = !empty($readOnlyColumns[$column->getId()]);
-			if ($this->rowObjectInputConverter->isReadAs($column, $value, $stored)
+			if (isset($valuesAsRead[(string)$name])
 				&& ($isReadOnly || !self::isEmptyCellValue($value) || self::isEmptyCellValue($stored))) {
 				continue;
 			}
