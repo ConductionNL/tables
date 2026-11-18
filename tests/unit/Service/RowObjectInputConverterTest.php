@@ -106,7 +106,7 @@ class RowObjectInputConverterTest extends TestCase {
 
 	public function testRelationByUnknownUuidIsReported(): void {
 		$this->row2Mapper->method('findIdByUuid')->willReturn(null);
-		$this->assertSame(['relation' => 'There is no row with this uuid.'], $this->convert(['relation' => self::TARGET_UUID], $this->column(1, Column::TYPE_RELATION))['errors']);
+		$this->assertSame(['relation' => 'Relation value does not exist in the target table/view'], $this->convert(['relation' => self::TARGET_UUID], $this->column(1, Column::TYPE_RELATION))['errors']);
 	}
 
 	public function testRelationByRowIdOrLabelIsPassedOn(): void {

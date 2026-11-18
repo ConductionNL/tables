@@ -96,7 +96,11 @@ class RowOCSController extends AOCSController {
 		}
 
 		if ($rowShape === RowShape::Object) {
-			$newRowData = new RowObjectInput($data);
+			try {
+				$newRowData = new RowObjectInput($data);
+			} catch (\InvalidArgumentException $e) {
+				return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
+			}
 		} else {
 			$newRowData = new RowDataInput();
 			foreach ($data as $key => $value) {
@@ -275,6 +279,11 @@ class RowOCSController extends AOCSController {
 		if (!is_array($data)) {
 			return $this->handleBadRequestError(new BadRequestError('Cannot update row: data input is invalid.'));
 		}
+		try {
+			$values = $rowShape === RowShape::Object ? new RowObjectInput($data) : $data;
+		} catch (\InvalidArgumentException $e) {
+			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
+		}
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
 			if ($rowShape === RowShape::Object && $this->isFederated($tableId, $viewId)) {
@@ -289,7 +298,6 @@ class RowOCSController extends AOCSController {
 				return new DataResponse($this->federationService->updateRow($view, $this->federatedRowId($rowId), $data));
 			}
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
-			$values = $rowShape === RowShape::Object ? new RowObjectInput($data) : $data;
 			return new DataResponse($this->shapeRow($this->rowService->updateSet($resolvedRowId, $viewId, $values, $this->userId, $tableId), $rowShape));
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);

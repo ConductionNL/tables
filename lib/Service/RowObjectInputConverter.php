@@ -160,7 +160,8 @@ class RowObjectInputConverter {
 
 	/**
 	 * A relation by the uuid of the target row, or by its row id or label, which the
-	 * relation column resolves itself.
+	 * relation column resolves itself. An unknown uuid gets the message the relation column
+	 * gives for a row outside its target, so that it does not tell whether a row exists.
 	 *
 	 * @return array{value: int|string|null, error: ?string}
 	 * @throws InternalError
@@ -169,7 +170,7 @@ class RowObjectInputConverter {
 		if (is_string($value) && preg_match(self::UUID_PATTERN, $value) === 1) {
 			$rowId = $this->row2Mapper->findIdByUuid(strtolower($value));
 			return $rowId === null
-				? ['value' => null, 'error' => 'There is no row with this uuid.']
+				? ['value' => null, 'error' => 'Relation value does not exist in the target table/view']
 				: ['value' => $rowId, 'error' => null];
 		}
 		if (!is_int($value) && !is_string($value)) {

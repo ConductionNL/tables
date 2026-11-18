@@ -13,6 +13,7 @@ use OCA\Tables\Activity\ActivityManager;
 use OCA\Tables\Db\Column;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
+use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
 use OCA\Tables\Errors\RowValidationError;
 use OCA\Tables\Helper\InstanceTimezone;
@@ -30,6 +31,7 @@ use OCA\Tables\Tests\Unit\Db\Row2MapperTestDependencies;
 use OCP\EventDispatcher\IEventDispatcher;
 use OCP\IConfig;
 use OCP\IDBConnection;
+use PHPUnit\Framework\MockObject\MockObject;
 
 /**
  * Writes and reads rows of the shared Row2Mapper test table in the object shape, through
@@ -39,9 +41,11 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	use Row2MapperTestDependencies;
 
 	private const COLUMNS = ['name', 'age', 'birthday', 'department', 'score', 'surname', 'status', 'skills', 'is_available', 'experience_years'];
+	private const VIEW_ID = 1;
 
 	private RowService $rowService;
 	private RowObjectSerializer $serializer;
+	private ViewMapper&MockObject $viewMapper;
 	/** @var array<string, Column> */
 	private array $columnsByName = [];
 
@@ -72,6 +76,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$permissionsService->method('canReadRowsByElementId')->willReturn(true);
 		$permissionsService->method('canCreateRows')->willReturn(true);
 		$permissionsService->method('canUpdateRowsByTableId')->willReturn(true);
+		$permissionsService->method('canUpdateRowsByViewId')->willReturn(true);
 		$tableMapper = $this->createMock(TableMapper::class);
 		$tableMapper->method('find')->willReturn(new Table());
 
@@ -79,12 +84,13 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$config->method('getSystemValueString')->willReturn('Europe/Amsterdam');
 		$instanceTimezone = new InstanceTimezone($config);
 
+		$this->viewMapper = $this->createMock(ViewMapper::class);
 		$this->rowService = new RowService(
 			$this->logger,
 			'test_user',
 			$permissionsService,
 			$this->columnMapper,
-			$this->createMock(ViewMapper::class),
+			$this->viewMapper,
 			$tableMapper,
 			$this->mapper,
 			$this->createMock(IEventDispatcher::class),
@@ -103,9 +109,9 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	 * @param array<string, mixed> $values
 	 * @return array<string, string>
 	 */
-	private function errorsOfCreating(array $values): array {
+	private function errorsOfCreating(array $values, ?int $viewId = null): array {
 		try {
-			$this->rowService->create(self::$testTableId, null, new RowObjectInput($values));
+			$this->rowService->create($viewId === null ? self::$testTableId : null, $viewId, new RowObjectInput($values));
 		} catch (RowValidationError $e) {
 			return $e->errors;
 		}
@@ -182,6 +188,54 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$readAgain = $this->readObject($created->getId());
 		unset($read['@self'], $readAgain['@self']);
 		$this->assertSame($read, $readAgain);
+	}
+
+	/**
+	 * A view with name and the read-only age, without the other columns of the table.
+	 */
+	private function useViewWithReadOnlyAge(): void {
+		$view = new View();
+		$view->setId(self::VIEW_ID);
+		$view->setTableId(self::$testTableId);
+		$view->setColumns(json_encode([
+			['columnId' => $this->columnsByName['name']->getId(), 'order' => 1],
+			['columnId' => $this->columnsByName['age']->getId(), 'order' => 2, 'readonly' => true],
+		]));
+		$this->viewMapper->method('find')->willReturn($view);
+	}
+
+	public function testUnchangedReadOnlyValueOfAViewIsWrittenBack(): void {
+		$this->useViewWithReadOnlyAge();
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Vera', 'age' => 30]));
+
+		$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput(['name' => 'Vera B', 'age' => 30]), 'test_user', null);
+
+		$read = $this->readObject($created->getId());
+		$this->assertSame('Vera B', $read['name']);
+		$this->assertEquals(30, $read['age']);
+	}
+
+	public function testChangedReadOnlyValueOfAViewIsReported(): void {
+		$this->useViewWithReadOnlyAge();
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Vera', 'age' => 30]));
+
+		try {
+			$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput(['name' => 'Vera B', 'age' => 31]), 'test_user', null);
+			$this->fail('A changed read-only value was accepted.');
+		} catch (RowValidationError $e) {
+			$this->assertSame(['age' => 'This column is read-only in this view.'], $e->errors);
+		}
+		$this->assertSame(['age' => 'This column is read-only in this view.'], $this->errorsOfCreating(['name' => 'Wim', 'age' => 31], self::VIEW_ID));
+		$this->assertSame('Vera', $this->readObject($created->getId())['name']);
+	}
+
+	public function testColumnOutsideTheViewIsReported(): void {
+		$this->useViewWithReadOnlyAge();
+
+		$this->assertSame(
+			['department' => 'There is no column with this technical name.'],
+			$this->errorsOfCreating(['name' => 'Wim', 'department' => 'IT'], self::VIEW_ID),
+		);
 	}
 
 	/**

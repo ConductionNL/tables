@@ -316,6 +316,14 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame(['name' => 'Bob'], $this->controller->updateRow('tables', 3, self::UUID, ['name' => 'Bob'], 'object')->getData());
 	}
 
+	public function testObjectShapeRefusesAList(): void {
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['a'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['a'], 'object')->getStatus());
+	}
+
 	public function testObjectShapeIsRefusedOnAFederatedTable(): void {
 		$this->federationService->method('isNodeFederated')->willReturn(true);
 		$this->federationService->expects($this->never())->method('updateRow');
