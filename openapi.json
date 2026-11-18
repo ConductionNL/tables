@@ -999,6 +999,24 @@
                     }
                 }
             },
+            "RowValidationError": {
+                "type": "object",
+                "required": [
+                    "message",
+                    "errors"
+                ],
+                "properties": {
+                    "message": {
+                        "type": "string"
+                    },
+                    "errors": {
+                        "type": "object",
+                        "additionalProperties": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
             "Share": {
                 "type": "object",
                 "required": [
@@ -16437,7 +16455,7 @@
                                 ],
                                 "properties": {
                                     "data": {
-                                        "description": "An array containing the column identifiers and their values",
+                                        "description": "The values of the row: keyed by column id, or with shape \"object\" keyed by technical name",
                                         "oneOf": [
                                             {
                                                 "type": "string"
@@ -16449,6 +16467,16 @@
                                                 }
                                             }
                                         ]
+                                    },
+                                    "shape": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "enum": [
+                                            "cells",
+                                            "object"
+                                        ],
+                                        "description": "The shape of the data and of the returned row, defaults to \"cells\""
                                     }
                                 }
                             }
@@ -16513,7 +16541,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObject"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16522,8 +16557,8 @@
                             }
                         }
                     },
-                    "403": {
-                        "description": "No permissions",
+                    "400": {
+                        "description": "Invalid request parameters, or with shape \"object\" the values that cannot be stored, per technical name",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -16543,15 +16578,22 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "type": "object",
-                                                    "required": [
-                                                        "message"
-                                                    ],
-                                                    "properties": {
-                                                        "message": {
-                                                            "type": "string"
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "message"
+                                                            ],
+                                                            "properties": {
+                                                                "message": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowValidationError"
                                                         }
-                                                    }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16560,8 +16602,8 @@
                             }
                         }
                     },
-                    "400": {
-                        "description": "Invalid request parameters",
+                    "403": {
+                        "description": "No permissions",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17378,7 +17420,7 @@
                                 ],
                                 "properties": {
                                     "data": {
-                                        "description": "An array containing the column identifiers and their values",
+                                        "description": "The values to change: keyed by column id, or with shape \"object\" keyed by technical name",
                                         "oneOf": [
                                             {
                                                 "type": "string"
@@ -17390,6 +17432,16 @@
                                                 }
                                             }
                                         ]
+                                    },
+                                    "shape": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "enum": [
+                                            "cells",
+                                            "object"
+                                        ],
+                                        "description": "The shape of the data and of the returned row, defaults to \"cells\""
                                     }
                                 }
                             }
@@ -17463,7 +17515,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObject"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -17472,8 +17531,8 @@
                             }
                         }
                     },
-                    "403": {
-                        "description": "No permissions",
+                    "400": {
+                        "description": "Invalid request parameters, or with shape \"object\" the values that cannot be stored, per technical name",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17493,15 +17552,22 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "type": "object",
-                                                    "required": [
-                                                        "message"
-                                                    ],
-                                                    "properties": {
-                                                        "message": {
-                                                            "type": "string"
+                                                    "anyOf": [
+                                                        {
+                                                            "type": "object",
+                                                            "required": [
+                                                                "message"
+                                                            ],
+                                                            "properties": {
+                                                                "message": {
+                                                                    "type": "string"
+                                                                }
+                                                            }
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowValidationError"
                                                         }
-                                                    }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -17510,8 +17576,8 @@
                             }
                         }
                     },
-                    "400": {
-                        "description": "Invalid request parameters",
+                    "403": {
+                        "description": "No permissions",
                         "content": {
                             "application/json": {
                                 "schema": {

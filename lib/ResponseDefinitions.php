@@ -139,6 +139,11 @@ namespace OCA\Tables;
  * 	pages: int,
  * }
  *
+ * @psalm-type TablesRowValidationError = array{
+ * 	message: string,
+ * 	errors: array<string, string>,
+ * }
+ *
  * @psalm-type TablesPublicRow = array{
  *    id: int,
  *    uuid: ?string,

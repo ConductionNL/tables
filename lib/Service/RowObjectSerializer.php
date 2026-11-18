@@ -24,7 +24,8 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Turns rows into the object shape of api/2: one property per column, keyed by its
- * technical name, and the metadata in `@self`.
+ * technical name, and the metadata in `@self`. What it returns is what
+ * RowObjectInputConverter accepts back, so a row can be written back unchanged.
  *
  * @psalm-import-type TablesRowObject from ResponseDefinitions
  * @psalm-import-type TablesRowSelf from ResponseDefinitions

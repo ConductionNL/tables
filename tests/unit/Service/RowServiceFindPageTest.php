@@ -20,6 +20,7 @@ use OCA\Tables\Errors\PermissionError;
 use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Notification\NotificationHelper;
 use OCA\Tables\Service\PermissionsService;
+use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowQueryResolver;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\RowVisibilityService;
@@ -83,6 +84,7 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 			$this->createMock(IDBConnection::class),
 			$this->createMock(RowVisibilityService::class),
 			new RowQueryResolver(),
+			$this->createMock(RowObjectInputConverter::class),
 		);
 	}
 
