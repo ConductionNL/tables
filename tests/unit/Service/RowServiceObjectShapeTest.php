@@ -332,6 +332,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput($read), 'test_user', null);
 
 		$this->assertNull($this->readObject($created->getId())['mentor']);
+		$this->assertEquals($target->getId(), $this->storedValue($created->getId(), 'mentor'));
 	}
 
 	/**
@@ -360,6 +361,32 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 
 		$this->assertSame('Ida B', $this->readObject($created->getId())['name']);
 		$this->assertEquals($target->getId(), $this->storedValue($created->getId(), 'mentor'));
+	}
+
+	public function testWriteBackOfALinkStoredAsAPlainUrlLeavesItAsItIs(): void {
+		$rowId = $this->storeRow(['name' => 'Lea', 'website' => 'https://nextcloud.com/legacy']);
+		$read = $this->readObject($rowId);
+		$this->assertSame('https://nextcloud.com/legacy', $read['website']);
+
+		$updated = $this->rowService->updateSet($rowId, null, new RowObjectInput($read), 'test_user', self::$testTableId);
+
+		$this->assertSame([], $updated->getChangedCells());
+		$this->assertSame('https://nextcloud.com/legacy', $this->storedValue($rowId, 'website'));
+	}
+
+	public function testWriteBackOfARelationOutsideItsTargetLeavesItAsItIs(): void {
+		$otherTableId = $this->createTestTable()['id'];
+		$foreignUuid = sprintf('%08x-0000-4000-8000-%012x', random_int(0, 0xffffffff), random_int(0, 0xffffffffffff));
+		$foreignRowId = $this->createTestRow($otherTableId, ['uuid' => $foreignUuid])['id'];
+		$rowId = $this->storeRow(['name' => 'Otto', 'mentor' => $foreignRowId]);
+		$read = $this->readObject($rowId);
+		$this->assertSame($foreignUuid, $read['mentor']);
+		$this->assertArrayHasKey('mentor', $this->errorsOfCreating(['name' => 'Otto', 'mentor' => $foreignUuid]));
+
+		$updated = $this->rowService->updateSet($rowId, null, new RowObjectInput($read), 'test_user', self::$testTableId);
+
+		$this->assertSame([], $updated->getChangedCells());
+		$this->assertEquals($foreignRowId, $this->storedValue($rowId, 'mentor'));
 	}
 
 	/**
@@ -514,6 +541,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			'a datetime with seconds' => ['birthday', '2026-10-16 14:30:15', '2026-10-16T14:30:15+02:00'],
 			'a datetime in the daylight saving gap' => ['birthday', '2026-03-29 02:30', '2026-03-29T03:30:00+02:00'],
 			'a datetime in an unknown format' => ['birthday', 'soon', 'soon'],
+			'a selection option that no longer exists' => ['status', 5, 5],
 		];
 	}
 
