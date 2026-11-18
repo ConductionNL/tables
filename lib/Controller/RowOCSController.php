@@ -130,7 +130,7 @@ class RowOCSController extends AOCSController {
 	 * @param string|null $search Text to look for in the text cells and the selection labels
 	 * @param string|null $fields Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned
 	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns
-	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells"
+	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC
 	 * @return DataResponse<Http::STATUS_OK, TablesRowPage|TablesRowObjectPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Rows returned
@@ -193,7 +193,7 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to get a row from a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row, either its integer id or its uuid
-	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells"
+	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned

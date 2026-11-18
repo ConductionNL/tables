@@ -26,6 +26,8 @@ class Row2 implements JsonSerializable {
 	private ?array $data = [];
 	/** @var array<string, array{columnId: int, value: mixed}> */
 	private array $dataByAlias = [];
+	/** @var array<string, Column> the columns the alias payload covers, by alias; not serialized */
+	private array $columnsByAlias = [];
 	private array $changedColumnIds = []; // collect column ids that have changed after $loaded = true
 
 	private bool $loaded = false; // set to true if model is loaded, after that changed column ids will be collected
@@ -98,6 +100,23 @@ class Row2 implements JsonSerializable {
 	}
 
 	/**
+	 * The columns the alias payload covers, by alias, including the columns that have no
+	 * stored cell in this row.
+	 *
+	 * @return array<string, Column>
+	 */
+	public function getColumnsByAlias(): array {
+		return $this->columnsByAlias;
+	}
+
+	/**
+	 * @param array<string, Column> $columnsByAlias
+	 */
+	public function setColumnsByAlias(array $columnsByAlias): void {
+		$this->columnsByAlias = $columnsByAlias;
+	}
+
+	/**
 	 * @param RowDataInput|list<array{columnId: int, value: mixed}> $data
 	 * @return void
 	 */
@@ -163,6 +182,10 @@ class Row2 implements JsonSerializable {
 		$this->dataByAlias = array_filter(
 			$this->dataByAlias,
 			static fn (array $cell): bool => in_array($cell['columnId'], $columns, true),
+		);
+		$this->columnsByAlias = array_filter(
+			$this->columnsByAlias,
+			static fn (Column $column): bool => in_array($column->getId(), $columns, true),
 		);
 		return $this->dataByAlias;
 	}

@@ -216,11 +216,11 @@ class RowService extends SuperService {
 			$filterUserId,
 		);
 		$this->attachAliasPayloads($rows, $columns);
-		if ($isMetadataOnly) {
-			foreach ($rows as $row) {
+		foreach ($rows as $row) {
+			if ($isMetadataOnly) {
 				$row->filterDataByColumns([]);
-				$row->filterDataByAliasByColumns([]);
 			}
+			$row->filterDataByAliasByColumns($criteria['columnIds']);
 		}
 		return ['rows' => $rows, 'total' => $total];
 	}
@@ -1153,13 +1153,18 @@ class RowService extends SuperService {
 	 * @param Column[] $columns
 	 */
 	private function attachAliasPayload(Row2 $row, array $columns): void {
+		$aliasByColumnId = $this->buildAliasByColumnId($columns);
+		$columnsByAlias = [];
+		foreach ($columns as $column) {
+			$columnsByAlias[$aliasByColumnId[$column->getId()] ?? ('column_' . $column->getId())] = $column;
+		}
+		$row->setColumnsByAlias($columnsByAlias);
+
 		$data = $row->getData() ?? [];
 		if ($data === []) {
 			$row->setDataByAlias([]);
 			return;
 		}
-
-		$aliasByColumnId = $this->buildAliasByColumnId($columns);
 
 		$dataByAlias = [];
 		foreach ($data as $cell) {

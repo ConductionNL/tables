@@ -109,10 +109,10 @@ namespace OCA\Tables;
  * 	id: ?string,
  * 	rowId: int,
  * 	tableId: int,
- * 	createdBy: string,
+ * 	createdBy: ?string,
  * 	createdAt: ?string,
- * 	lastEditBy: string,
- * 	lastEditAt: ?string,
+ * 	updatedBy: ?string,
+ * 	updatedAt: ?string,
  * }
  *
  * @psalm-type TablesRowLink = array{

@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\Db\Column;
-use OCA\Tables\Db\ColumnMapper;
 use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\RowSleeveMapper;
 use OCA\Tables\Helper\InstanceTimezone;
@@ -25,6 +24,7 @@ class RowObjectSerializerTest extends TestCase {
 	private const TARGET_UUID = '0199f1a0-0000-7000-8000-000000000042';
 
 	private RowSleeveMapper&MockObject $rowSleeveMapper;
+	private LoggerInterface&MockObject $logger;
 	private InstanceTimezone $instanceTimezone;
 	private RowObjectSerializer $serializer;
 	/** @var array<int, Column> */
@@ -44,12 +44,9 @@ class RowObjectSerializerTest extends TestCase {
 			6 => $this->column(6, Column::TYPE_SELECTION, Column::SUBTYPE_SELECTION_CHECK, 'is_active'),
 			7 => $this->column(7, Column::TYPE_NUMBER, '', 'age'),
 		];
-		$columnMapper = $this->createMock(ColumnMapper::class);
-		$columnMapper->method('findAll')->willReturnCallback(
-			fn (array $ids): array => array_values(array_intersect_key($this->columns, array_flip($ids))),
-		);
 		$this->rowSleeveMapper = $this->createMock(RowSleeveMapper::class);
-		$this->serializer = new RowObjectSerializer($columnMapper, $this->rowSleeveMapper, $this->instanceTimezone, $this->createMock(LoggerInterface::class));
+		$this->logger = $this->createMock(LoggerInterface::class);
+		$this->serializer = new RowObjectSerializer($this->rowSleeveMapper, $this->instanceTimezone, $this->logger);
 	}
 
 	private function column(int $id, string $type, string $subtype, string $technicalName): Column {
@@ -62,9 +59,12 @@ class RowObjectSerializerTest extends TestCase {
 	}
 
 	/**
+	 * A row read with the given columns (all columns by default), holding cells for the given values.
+	 *
 	 * @param array<int, mixed> $valuesByColumnId
+	 * @param int[]|null $columnIds
 	 */
-	private function row(array $valuesByColumnId): Row2 {
+	private function row(array $valuesByColumnId, ?array $columnIds = null): Row2 {
 		$row = new Row2();
 		$row->setId(12);
 		$row->setUuid(self::ROW_UUID);
@@ -73,6 +73,11 @@ class RowObjectSerializerTest extends TestCase {
 		$row->setCreatedAt('2026-10-16 12:30:00');
 		$row->setLastEditBy('bob');
 		$row->setLastEditAt('2026-01-16 08:00:00');
+		$columnsByAlias = [];
+		foreach ($columnIds ?? array_keys($this->columns) as $columnId) {
+			$columnsByAlias[$this->columns[$columnId]->getTechnicalName()] = $this->columns[$columnId];
+		}
+		$row->setColumnsByAlias($columnsByAlias);
 		$dataByAlias = [];
 		foreach ($valuesByColumnId as $columnId => $value) {
 			$dataByAlias[$this->columns[$columnId]->getTechnicalName()] = ['columnId' => $columnId, 'value' => $value];
@@ -81,22 +86,59 @@ class RowObjectSerializerTest extends TestCase {
 		return $row;
 	}
 
-	public function testSelfCarriesTheMetadataWithTheUuidAsId(): void {
+	public function testSelfCarriesTheMetadataInUtcWithTheUuidAsId(): void {
 		$this->assertSame([
 			'id' => self::ROW_UUID,
 			'rowId' => 12,
 			'tableId' => 3,
 			'createdBy' => 'alice',
-			'createdAt' => '2026-10-16T14:30:00+02:00',
-			'lastEditBy' => 'bob',
-			'lastEditAt' => '2026-01-16T09:00:00+01:00',
+			'createdAt' => '2026-10-16T12:30:00+00:00',
+			'updatedBy' => 'bob',
+			'updatedAt' => '2026-01-16T08:00:00+00:00',
 		], $this->serializer->serialize($this->row([]))['@self']);
+	}
+
+	public function testEveryColumnHasAPropertyAlsoWithoutAStoredCell(): void {
+		$object = $this->serializer->serialize($this->row([1 => 'Alice']));
+
+		$this->assertSame(['@self', 'name', 'meeting', 'birthday', 'website', 'project', 'is_active', 'age'], array_keys($object));
+		$this->assertSame('Alice', $object['name']);
+		$this->assertNull($object['age']);
+	}
+
+	public function testOnlyTheColumnsTheRowIsReadWithArePresent(): void {
+		$object = $this->serializer->serialize($this->row([1 => 'Alice', 7 => 42], [7]));
+
+		$this->assertSame(['@self', 'age'], array_keys($object));
+	}
+
+	public function testAColumnNamedLikeTheMetadataDoesNotReplaceIt(): void {
+		$row = $this->row([]);
+		$row->setColumnsByAlias(['@self' => $this->columns[1]]);
+		$row->setDataByAlias(['@self' => ['columnId' => 1, 'value' => 'Alice']]);
+
+		$this->assertSame(self::ROW_UUID, $this->serializer->serialize($row)['@self']['id']);
 	}
 
 	public function testDatetimesGetTheOffsetOfTheInstanceTimezone(): void {
 		$object = $this->serializer->serialize($this->row([2 => '2026-10-16 14:30', 3 => '2026-10-16']));
 		$this->assertSame('2026-10-16T14:30:00+02:00', $object['meeting']);
 		$this->assertSame('2026-10-16', $object['birthday']);
+	}
+
+	public function testADatetimeInTheDaylightSavingGapIsReadAsTheMomentAfterTheJump(): void {
+		$object = $this->serializer->serialize($this->row([2 => '2026-03-29 02:30']));
+		$this->assertSame('2026-03-29T03:30:00+02:00', $object['meeting']);
+	}
+
+	public function testUnknownDatetimeFormatsAreLoggedOncePerCall(): void {
+		$this->logger->expects($this->once())
+			->method('warning')
+			->with($this->anything(), $this->callback(static fn (array $context): bool => $context['count'] === 2 && $context['example'] === 'soon'));
+
+		$objects = $this->serializer->serializeAll([$this->row([2 => 'soon']), $this->row([2 => 'later'])]);
+
+		$this->assertSame('soon', $objects[0]['meeting']);
 	}
 
 	public function testLinkBecomesAnObject(): void {
@@ -108,11 +150,18 @@ class RowObjectSerializerTest extends TestCase {
 	}
 
 	public function testRelationBecomesTheUuidOfItsTarget(): void {
-		$this->rowSleeveMapper->expects($this->once())->method('findUuidsByIds')->with([42, 43])->willReturn([42 => self::TARGET_UUID]);
-		$objects = $this->serializer->serializeAll([$this->row([5 => 42]), $this->row([5 => 43])]);
+		$this->rowSleeveMapper->expects($this->once())
+			->method('findUuidsByIds')
+			->with([42, 43, 44])
+			->willReturn([42 => self::TARGET_UUID, 43 => null]);
+
+		$objects = $this->serializer->serializeAll([$this->row([5 => 42]), $this->row([5 => 43]), $this->row([5 => 44])]);
+
 		$this->assertSame(self::TARGET_UUID, $objects[0]['project']);
 		// a target without a uuid yet keeps its row id instead of losing the relation
 		$this->assertSame(43, $objects[1]['project']);
+		// a target that no longer exists is no relation
+		$this->assertNull($objects[2]['project']);
 	}
 
 	public function testOtherValuesAndEmptyCells(): void {

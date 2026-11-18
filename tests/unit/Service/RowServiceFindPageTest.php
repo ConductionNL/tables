@@ -231,6 +231,7 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$found = $this->rowService->findPage($this->query(['fields' => 'name', 'sort' => 'name', 'limit' => '1']), self::$testTableId, null, 'test_user');
 
 		$this->assertSame([$this->columnsByName['name']->getId()], array_column($found['rows'][0]->getData(), 'columnId'));
+		$this->assertSame(['name'], array_keys($found['rows'][0]->getColumnsByAlias()));
 	}
 
 	public function testOnlyMetadataStillReturnsTheRows(): void {
@@ -238,6 +239,15 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 
 		$this->assertCount(5, $found['rows']);
 		$this->assertSame([], $found['rows'][0]->getData());
+		$this->assertSame([], $found['rows'][0]->getColumnsByAlias());
+	}
+
+	public function testEveryReturnedColumnIsCarriedWithTheRow(): void {
+		$found = $this->rowService->findPage($this->query([]), self::$testTableId, null, 'test_user');
+
+		foreach ($found['rows'] as $row) {
+			$this->assertSame(array_keys($this->columnsByName), array_keys($row->getColumnsByAlias()));
+		}
 	}
 
 	public function testARequestFilterNeverWidensTheView(): void {

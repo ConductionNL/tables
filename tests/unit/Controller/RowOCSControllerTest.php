@@ -266,6 +266,7 @@ class RowOCSControllerTest extends TestCase {
 		$this->rowService->method('findInNode')->willReturn($this->row(7));
 		$this->rowObjectSerializer->expects($this->never())->method('serialize');
 
+		$this->assertSame(self::UUID, $this->controller->getRow('tables', 3, '7')->getData()['uuid']);
 		$this->assertSame(self::UUID, $this->controller->getRow('tables', 3, '7', 'cells')->getData()['uuid']);
 	}
 
