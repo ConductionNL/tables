@@ -1389,10 +1389,10 @@ export type components = {
             readonly rowId: number;
             /** Format: int64 */
             readonly tableId: number;
-            readonly createdBy: string;
+            readonly createdBy: string | null;
             readonly createdAt: string | null;
-            readonly lastEditBy: string;
-            readonly lastEditAt: string | null;
+            readonly updatedBy: string | null;
+            readonly updatedAt: string | null;
         };
         readonly RowUsergroup: {
             readonly id: string;
@@ -8827,7 +8827,7 @@ export interface operations {
                 readonly fields?: string | null;
                 /** @description Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns */
                 readonly filter?: string | null;
-                /** @description The shape of the returned rows, defaults to "cells" */
+                /** @description The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC */
                 readonly shape?: "cells" | "object" | null;
             };
             readonly header: {
@@ -9067,7 +9067,7 @@ export interface operations {
     readonly "rowocs-get-row": {
         readonly parameters: {
             readonly query?: {
-                /** @description The shape of the returned row, defaults to "cells" */
+                /** @description The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC */
                 readonly shape?: "cells" | "object" | null;
             };
             readonly header: {

@@ -1734,6 +1734,32 @@ class FeatureContext implements Context {
 	}
 
 	/**
+	 * @When the rows of the table are listed using v2 in the object shape
+	 */
+	public function listRowsV2InTheObjectShape(): void {
+		$this->sendOcsRequest('GET', '/apps/tables/api/2/tables/' . $this->tableId . '/rows?shape=object');
+		Assert::assertEquals(200, $this->response->getStatusCode());
+	}
+
+	/**
+	 * @Then the object of the last created row has following values
+	 *
+	 * @param TableNode $properties column aliases and the expected value as JSON
+	 */
+	public function theObjectOfTheLastCreatedRowHas(TableNode $properties): void {
+		$objects = $this->getDataFromResponse($this->response)['ocs']['data']['results'];
+		$matching = array_values(array_filter($objects, fn (array $object): bool => $object['@self']['rowId'] === $this->rowId));
+		Assert::assertCount(1, $matching);
+		$object = $matching[0];
+		Assert::assertMatchesRegularExpression('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $object['@self']['id']);
+		foreach ($properties->getRows() as $row) {
+			$technicalName = $this->collectionManager->getByAlias('column', $row[0])['technicalName'];
+			Assert::assertArrayHasKey($technicalName, $object);
+			Assert::assertSame(json_decode($row[1], true), $object[$technicalName]);
+		}
+	}
+
+	/**
 	 * @Then row exists with following values via legacy interface
 	 *
 	 * @param TableNode|null $properties

@@ -96,7 +96,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			new RowQueryResolver(),
 			new RowObjectInputConverter($this->mapper, $instanceTimezone),
 		);
-		$this->serializer = new RowObjectSerializer($this->columnMapper, $this->rowSleeveMapper, $instanceTimezone, $this->logger);
+		$this->serializer = new RowObjectSerializer($this->rowSleeveMapper, $instanceTimezone, $this->logger);
 	}
 
 	/**

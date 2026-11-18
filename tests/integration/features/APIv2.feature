@@ -642,6 +642,29 @@ Feature: APIv2
     Then the reported status is 200
 
   @api2 @rows
+  Scenario: Read rows via v2 in the object shape
+    Given table "Object shape" with emoji "🧩" exists for user "participant1-v2" as "base1" via v2
+    And column "one" exists with following properties
+      | type          | text                    |
+      | subtype       | line                    |
+      | mandatory     | 0                       |
+    And column "two" exists with following properties
+      | type          | number                  |
+      | mandatory     | 0                       |
+    And column "four" exists with following properties
+      | type          | datetime                |
+      | subtype       | date                    |
+      | mandatory     | 0                       |
+    When row exists using v2 with following values
+      | one           | AHA                     |
+      | four          | 2023-12-24              |
+    And the rows of the table are listed using v2 in the object shape
+    Then the object of the last created row has following values
+      | one           | "AHA"                   |
+      | two           | null                    |
+      | four          | "2023-12-24"            |
+
+  @api2 @rows
   Scenario: Try to create rows via v2 with permissions
     Given table "Rows check" with emoji "👨🏻‍💻" exists for user "participant1-v2" as "base1" via v2
     And column "one" exists with following properties

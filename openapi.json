@@ -947,8 +947,8 @@
                     "tableId",
                     "createdBy",
                     "createdAt",
-                    "lastEditBy",
-                    "lastEditAt"
+                    "updatedBy",
+                    "updatedAt"
                 ],
                 "properties": {
                     "id": {
@@ -964,16 +964,18 @@
                         "format": "int64"
                     },
                     "createdBy": {
-                        "type": "string"
+                        "type": "string",
+                        "nullable": true
                     },
                     "createdAt": {
                         "type": "string",
                         "nullable": true
                     },
-                    "lastEditBy": {
-                        "type": "string"
+                    "updatedBy": {
+                        "type": "string",
+                        "nullable": true
                     },
-                    "lastEditAt": {
+                    "updatedAt": {
                         "type": "string",
                         "nullable": true
                     }
@@ -16858,7 +16860,7 @@
                     {
                         "name": "shape",
                         "in": "query",
-                        "description": "The shape of the returned rows, defaults to \"cells\"",
+                        "description": "The shape of the returned rows, defaults to \"cells\". With \"object\" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC",
                         "schema": {
                             "type": "string",
                             "nullable": true,
@@ -17153,7 +17155,7 @@
                     {
                         "name": "shape",
                         "in": "query",
-                        "description": "The shape of the returned row, defaults to \"cells\"",
+                        "description": "The shape of the returned row, defaults to \"cells\". With \"object\" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC",
                         "schema": {
                             "type": "string",
                             "nullable": true,
