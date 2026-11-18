@@ -641,7 +641,8 @@ class RowService extends SuperService {
 
 			// parse given value to respect the column type value format
 			$parsedValue = $this->parseValueByColumnType($column, $entry['value']);
-			// a checkbox parses null as "false", while the object shape reads a missing cell as null
+			// a checkbox parses null as "false", while the object shape reads a missing cell as null;
+			// null is stored as an empty cell, which reads as null again
 			if ($isStrict && $entry['value'] === null && !self::isEmptyCellValue($parsedValue)) {
 				$parsedValue = null;
 			}

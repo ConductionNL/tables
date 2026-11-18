@@ -303,7 +303,7 @@ class RowOCSControllerTest extends TestCase {
 		$response = $this->controller->createRow('tables', 3, ['age' => 'many'], 'object');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
-		$this->assertSame(['message' => 'The row has 1 invalid value.', 'errors' => ['age' => 'Expected a number.']], $response->getData());
+		$this->assertSame('{"message":"The row has 1 invalid value.","errors":{"age":"Expected a number."}}', json_encode($response->getData()));
 	}
 
 	public function testUpdateRowInTheObjectShape(): void {
@@ -324,8 +324,18 @@ class RowOCSControllerTest extends TestCase {
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['a'], 'object')->getStatus());
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['a'], 'object')->getStatus());
-		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['0' => 'x', 'name' => 'ok'], 'object')->getStatus());
-		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['0' => 'x', 'name' => 'ok'], 'object')->getStatus());
+	}
+
+	public function testErrorsAreAnObjectAlsoWhenEveryNameLooksLikeANumber(): void {
+		$this->rowService->expects($this->once())
+			->method('create')
+			->with(3, null, $this->callback(fn ($input): bool => $input instanceof RowObjectInput && $input->values === [0 => 'x', 'name' => 'ok']))
+			->willThrowException(new RowValidationError(['0' => 'There is no column with this technical name.']));
+
+		$response = $this->controller->createRow('tables', 3, ['0' => 'x', 'name' => 'ok'], 'object');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertSame('{"0":"There is no column with this technical name."}', json_encode($response->getData()['errors']));
 	}
 
 	/**

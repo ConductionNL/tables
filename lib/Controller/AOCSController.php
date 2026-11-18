@@ -67,7 +67,8 @@ abstract class AOCSController extends OCSController {
 		$this->logger->warning('An bad request was encountered: ' . $e->getMessage(), ['exception' => $e]);
 		$body = ['message' => $e->translatedMessage ?: $e->getMessage()];
 		if ($e instanceof RowValidationError) {
-			$body['errors'] = $e->errors;
+			// an object also when every invalid property has a name that looks like a number
+			$body['errors'] = (object)$e->errors;
 		}
 		return new DataResponse($body, Http::STATUS_BAD_REQUEST);
 	}

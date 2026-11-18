@@ -20,10 +20,8 @@ use OCA\Tables\Model\RowObjectInput;
 /**
  * Turns a row in the object shape into cells keyed by column id, in the input format the
  * column types already parse. It reverses RowObjectSerializer, so what was read can be
- * written back unchanged, unless a cell refers to a user, group or selection option that
- * no longer exists, or holds a datetime in an unknown format or with seconds other than
- * 00, which the serializer returns as stored; these are reported on their property. It
- * reports every property it cannot convert instead of dropping it.
+ * written back unchanged, with the exceptions RowObjectSerializer lists. It reports every
+ * property it cannot convert instead of dropping it.
  */
 class RowObjectInputConverter {
 	private const SELF_KEY = '@self';
@@ -112,7 +110,7 @@ class RowObjectInputConverter {
 		if ($value === '') {
 			return ['value' => null, 'error' => null];
 		}
-		if (!is_string($value) || preg_match(self::ISO_DATETIME_PATTERN, $value, $matches) !== 1) {
+		if (!is_string($value) || preg_match(self::ISO_DATETIME_PATTERN, $value) !== 1) {
 			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
 		}
 		try {
@@ -125,9 +123,9 @@ class RowObjectInputConverter {
 		if ($parseErrors !== false && $parseErrors['warning_count'] > 0) {
 			return ['value' => null, 'error' => 'Expected an ISO 8601 datetime, such as 2026-10-16T14:30:00+02:00.'];
 		}
-		// a wall time in the gap of a daylight saving change does not exist and is moved by PHP
-		$hasOffset = ($matches[3] ?? '') !== '';
-		if (!$hasOffset && $dateTime->format('Y-m-d H:i') !== str_replace('T', ' ', substr($value, 0, 16))) {
+		// a wall time in the gap of a daylight saving change does not exist and is moved by PHP;
+		// with an offset PHP keeps the given wall time, so this only refuses times without one
+		if ($dateTime->format('Y-m-d H:i') !== str_replace('T', ' ', substr($value, 0, 16))) {
 			return ['value' => null, 'error' => 'This time does not exist in the timezone of the instance, give it with an offset.'];
 		}
 		if ($dateTime->format('s.u') !== '00.000000') {

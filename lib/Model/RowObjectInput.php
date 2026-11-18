@@ -17,16 +17,14 @@ use InvalidArgumentException;
  */
 final class RowObjectInput {
 	/**
-	 * @param array<string, mixed> $values
-	 * @throws InvalidArgumentException when a key is a number, which no technical name is, as in a list
+	 * @param array<array-key, mixed> $values keys that look like numbers arrive as integers
+	 * @throws InvalidArgumentException when the data is a list instead of an object
 	 */
 	public function __construct(
 		public readonly array $values,
 	) {
-		foreach (array_keys($values) as $key) {
-			if (is_int($key)) {
-				throw new InvalidArgumentException('Data in the object shape must be an object keyed by technical name.');
-			}
+		if ($values !== [] && array_is_list($values)) {
+			throw new InvalidArgumentException('Data in the object shape must be an object keyed by technical name.');
 		}
 	}
 }

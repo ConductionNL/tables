@@ -25,11 +25,14 @@ use Psr\Log\LoggerInterface;
  * Turns rows into the object shape of api/2: one property per column the row is read
  * with, keyed by its technical name and null when the row has no value for it, and the
  * metadata in `@self`. What it returns is what RowObjectInputConverter accepts back, so a
- * row can be written back unchanged, unless a cell refers to a user, group or selection
- * option that no longer exists, or holds a datetime in an unknown format or with seconds
- * other than 00, which is returned as stored; these are reported on their property when
- * written back. A relation to a row that no longer exists reads as null, so writing it
- * back clears it.
+ * row can be written back unchanged, except for values that can no longer be stored as
+ * they are: a cell that refers to a user, group or selection option that no longer
+ * exists; a datetime stored in an unknown format, with seconds, or at a wall time in a
+ * daylight saving gap (read as the moment after the jump); a value outside the column's
+ * current limits or a relation outside its target view. A writable column reports these
+ * on their property; a column that is read-only in the view keeps its stored value as
+ * long as the value written back is the one that was read. A relation to a row that no
+ * longer exists reads as null, so writing it back clears a writable relation.
  *
  * @psalm-import-type TablesRowObject from ResponseDefinitions
  * @psalm-import-type TablesRowSelf from ResponseDefinitions
