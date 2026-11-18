@@ -25,7 +25,9 @@ use Psr\Log\LoggerInterface;
  * Turns rows into the object shape of api/2: one property per column the row is read
  * with, keyed by its technical name and null when the row has no value for it, and the
  * metadata in `@self`. What it returns is what RowObjectInputConverter accepts back, so a
- * row can be written back unchanged.
+ * row can be written back unchanged, unless a cell refers to a user, group or selection
+ * option that no longer exists, which is reported on that property. A relation to a row
+ * that no longer exists reads as null, so writing it back clears it.
  *
  * @psalm-import-type TablesRowObject from ResponseDefinitions
  * @psalm-import-type TablesRowSelf from ResponseDefinitions

@@ -20,8 +20,9 @@ use OCA\Tables\Model\RowObjectInput;
 /**
  * Turns a row in the object shape into cells keyed by column id, in the input format the
  * column types already parse. It reverses RowObjectSerializer, so what was read can be
- * written back unchanged, and it reports every property it cannot convert instead of
- * dropping it.
+ * written back unchanged, unless a cell refers to a user, group or selection option that
+ * no longer exists, which is reported on that property. It reports every property it
+ * cannot convert instead of dropping it.
  */
 class RowObjectInputConverter {
 	private const SELF_KEY = '@self';

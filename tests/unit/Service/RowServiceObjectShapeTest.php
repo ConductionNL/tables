@@ -15,12 +15,17 @@ use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\View;
 use OCA\Tables\Db\ViewMapper;
+use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\RowValidationError;
+use OCA\Tables\Helper\ColumnsHelper;
 use OCA\Tables\Helper\InstanceTimezone;
 use OCA\Tables\Model\RowDataInput;
 use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Notification\NotificationHelper;
+use OCA\Tables\Service\ColumnTypes\IColumnTypeBusiness;
+use OCA\Tables\Service\ColumnTypes\RelationBusiness;
 use OCA\Tables\Service\PermissionsService;
+use OCA\Tables\Service\RelationService;
 use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowObjectSerializer;
 use OCA\Tables\Service\RowQueryResolver;
@@ -42,6 +47,15 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 
 	private const COLUMNS = ['name', 'age', 'birthday', 'department', 'score', 'surname', 'status', 'skills', 'is_available', 'experience_years'];
 	private const VIEW_ID = 1;
+	/** columns this test adds to the shared table, as technical name => [type, subtype] */
+	private const EXTRA_COLUMNS = [
+		'owner' => [Column::TYPE_USERGROUP, ''],
+		'website' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK],
+		'mentor' => [Column::TYPE_RELATION, ''],
+	];
+
+	/** @var array<string, int> */
+	private static array $extraColumnIds = [];
 
 	private RowService $rowService;
 	private RowObjectSerializer $serializer;
@@ -52,20 +66,32 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		$this->setupDependencies();
+		if (self::$extraColumnIds === []) {
+			foreach (self::EXTRA_COLUMNS as $technicalName => [$type, $subtype]) {
+				self::$extraColumnIds[$technicalName] = $this->createTestColumn(self::$testTableId, ['title' => ucfirst($technicalName), 'type' => $type, 'subtype' => $subtype])['id'];
+			}
+		}
 		$this->setupRealColumnMapper(self::$testTableId);
 
-		foreach (self::COLUMNS as $index => $technicalName) {
-			$column = $this->columnMapper->find(self::$testColumnIds[$index]);
+		$columnIds = array_combine(self::COLUMNS, self::$testColumnIds) + self::$extraColumnIds;
+		foreach ($columnIds as $technicalName => $columnId) {
+			$column = $this->columnMapper->find($columnId);
 			$column->setTechnicalName($technicalName);
 			$column->setMandatory(false);
 			// the shared table leaves the subtype of its text columns empty, which no text column type handles
-			if ($column->getType() === Column::TYPE_TEXT) {
+			if ($column->getType() === Column::TYPE_TEXT && $column->getSubtype() === '') {
 				$column->setSubtype(Column::SUBTYPE_TEXT_LINE);
 			}
 			$this->columnsByName[$technicalName] = $column;
 		}
 		$this->columnsByName['status']->setSelectionOptions(json_encode([['id' => 0, 'label' => 'Active'], ['id' => 1, 'label' => 'Inactive'], ['id' => 2, 'label' => 'Pending']]));
 		$this->columnsByName['skills']->setSelectionOptions(json_encode([['id' => 0, 'label' => 'PHP'], ['id' => 1, 'label' => 'JavaScript'], ['id' => 2, 'label' => 'SQL']]));
+		$this->columnsByName['website']->setTextAllowedPattern('url');
+		$this->columnsByName['mentor']->setCustomSettings(json_encode([
+			Column::RELATION_TYPE => Column::RELATION_TYPE_TABLE,
+			Column::RELATION_TARGET_ID => self::$testTableId,
+			Column::RELATION_LABEL_COLUMN => $this->columnsByName['name']->getId(),
+		]));
 		$columns = array_values($this->columnsByName);
 		$this->columnMapper->method('findAllByTable')->willReturn($columns);
 		$this->columnMapper->method('findAll')->willReturnCallback(
@@ -84,6 +110,18 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$config->method('getSystemValueString')->willReturn('Europe/Amsterdam');
 		$instanceTimezone = new InstanceTimezone($config);
 
+		// the relation column type reads its targets with the permissions of the session user, which a unit test does not have
+		$relationService = $this->createMock(RelationService::class);
+		$relationService->method('getRelationData')->willReturnCallback(fn (): array => $this->relationTargets());
+		$relationBusiness = new RelationBusiness($this->logger, $relationService);
+		$columnsHelper = $this->getMockBuilder(ColumnsHelper::class)
+			->setConstructorArgs([$this->userHelper, $this->circleHelper])
+			->onlyMethods(['getColumnBusinessObject'])
+			->getMock();
+		$columnsHelper->method('getColumnBusinessObject')->willReturnCallback(
+			fn (Column $column): IColumnTypeBusiness => $column->getType() === Column::TYPE_RELATION ? $relationBusiness : $this->columnsHelper->getColumnBusinessObject($column),
+		);
+
 		$this->viewMapper = $this->createMock(ViewMapper::class);
 		$this->rowService = new RowService(
 			$this->logger,
@@ -94,7 +132,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			$tableMapper,
 			$this->mapper,
 			$this->createMock(IEventDispatcher::class),
-			$this->columnsHelper,
+			$columnsHelper,
 			$this->createMock(ActivityManager::class),
 			$this->createMock(NotificationHelper::class),
 			$this->createMock(IDBConnection::class),
@@ -103,6 +141,19 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			new RowObjectInputConverter($this->mapper, $instanceTimezone),
 		);
 		$this->serializer = new RowObjectSerializer($this->rowSleeveMapper, $instanceTimezone, $this->logger);
+	}
+
+	/**
+	 * The rows of the table, as the relation column offers them.
+	 *
+	 * @return array<int, array{id: int, label: string}>
+	 */
+	private function relationTargets(): array {
+		$targets = [];
+		foreach ($this->mapper->findAll([$this->columnsByName['name']->getId()], self::$testTableId, userId: 'test_user') as $row) {
+			$targets[$row->getId()] = ['id' => $row->getId(), 'label' => (string)($row->getData()[0]['value'] ?? '')];
+		}
+		return $targets;
 	}
 
 	/**
@@ -152,6 +203,28 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->assertSame(['name'], array_keys($this->errorsOfCreating(['name' => ['a']])));
 	}
 
+	public function testLimitViolationIsReportedWithTheOtherInvalidValues(): void {
+		$this->columnsByName['age']->setNumberMax(150.0);
+
+		$errors = $this->errorsOfCreating(['name' => 'Zed', 'age' => 500, 'birthday' => 'yesterday']);
+
+		ksort($errors);
+		$this->assertSame(['age', 'birthday'], array_keys($errors));
+	}
+
+	public function testCellsInputReportsOnlyTheFirstMissingMandatoryColumn(): void {
+		$this->columnsByName['department']->setMandatory(true);
+		$this->columnsByName['surname']->setMandatory(true);
+
+		try {
+			$this->rowService->create(self::$testTableId, null, (new RowDataInput())->add($this->columnsByName['name']->getId(), 'Zed'));
+			$this->fail('The row was created without its mandatory values.');
+		} catch (BadRequestError $e) {
+			$this->assertNotInstanceOf(RowValidationError::class, $e);
+			$this->assertSame('Mandatory column "Department" cannot be empty.', $e->getMessage());
+		}
+	}
+
 	public function testMissingMandatoryValueIsReportedOnItsProperty(): void {
 		$this->columnsByName['surname']->setMandatory(true);
 
@@ -167,6 +240,9 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 	}
 
 	public function testWhatIsReadCanBeWrittenBackUnchanged(): void {
+		$this->columnsByName['experience_years']->setTechnicalName('');
+		$experienceKey = 'column_' . $this->columnsByName['experience_years']->getId();
+		$target = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Xavier']));
 		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput([
 			'name' => 'Yara',
 			'age' => 41,
@@ -175,6 +251,10 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			'status' => 1,
 			'skills' => [0, 2],
 			'is_available' => true,
+			'owner' => [['id' => 'admin', 'type' => 0]],
+			'website' => ['title' => 'Nextcloud', 'url' => 'https://nextcloud.com', 'providerId' => 'url'],
+			'mentor' => $target->getId(),
+			$experienceKey => 12,
 		]));
 
 		$read = $this->readObject($created->getId());
@@ -182,12 +262,69 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->assertSame('true', $read['is_available']);
 		$this->assertSame([0, 2], $read['skills']);
 		$this->assertSame(1, $read['status']);
+		$this->assertSame('admin', $read['owner'][0]['id']);
+		$this->assertArrayHasKey('displayName', $read['owner'][0]);
+		$this->assertSame(['title' => 'Nextcloud', 'url' => 'https://nextcloud.com', 'providerId' => 'url'], $read['website']);
+		$this->assertSame($this->readObject($target->getId())['@self']['id'], $read['mentor']);
+		$this->assertEquals(12, $read[$experienceKey]);
+
+		$this->rowService->updateSet($created->getId(), null, new RowObjectInput($read), 'test_user', self::$testTableId);
+		$this->assertSameObject($read, $this->readObject($created->getId()));
+
+		$this->useView(['owner']);
+		$this->rowService->updateSet($created->getId(), self::VIEW_ID, new RowObjectInput($read), 'test_user', null);
+		$this->assertSameObject($read, $this->readObject($created->getId()));
+	}
+
+	public function testWriteBackAfterTheRelationTargetWasDeletedClearsTheRelation(): void {
+		$target = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Gone']));
+		$created = $this->rowService->create(self::$testTableId, null, new RowObjectInput(['name' => 'Ida', 'mentor' => $target->getId()]));
+		$this->mapper->delete($target);
+
+		$read = $this->readObject($created->getId());
+		$this->assertNull($read['mentor']);
+		$this->assertEquals($target->getId(), $this->storedValue($created->getId(), 'mentor'));
 
 		$this->rowService->updateSet($created->getId(), null, new RowObjectInput($read), 'test_user', self::$testTableId);
 
-		$readAgain = $this->readObject($created->getId());
-		unset($read['@self'], $readAgain['@self']);
-		$this->assertSame($read, $readAgain);
+		$this->assertNull($this->readObject($created->getId())['mentor']);
+		$this->assertNull($this->storedValue($created->getId(), 'mentor'));
+	}
+
+	/**
+	 * @param array<string, mixed> $expected
+	 * @param array<string, mixed> $actual
+	 */
+	private function assertSameObject(array $expected, array $actual): void {
+		unset($expected['@self'], $actual['@self']);
+		$this->assertSame($expected, $actual);
+	}
+
+	private function storedValue(int $rowId, string $technicalName): mixed {
+		$columnId = $this->columnsByName[$technicalName]->getId();
+		foreach ($this->rowService->findInNode($rowId, self::$testTableId, null, 'test_user')->getData() as $cell) {
+			if ($cell['columnId'] === $columnId) {
+				return $cell['value'];
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * A view with every column of the table, of which the given ones are read-only.
+	 *
+	 * @param list<string> $readOnlyNames
+	 */
+	private function useView(array $readOnlyNames): void {
+		$settings = [];
+		foreach (array_values($this->columnsByName) as $index => $column) {
+			$settings[] = ['columnId' => $column->getId(), 'order' => $index + 1, 'readonly' => in_array(RowObjectInputConverter::nameOf($column), $readOnlyNames, true)];
+		}
+		$view = new View();
+		$view->setId(self::VIEW_ID);
+		$view->setTableId(self::$testTableId);
+		$view->setColumns(json_encode($settings));
+		$this->viewMapper->method('find')->willReturn($view);
 	}
 
 	/**
