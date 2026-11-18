@@ -99,6 +99,18 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertSame([1 => '2026-03-29 03:30'], $this->convert(['datetime' => '2026-03-29T01:30:00Z'], $column)['cells']);
 	}
 
+	public function testOnlyTheStoredOccurrenceOfTheRepeatedHourIsAccepted(): void {
+		$column = $this->column(1, Column::TYPE_DATETIME);
+		foreach (['2026-10-25T02:30:00+02:00', '2026-10-25T00:30:00Z'] as $firstOccurrence) {
+			$result = $this->convert(['datetime' => $firstOccurrence], $column);
+			$this->assertSame([], $result['cells']);
+			$this->assertSame(['datetime' => 'This time occurs twice in the timezone of the instance and can only be stored as 2026-10-25T02:30:00+01:00.'], $result['errors']);
+		}
+		foreach (['2026-10-25T02:30:00+01:00', '2026-10-25T01:30:00Z', '2026-10-25T02:30'] as $secondOccurrence) {
+			$this->assertSame([1 => '2026-10-25 02:30'], $this->convert(['datetime' => $secondOccurrence], $column)['cells']);
+		}
+	}
+
 	/**
 	 * @return array<string, array{string, string, mixed, mixed}>
 	 */

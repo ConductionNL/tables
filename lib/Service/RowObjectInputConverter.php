@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\Tables\Service;
 
 use DateTimeImmutable;
+use DateTimeInterface;
 use OCA\Tables\Db\Column;
 use OCA\Tables\Db\Row2Mapper;
 use OCA\Tables\Errors\InternalError;
@@ -211,7 +212,13 @@ class RowObjectInputConverter {
 		if ($dateTime->format('s.u') !== '00.000000') {
 			return ['value' => null, 'error' => 'Expected a datetime to the minute, with 00 seconds, such as 2026-10-16T14:30:00+02:00.'];
 		}
-		return ['value' => $dateTime->setTimezone($this->instanceTimezone->get())->format('Y-m-d H:i'), 'error' => null];
+		$stored = $dateTime->setTimezone($this->instanceTimezone->get())->format('Y-m-d H:i');
+		// the hour that is repeated when daylight saving time ends is stored once, as one of its occurrences
+		$readBack = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $stored, $this->instanceTimezone->get());
+		if ($readBack !== false && $readBack->getTimestamp() !== $dateTime->getTimestamp()) {
+			return ['value' => null, 'error' => sprintf('This time occurs twice in the timezone of the instance and can only be stored as %s.', $readBack->format(DateTimeInterface::ATOM))];
+		}
+		return ['value' => $stored, 'error' => null];
 	}
 
 	/**
