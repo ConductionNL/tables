@@ -173,6 +173,16 @@ class RowQueryResolverTest extends TestCase {
 			'a relative date' => [['due' => ['is-greater-than' => 'tomorrow']]],
 			'a relative date on a meta field' => [['createdAt' => ['is-greater-than' => 'now']]],
 			'an impossible date' => [['due' => '2026-02-30']],
+			'a time on a date column' => [['due' => '2026-01-01 10:00']],
+			'a date and time with a T' => [['stamp' => '2026-01-01T10:00']],
+			'a date and time with seconds' => [['stamp' => '2026-01-01 10:00:30']],
+			'only a date on a date and time column' => [['stamp' => '2026-01-01']],
+			'a time with seconds' => [['at' => '10:00:30']],
+			'a time that does not exist' => [['at' => '25:00']],
+			'a time without a leading zero' => [['at' => '9:00']],
+			'a selection option by its label' => [['status' => 'Active']],
+			'a multi selection item by its label' => [['tags' => 'Urgent']],
+			'a checkbox that is not true or false' => [['done' => 'yes']],
 		];
 	}
 
@@ -193,9 +203,14 @@ class RowQueryResolverTest extends TestCase {
 			'createdBy' => ['begins-with' => 'ja'],
 			'name' => ['ends-with' => 'ne'],
 			'id' => '2147483647',
+			'at' => ['is-greater-than' => '09:30'],
+			'stamp' => ['is-lower-than' => '2026-01-01 10:00'],
+			'status' => '1',
+			'tags' => '5',
+			'done' => 'true',
 		]], [], [], $this->columnsWithDateAndRelation());
 
-		$this->assertCount(7, $criteria['filter'][0]);
+		$this->assertCount(12, $criteria['filter'][0]);
 	}
 
 	/**
@@ -206,6 +221,8 @@ class RowQueryResolverTest extends TestCase {
 			...$this->columns,
 			$this->column(7, 'due', Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_DATE),
 			$this->column(8, 'parent', Column::TYPE_RELATION),
+			$this->column(9, 'at', Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_TIME),
+			$this->column(10, 'stamp', Column::TYPE_DATETIME),
 		];
 	}
 

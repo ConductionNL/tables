@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\Tables\Service;
 
+use DateTimeImmutable;
 use OCA\Tables\Constants\FilterOperator;
 use OCA\Tables\Db\Column;
 use OCA\Tables\Errors\BadRequestError;
@@ -49,7 +50,19 @@ class RowQueryResolver {
 	// row ids, stored in INTEGER columns
 	private const ID_TYPES = ['relation', 'meta-id'];
 	private const MAX_ID = 2147483647;
-	private const DATE_TYPES = ['datetime', 'datetime-date', 'meta-datetime'];
+	/**
+	 * The format each date or time type stores its values in, and how to say it: date and
+	 * time cells are text in exactly this format (DatetimeBusiness, DatetimeDateBusiness,
+	 * DatetimeTimeBusiness); the meta fields are DATETIME columns, compared as dates.
+	 *
+	 * @var array<string, array{0: list<string>, 1: string}>
+	 */
+	private const STORED_FORMATS = [
+		'datetime' => [['Y-m-d H:i'], 'a date and time as YYYY-MM-DD HH:MM'],
+		'datetime-date' => [['Y-m-d'], 'a date as YYYY-MM-DD'],
+		'datetime-time' => [['H:i'], 'a time as HH:MM'],
+		'meta-datetime' => [['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s'], 'a date as YYYY-MM-DD, optionally followed by a time as HH:MM or HH:MM:SS'],
+	];
 	private const COMPARISONS = [
 		FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL,
 		FilterOperator::IS_GREATER_THAN, FilterOperator::IS_GREATER_THAN_OR_EQUAL,
@@ -220,11 +233,22 @@ class RowQueryResolver {
 			|| ($column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === self::SUBTYPE_MULTI);
 	}
 
-	private function isDate(string $value): bool {
-		if (preg_match('/^(\d{4})-(\d{2})-(\d{2})(?:[ T]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?)?\z/', $value, $parts) !== 1) {
-			return false;
+	/**
+	 * Whether the value is written exactly as the column stores its values: the cells of
+	 * date and time columns are text, compared as written, so any other spelling of the
+	 * same moment would match the wrong rows.
+	 */
+	/**
+	 * @param list<string> $formats
+	 */
+	private function hasStoredFormat(string $value, array $formats): bool {
+		foreach ($formats as $format) {
+			$parsed = DateTimeImmutable::createFromFormat('!' . $format, $value);
+			if ($parsed !== false && $parsed->format($format) === $value) {
+				return true;
+			}
 		}
-		return checkdate((int)$parts[2], (int)$parts[3], (int)$parts[1]);
+		return false;
 	}
 
 	private function columnTypeKey(Column $column): string {
@@ -251,11 +275,17 @@ class RowQueryResolver {
 			&& (preg_match('/^\d{1,10}\z/', $value) !== 1 || (int)$value > self::MAX_ID)) {
 			throw new BadRequestError(sprintf('%s can only be filtered by a row id.', $field));
 		}
-		if (in_array($typeKey, self::DATE_TYPES, true) && !$this->isDate($value)) {
-			throw new BadRequestError(sprintf('%s can only be filtered by a date as YYYY-MM-DD, optionally followed by a time as HH:MM or HH:MM:SS.', $field));
+		$storedFormat = self::STORED_FORMATS[$typeKey] ?? null;
+		if ($storedFormat !== null && !$this->hasStoredFormat($value, $storedFormat[0])) {
+			throw new BadRequestError(sprintf('%s can only be filtered by %s.', $field, $storedFormat[1]));
 		}
-		if ($typeKey === 'datetime-time' && preg_match('/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?\z/', $value) !== 1) {
-			throw new BadRequestError(sprintf('%s can only be filtered by a time as HH:MM or HH:MM:SS.', $field));
+		if (in_array($typeKey, ['selection', 'selection-multi'], true)
+			&& in_array($operator, [FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL, FilterOperator::CONTAINS_ITEM], true)
+			&& preg_match('/^\d+\z/', $value) !== 1) {
+			throw new BadRequestError(sprintf('%s can only be filtered by the id of one of its options.', $field));
+		}
+		if ($typeKey === 'selection-check' && !in_array($value, ['true', 'false'], true)) {
+			throw new BadRequestError(sprintf('%s can only be filtered by true or false.', $field));
 		}
 	}
 
