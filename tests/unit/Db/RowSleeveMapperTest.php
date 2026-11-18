@@ -109,4 +109,42 @@ class RowSleeveMapperTest extends DatabaseTestCase {
 		$this->expectException(Exception::class);
 		$this->insertSleeve($this->createTable(), $uuid);
 	}
+
+	public function testFindUuidsByIdsReturnsTheUuidPerRowId(): void {
+		$tableId = $this->createTable();
+		$first = $this->insertSleeve($tableId);
+		$second = $this->insertSleeve($tableId);
+
+		$this->assertEqualsCanonicalizing(
+			[$first->getId() => $first->getUuid(), $second->getId() => $second->getUuid()],
+			$this->mapper->findUuidsByIds([$first->getId(), $second->getId(), $first->getId()]),
+		);
+	}
+
+	public function testFindUuidsByIdsLeavesOutRowsWithoutAUuid(): void {
+		$tableId = $this->createTable();
+		$withUuid = $this->insertSleeve($tableId);
+		$withoutUuid = $this->insertSleeve($tableId);
+		$qb = $this->connection->getQueryBuilder();
+		$qb->update('tables_row_sleeves')
+			->set('uuid', $qb->createNamedParameter(null))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($withoutUuid->getId())))
+			->executeStatement();
+
+		$this->assertSame(
+			[$withUuid->getId() => $withUuid->getUuid()],
+			$this->mapper->findUuidsByIds([$withUuid->getId(), $withoutUuid->getId()]),
+		);
+	}
+
+	public function testFindUuidsByIdsReadsEveryChunk(): void {
+		$tableId = $this->createTable();
+		$first = $this->insertSleeve($tableId);
+		$last = $this->insertSleeve($tableId);
+		$missingIds = range($last->getId() + 1, $last->getId() + 1500);
+
+		$uuids = $this->mapper->findUuidsByIds([$first->getId(), ...$missingIds, $last->getId()]);
+
+		$this->assertEqualsCanonicalizing([$first->getId() => $first->getUuid(), $last->getId() => $last->getUuid()], $uuids);
+	}
 }
