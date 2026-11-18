@@ -19,9 +19,10 @@ use OCA\Tables\Model\RowObjectInput;
 
 /**
  * Turns a row in the object shape into cells keyed by column id, in the input format the
- * column types already parse. It reverses RowObjectSerializer, so what was read can be
- * written back unchanged, with the exceptions RowObjectSerializer lists. It reports every
- * property it cannot convert instead of dropping it.
+ * column types already parse, reversing RowObjectSerializer. It reports every property it
+ * cannot convert instead of dropping it. Whether a value is the one a cell is read as,
+ * which is then not written again, is told by isReadAs(), so that a value read from a cell
+ * that this class would refuse, such as a datetime with seconds, can be written back.
  */
 class RowObjectInputConverter {
 	private const SELF_KEY = '@self';
@@ -33,6 +34,7 @@ class RowObjectInputConverter {
 	public function __construct(
 		private readonly Row2Mapper $row2Mapper,
 		private readonly InstanceTimezone $instanceTimezone,
+		private readonly RowObjectSerializer $serializer,
 	) {
 	}
 
@@ -70,6 +72,85 @@ class RowObjectInputConverter {
 	}
 
 	/**
+	 * Whether a value given in the object shape is the value the stored cell is read as,
+	 * also when it is spelled differently: a datetime with another offset for the same
+	 * instant, a number as a string, a checkbox as a boolean, a link without the parts the
+	 * reader fills in, a usergroup without display names, or a relation by row id.
+	 *
+	 * @throws InternalError
+	 */
+	public function isReadAs(Column $column, mixed $given, mixed $stored): bool {
+		$read = $this->serializer->readValue($column, $stored);
+		if ($column->getType() === Column::TYPE_RELATION && $read !== null && !self::isEmpty($given)) {
+			if (is_int($given) || (is_string($given) && ctype_digit($given))) {
+				return (int)$given === (int)$stored;
+			}
+			return is_string($given) && strtolower($given) === $read;
+		}
+		return $this->comparable($column, $given) === $this->comparable($column, $read);
+	}
+
+	private static function isEmpty(mixed $value): bool {
+		return $value === null || $value === '' || $value === [];
+	}
+
+	/**
+	 * A value of the object shape in a form in which two spellings of the same value are
+	 * identical.
+	 */
+	private function comparable(Column $column, mixed $value): mixed {
+		if (self::isEmpty($value)) {
+			return null;
+		}
+		if ($this->isPlainDatetime($column) && is_string($value) && preg_match(self::ISO_DATETIME_PATTERN, $value) === 1) {
+			try {
+				return (new DateTimeImmutable($value, $this->instanceTimezone->get()))->format('U.u');
+			} catch (\Exception) {
+				return $value;
+			}
+		}
+		if ($column->getType() === Column::TYPE_TEXT && $column->getSubtype() === Column::SUBTYPE_TEXT_LINK
+			&& is_array($value) && isset($value['url']) && is_string($value['url'])) {
+			return [
+				'title' => self::comparableScalars($value['title'] ?? $value['url']),
+				'url' => $value['url'],
+				'providerId' => self::comparableScalars($value['providerId'] ?? 'url'),
+			];
+		}
+		if ($column->getType() === Column::TYPE_NUMBER && is_numeric($value)) {
+			return (float)$value;
+		}
+		if ($column->getType() === Column::TYPE_SELECTION && $column->getSubtype() === Column::SUBTYPE_SELECTION_CHECK && is_bool($value)) {
+			return $value ? 'true' : 'false';
+		}
+		if ($column->getType() === Column::TYPE_USERGROUP && is_array($value)) {
+			return array_map(
+				static fn (mixed $entry): mixed => is_array($entry) ? [self::comparableScalars($entry['id'] ?? null), self::comparableScalars($entry['type'] ?? null)] : self::comparableScalars($entry),
+				$value,
+			);
+		}
+		return self::comparableScalars($value);
+	}
+
+	/**
+	 * Numbers and strings as strings, also inside arrays, since a cell can be read as either.
+	 */
+	private static function comparableScalars(mixed $value): mixed {
+		if (is_int($value) || is_float($value)) {
+			return (string)$value;
+		}
+		if (is_array($value)) {
+			return array_map(self::comparableScalars(...), $value);
+		}
+		return $value;
+	}
+
+	private function isPlainDatetime(Column $column): bool {
+		return $column->getType() === Column::TYPE_DATETIME
+			&& !in_array($column->getSubtype(), [Column::SUBTYPE_DATETIME_DATE, Column::SUBTYPE_DATETIME_TIME], true);
+	}
+
+	/**
 	 * The name a column has in the object shape: its technical name, or `column_{id}`
 	 * for a column that has none.
 	 */
@@ -87,8 +168,7 @@ class RowObjectInputConverter {
 			return ['value' => null, 'error' => null];
 		}
 		return match (true) {
-			$column->getType() === Column::TYPE_DATETIME
-				&& !in_array($column->getSubtype(), [Column::SUBTYPE_DATETIME_DATE, Column::SUBTYPE_DATETIME_TIME], true) => $this->datetime($value),
+			$this->isPlainDatetime($column) => $this->datetime($value),
 			$column->getType() === Column::TYPE_TEXT && $column->getSubtype() === Column::SUBTYPE_TEXT_LINK => $this->link($value),
 			$column->getType() === Column::TYPE_NUMBER => $this->number($value),
 			$column->getType() === Column::TYPE_RELATION => $this->relation($value),

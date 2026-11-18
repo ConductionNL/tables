@@ -179,7 +179,7 @@ class RowObjectSerializerTest extends TestCase {
 		$this->rowSleeveMapper->method('findUuidsByIds')->willReturn([42 => self::TARGET_UUID]);
 		$row2Mapper = $this->createMock(Row2Mapper::class);
 		$row2Mapper->method('findIdByUuid')->with(self::TARGET_UUID)->willReturn(42);
-		$converter = new RowObjectInputConverter($row2Mapper, $this->instanceTimezone);
+		$converter = new RowObjectInputConverter($row2Mapper, $this->instanceTimezone, $this->serializer);
 		$stored = [
 			1 => 'Alice',
 			2 => '2026-10-16 14:30',

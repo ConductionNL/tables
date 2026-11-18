@@ -11,6 +11,7 @@ namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\Activity\ActivityManager;
 use OCA\Tables\Db\Column;
+use OCA\Tables\Db\Row2;
 use OCA\Tables\Db\Table;
 use OCA\Tables\Db\TableMapper;
 use OCA\Tables\Db\View;
@@ -123,6 +124,7 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		);
 
 		$this->viewMapper = $this->createMock(ViewMapper::class);
+		$this->serializer = new RowObjectSerializer($this->rowSleeveMapper, $instanceTimezone, $this->logger);
 		$this->rowService = new RowService(
 			$this->logger,
 			'test_user',
@@ -138,9 +140,8 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			$this->createMock(IDBConnection::class),
 			$this->createMock(RowVisibilityService::class),
 			new RowQueryResolver(),
-			new RowObjectInputConverter($this->mapper, $instanceTimezone),
+			new RowObjectInputConverter($this->mapper, $instanceTimezone, $this->serializer),
 		);
-		$this->serializer = new RowObjectSerializer($this->rowSleeveMapper, $instanceTimezone, $this->logger);
 	}
 
 	/**
@@ -297,7 +298,8 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 		$this->assertSame($this->readObject($target->getId())['@self']['id'], $read['mentor']);
 		$this->assertEquals(12, $read[$experienceKey]);
 
-		$this->rowService->updateSet($created->getId(), null, new RowObjectInput($read), 'test_user', self::$testTableId);
+		$updated = $this->rowService->updateSet($created->getId(), null, new RowObjectInput($read), 'test_user', self::$testTableId);
+		$this->assertSame([], $updated->getChangedCells());
 		$this->assertSameObject($read, $this->readObject($created->getId()));
 
 		$this->useView(['owner']);
@@ -439,6 +441,104 @@ class RowServiceObjectShapeTest extends DatabaseTestCase {
 			['department' => 'There is no column with this technical name.'],
 			$this->errorsOfCreating(['name' => 'Wim', 'department' => 'IT'], self::VIEW_ID),
 		);
+	}
+
+	/**
+	 * Stores a row with the given cells as they are, without the checks of the column types.
+	 *
+	 * @param array<string, mixed> $valuesByName
+	 */
+	private function storeRow(array $valuesByName): int {
+		$row = new Row2();
+		$row->setTableId(self::$testTableId);
+		$data = [];
+		foreach ($valuesByName as $technicalName => $value) {
+			$data[] = ['columnId' => $this->columnsByName[$technicalName]->getId(), 'value' => $value];
+		}
+		$row->setData($data);
+		return $this->mapper->insert($row, 'test_user')->getId();
+	}
+
+	public function testALinkStoredByTheUiIsWrittenBackWithoutBeingRewritten(): void {
+		$uiLink = '{"title":"Nextcloud","subline":"URL","providerId":"url","value":"https://nextcloud.com/a/b"}';
+		$rowId = $this->storeRow(['name' => 'Lars', 'website' => $uiLink]);
+		$read = $this->readObject($rowId);
+		$this->assertSame(['title' => 'Nextcloud', 'url' => 'https://nextcloud.com/a/b', 'providerId' => 'url'], $read['website']);
+
+		$updated = $this->rowService->updateSet($rowId, null, new RowObjectInput($read), 'test_user', self::$testTableId);
+		$this->assertSame([], $updated->getChangedCells());
+		$this->assertSame($uiLink, $this->storedValue($rowId, 'website'));
+
+		$this->useView(['website']);
+		$this->rowService->updateSet($rowId, self::VIEW_ID, new RowObjectInput($read), 'test_user', null);
+		$this->assertSame($uiLink, $this->storedValue($rowId, 'website'));
+	}
+
+	/**
+	 * @return array<string, array{string, mixed, mixed}>
+	 */
+	public static function staleValue(): array {
+		return [
+			'a user that no longer exists' => ['owner', [['id' => 'no_such_user', 'type' => 0]], [['id' => 'no_such_user', 'type' => 0, 'displayName' => 'no_such_user']]],
+			'a number above the lowered maximum' => ['age', 500, 500],
+			'a datetime with seconds' => ['birthday', '2026-10-16 14:30:15', '2026-10-16T14:30:15+02:00'],
+			'a datetime in the daylight saving gap' => ['birthday', '2026-03-29 02:30', '2026-03-29T03:30:00+02:00'],
+			'a datetime in an unknown format' => ['birthday', 'soon', 'soon'],
+		];
+	}
+
+	/**
+	 * @dataProvider staleValue
+	 */
+	public function testAStaleValueOfAReadOnlyColumnIsWrittenBackUnchanged(string $technicalName, mixed $stored, mixed $read): void {
+		$rowId = $this->storeRow(['name' => 'Stan', $technicalName => $stored]);
+		$this->columnsByName['age']->setNumberMax(150.0);
+		$storedBefore = $this->storedValue($rowId, $technicalName);
+		$object = $this->readObject($rowId);
+		$this->assertEquals($read, $object[$technicalName]);
+		$this->useView([$technicalName]);
+
+		$object['name'] = 'Stan B';
+		$this->rowService->updateSet($rowId, self::VIEW_ID, new RowObjectInput($object), 'test_user', null);
+
+		$this->assertSame('Stan B', $this->readObject($rowId)['name']);
+		$this->assertSame($storedBefore, $this->storedValue($rowId, $technicalName));
+	}
+
+	/**
+	 * @dataProvider staleValue
+	 */
+	public function testAStaleValueOfAWritableColumnIsWrittenBackUnchanged(string $technicalName, mixed $stored): void {
+		$rowId = $this->storeRow(['name' => 'Stan', $technicalName => $stored]);
+		$this->columnsByName['age']->setNumberMax(150.0);
+		$storedBefore = $this->storedValue($rowId, $technicalName);
+		$object = $this->readObject($rowId);
+
+		$object['name'] = 'Stan B';
+		$updated = $this->rowService->updateSet($rowId, null, new RowObjectInput($object), 'test_user', self::$testTableId);
+
+		$this->assertSame([$this->columnsByName['name']->getId()], array_column($updated->getChangedCells(), 'columnId'));
+		$this->assertSame($storedBefore, $this->storedValue($rowId, $technicalName));
+	}
+
+	public function testAChangedValueOfAColumnWithAStaleValueIsValidated(): void {
+		$rowId = $this->storeRow(['name' => 'Stan', 'age' => 500]);
+		$this->columnsByName['age']->setNumberMax(150.0);
+
+		try {
+			$this->rowService->updateSet($rowId, null, new RowObjectInput(['age' => 501]), 'test_user', self::$testTableId);
+			$this->fail('A changed value above the maximum was accepted.');
+		} catch (RowValidationError $e) {
+			$this->assertSame(['age'], array_keys($e->errors));
+		}
+		$this->useView(['age']);
+		try {
+			$this->rowService->updateSet($rowId, self::VIEW_ID, new RowObjectInput(['age' => 100]), 'test_user', null);
+			$this->fail('A changed read-only value was accepted.');
+		} catch (RowValidationError $e) {
+			$this->assertSame(['age' => 'This column is read-only in this view.'], $e->errors);
+		}
+		$this->assertEquals(500, $this->storedValue($rowId, 'age'));
 	}
 
 	/**

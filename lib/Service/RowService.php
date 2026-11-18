@@ -466,7 +466,7 @@ class RowService extends SuperService {
 
 		$tableId ??= $view->getTableId();
 
-		[$data, $conversionErrors] = $this->toRowDataInput($data, $columns);
+		[$data, $conversionErrors] = $this->toRowDataInput($data, $columns, $view, []);
 		$data = $this->cleanupAndValidateData($data, $columns, $tableId, $viewId, null, $conversionErrors);
 		$data = $this->enhanceWithViewDefaults($view, $data);
 
@@ -574,12 +574,11 @@ class RowService extends SuperService {
 	/**
 	 * @param Column[] $columns
 	 * @param array<string, string>|null $conversionErrors null for cells, which are validated leniently and stored as empty when they cannot be parsed; for the object shape the errors of its conversion, which turn on strict validation
-	 * @param list<array{columnId: int, value: mixed}> $previousData the cells the row has before an update
 	 * @throws InternalError
 	 * @throws BadRequestError
 	 * @throws RowValidationError when validating strictly and a property cannot be stored as given
 	 */
-	private function cleanupAndValidateData(RowDataInput $data, array $columns, ?int $tableId, ?int $viewId, ?int $rowId = null, ?array $conversionErrors = null, array $previousData = []): RowDataInput {
+	private function cleanupAndValidateData(RowDataInput $data, array $columns, ?int $tableId, ?int $viewId, ?int $rowId = null, ?array $conversionErrors = null): RowDataInput {
 		$isStrict = $conversionErrors !== null;
 		$errors = $conversionErrors ?? [];
 		$view = $viewId ? $this->viewMapper->find($viewId) : null;
@@ -632,10 +631,8 @@ class RowService extends SuperService {
 				throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
 			}
 
+			// the object shape leaves out read-only columns before, in leaveOutUnwrittenValues()
 			if (!empty($readOnlyColumns[$entry['columnId']])) {
-				if ($isStrict && !$this->isPreviousValue($column, $entry['value'], $previousData)) {
-					$errors[RowObjectInputConverter::nameOf($column)] = 'This column is read-only in this view.';
-				}
 				continue;
 			}
 
@@ -685,66 +682,68 @@ class RowService extends SuperService {
 	}
 
 	/**
-	 * Whether a value is the one the row already has in the column, so that a row that was
-	 * read can be written back through a view with read-only columns. An empty value matches
-	 * a missing or empty cell, and a relation to a row that no longer exists, which is read
-	 * as null. A usergroup cell is read with display names, which are not stored, so they
-	 * are left out of the comparison.
-	 *
-	 * @param list<array{columnId: int, value: mixed}> $previousData
-	 */
-	private function isPreviousValue(Column $column, mixed $value, array $previousData): bool {
-		$previousValue = null;
-		foreach ($previousData as $cell) {
-			if ((int)$cell['columnId'] === $column->getId()) {
-				$previousValue = $cell['value'];
-				break;
-			}
-		}
-		if ($column->getType() === Column::TYPE_RELATION && is_numeric($previousValue) && !$this->rowExists((int)$previousValue)) {
-			$previousValue = null;
-		}
-		if (self::isEmptyCellValue($value) || self::isEmptyCellValue($previousValue)) {
-			return self::isEmptyCellValue($value) && self::isEmptyCellValue($previousValue);
-		}
-		if ($column->getType() === Column::TYPE_USERGROUP && is_array($previousValue)) {
-			$previousValue = array_map(
-				static fn (mixed $entry): mixed => is_array($entry) ? array_diff_key($entry, ['displayName' => true]) : $entry,
-				$previousValue,
-			);
-		}
-		$parsedValue = $this->parseValueByColumnType($column, $value);
-		// loosely, as Row2::insertOrUpdateCell decides whether a cell changed
-		return $parsedValue == $previousValue;
-	}
-
-	/**
-	 * @throws InternalError
-	 */
-	private function rowExists(int $rowId): bool {
-		try {
-			$this->row2Mapper->getTableIdForRow($rowId);
-			return true;
-		} catch (DoesNotExistException) {
-			return false;
-		} catch (MultipleObjectsReturnedException|Exception $e) {
-			$this->logger->error($e->getMessage(), ['exception' => $e]);
-			throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
-		}
-	}
-
-	/**
 	 * @param RowDataInput|RowObjectInput|list<array{columnId: string|int, value: mixed}> $data
 	 * @param Column[] $columns
+	 * @param list<array{columnId: int, value: mixed}> $previousData the cells of the row that is updated, none when a row is created
 	 * @return array{0: RowDataInput, 1: array<string, string>|null} the cells, and for the object shape the errors of its conversion
 	 * @throws InternalError
 	 */
-	private function toRowDataInput(RowDataInput|RowObjectInput|array $data, array $columns): array {
+	private function toRowDataInput(RowDataInput|RowObjectInput|array $data, array $columns, ?View $view, array $previousData): array {
 		if ($data instanceof RowObjectInput) {
+			[$data, $errors] = $this->leaveOutUnwrittenValues($data, $columns, $view, $previousData);
 			$converted = $this->rowObjectInputConverter->toCells($data, $columns);
-			return [$converted['cells'], $converted['errors']];
+			return [$converted['cells'], $errors + $converted['errors']];
 		}
 		return [$data instanceof RowDataInput ? $data : RowDataInput::fromArray($data), null];
+	}
+
+	/**
+	 * Leaves out the properties of a row in the object shape that are not written, before
+	 * they are converted and validated. A value that is the one the cell is read as is left
+	 * out, so that a row that was read can be written back unchanged, also when a cell holds
+	 * a value that would no longer be accepted, and an unchanged cell is not rewritten. A
+	 * null for a cell that is read as null but still holds a value, a relation to a row that
+	 * no longer exists, is kept, so that it clears a writable cell. A column that is
+	 * read-only in the view is always left out, and reported when its value differs from
+	 * the one it is read as.
+	 *
+	 * @param Column[] $columns
+	 * @param list<array{columnId: int, value: mixed}> $previousData the cells of the row that is updated, none when a row is created
+	 * @return array{0: RowObjectInput, 1: array<string, string>} the properties that are written, and the errors of those that are not
+	 * @throws InternalError
+	 */
+	private function leaveOutUnwrittenValues(RowObjectInput $input, array $columns, ?View $view, array $previousData): array {
+		$readOnlyColumns = $view ? $this->extractColumnsByProperty($view, 'isReadonly') : [];
+		$columnsByName = [];
+		foreach ($columns as $column) {
+			$columnsByName[RowObjectInputConverter::nameOf($column)] = $column;
+		}
+		$storedValues = [];
+		foreach ($previousData as $cell) {
+			$storedValues[(int)$cell['columnId']] = $cell['value'];
+		}
+
+		$values = [];
+		$errors = [];
+		foreach ($input->values as $name => $value) {
+			$column = $columnsByName[(string)$name] ?? null;
+			if ($column === null) {
+				$values[$name] = $value;
+				continue;
+			}
+			$stored = $storedValues[$column->getId()] ?? null;
+			$isReadOnly = !empty($readOnlyColumns[$column->getId()]);
+			if ($this->rowObjectInputConverter->isReadAs($column, $value, $stored)
+				&& ($isReadOnly || !self::isEmptyCellValue($value) || self::isEmptyCellValue($stored))) {
+				continue;
+			}
+			if ($isReadOnly) {
+				$errors[(string)$name] = 'This column is read-only in this view.';
+				continue;
+			}
+			$values[$name] = $value;
+		}
+		return [new RowObjectInput($values), $errors];
 	}
 
 	/**
@@ -997,8 +996,8 @@ class RowService extends SuperService {
 		}
 
 		$previousData = $item->getData();
-		[$data, $conversionErrors] = $this->toRowDataInput($data, $columns);
-		$data = $this->cleanupAndValidateData($data, $columns, $item->getTableId(), $viewId, $id, $conversionErrors, $previousData ?? []);
+		[$data, $conversionErrors] = $this->toRowDataInput($data, $columns, $view ?? null, $previousData ?? []);
+		$data = $this->cleanupAndValidateData($data, $columns, $item->getTableId(), $viewId, $id, $conversionErrors);
 
 		foreach ($data as $entry) {
 			// Check whether the column of which the value should change is part of the table / view

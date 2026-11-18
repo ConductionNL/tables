@@ -11,24 +11,31 @@ namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\Db\Column;
 use OCA\Tables\Db\Row2Mapper;
+use OCA\Tables\Db\RowSleeveMapper;
 use OCA\Tables\Helper\InstanceTimezone;
 use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Service\RowObjectInputConverter;
+use OCA\Tables\Service\RowObjectSerializer;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
 
 class RowObjectInputConverterTest extends TestCase {
 	private const TARGET_UUID = '0199f1a0-7c3e-7d2a-9b1e-4f5a6b7c8d9e';
 
 	private Row2Mapper&MockObject $row2Mapper;
+	private RowSleeveMapper&MockObject $rowSleeveMapper;
 	private RowObjectInputConverter $converter;
 
 	protected function setUp(): void {
 		$config = $this->createMock(IConfig::class);
 		$config->method('getSystemValueString')->with('default_timezone', 'UTC')->willReturn('Europe/Amsterdam');
+		$instanceTimezone = new InstanceTimezone($config);
 		$this->row2Mapper = $this->createMock(Row2Mapper::class);
-		$this->converter = new RowObjectInputConverter($this->row2Mapper, new InstanceTimezone($config));
+		$this->rowSleeveMapper = $this->createMock(RowSleeveMapper::class);
+		$serializer = new RowObjectSerializer($this->rowSleeveMapper, $instanceTimezone, $this->createMock(LoggerInterface::class));
+		$this->converter = new RowObjectInputConverter($this->row2Mapper, $instanceTimezone, $serializer);
 	}
 
 	private function column(int $id, string $type, string $subtype = '', ?string $technicalName = null): Column {
@@ -90,6 +97,73 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertSame([], $result['cells']);
 		$this->assertArrayHasKey('datetime', $result['errors']);
 		$this->assertSame([1 => '2026-03-29 03:30'], $this->convert(['datetime' => '2026-03-29T01:30:00Z'], $column)['cells']);
+	}
+
+	/**
+	 * @return array<string, array{string, string, mixed, mixed}>
+	 */
+	public static function valueAsItIsRead(): array {
+		$uiLink = '{"title":"Nextcloud","subline":"URL","providerId":"url","value":"https://nextcloud.com/a/b"}';
+		return [
+			'a link the UI stored' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, ['title' => 'Nextcloud', 'url' => 'https://nextcloud.com/a/b', 'providerId' => 'url'], $uiLink],
+			'a link without the title and provider the reader fills in' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, ['url' => 'https://nextcloud.com'], '{"value":"https://nextcloud.com"}'],
+			'a link stored as a plain URL' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, 'https://nextcloud.com', 'https://nextcloud.com'],
+			'a datetime with another offset' => [Column::TYPE_DATETIME, '', '2026-10-16T12:30:00Z', '2026-10-16 14:30'],
+			'a datetime with seconds' => [Column::TYPE_DATETIME, '', '2026-10-16T14:30:15+02:00', '2026-10-16 14:30:15'],
+			'a datetime in the daylight saving gap' => [Column::TYPE_DATETIME, '', '2026-03-29T03:30:00+02:00', '2026-03-29 02:30'],
+			'a datetime in an unknown format' => [Column::TYPE_DATETIME, '', 'soon', 'soon'],
+			'a number as a string' => [Column::TYPE_NUMBER, '', '41', 41.0],
+			'a checkbox as a boolean' => [Column::TYPE_SELECTION, Column::SUBTYPE_SELECTION_CHECK, true, 'true'],
+			'a usergroup without display names' => [Column::TYPE_USERGROUP, '', [['id' => 'alice', 'type' => 0]], [['id' => 'alice', 'type' => 0, 'displayName' => 'Alice']]],
+			'a multi-selection' => [Column::TYPE_SELECTION, 'multi', [0, 2], [0, 2]],
+			'a relation by its uuid in capitals' => [Column::TYPE_RELATION, '', strtoupper(self::TARGET_UUID), 42],
+			'a relation by its row id' => [Column::TYPE_RELATION, '', 42, 42],
+			'null for a relation to a row that no longer exists' => [Column::TYPE_RELATION, '', null, 43],
+			'null for a missing cell' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, null, null],
+			'an empty string for an empty cell' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, '', ''],
+		];
+	}
+
+	/**
+	 * @dataProvider valueAsItIsRead
+	 */
+	public function testAValueAsItIsReadIsRecognised(string $type, string $subtype, mixed $given, mixed $stored): void {
+		$this->rowSleeveMapper->method('findUuidsByIds')->willReturnCallback(static fn (array $ids): array => array_intersect_key([42 => self::TARGET_UUID], array_flip($ids)));
+
+		$this->assertTrue($this->converter->isReadAs($this->column(1, $type, $subtype), $given, $stored));
+	}
+
+	/**
+	 * @return array<string, array{string, string, mixed, mixed}>
+	 */
+	public static function valueOtherThanTheOneRead(): array {
+		$uiLink = '{"title":"Nextcloud","subline":"URL","providerId":"url","value":"https://nextcloud.com/a/b"}';
+		return [
+			'a link with another title' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, ['title' => 'Other', 'url' => 'https://nextcloud.com/a/b', 'providerId' => 'url'], $uiLink],
+			'a link with another url' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, ['title' => 'Nextcloud', 'url' => 'https://nextcloud.com/a', 'providerId' => 'url'], $uiLink],
+			'a link without the title it has' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINK, ['url' => 'https://nextcloud.com/a/b'], $uiLink],
+			'another instant' => [Column::TYPE_DATETIME, '', '2026-10-16T14:30:00Z', '2026-10-16 14:30'],
+			'other seconds' => [Column::TYPE_DATETIME, '', '2026-10-16T14:30:00+02:00', '2026-10-16 14:30:15'],
+			'another number' => [Column::TYPE_NUMBER, '', 41.5, 41.0],
+			'a text that spells the same number differently' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, '1e3', '1000'],
+			'another checkbox value' => [Column::TYPE_SELECTION, Column::SUBTYPE_SELECTION_CHECK, false, 'true'],
+			'another user' => [Column::TYPE_USERGROUP, '', [['id' => 'bob', 'type' => 0]], [['id' => 'alice', 'type' => 0, 'displayName' => 'Alice']]],
+			'reordered options' => [Column::TYPE_SELECTION, 'multi', [2, 0], [0, 2]],
+			'another relation' => [Column::TYPE_RELATION, '', '0199f1a0-7c3e-7d2a-9b1e-000000000000', 42],
+			'another row id' => [Column::TYPE_RELATION, '', 41, 42],
+			'a cleared relation' => [Column::TYPE_RELATION, '', null, 42],
+			'a value for an empty cell' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, 'x', null],
+			'null for a value' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, null, 'x'],
+		];
+	}
+
+	/**
+	 * @dataProvider valueOtherThanTheOneRead
+	 */
+	public function testAValueOtherThanTheOneReadIsNotTakenForIt(string $type, string $subtype, mixed $given, mixed $stored): void {
+		$this->rowSleeveMapper->method('findUuidsByIds')->willReturnCallback(static fn (array $ids): array => array_intersect_key([42 => self::TARGET_UUID], array_flip($ids)));
+
+		$this->assertFalse($this->converter->isReadAs($this->column(1, $type, $subtype), $given, $stored));
 	}
 
 	public function testDateAndTimeAreLeftToTheirColumnType(): void {
