@@ -65,6 +65,11 @@ OC.L10N.register(
     "Copy link" : "Link kopéieren",
     "Confirm" : "Konfirméieren",
     "Select" : "Auswielen",
+    "Bookmark" : "Lieszeechen",
+    "Calendar" : "Kalenner",
+    "Camera" : "Kamera",
+    "Folder" : "Dossier",
+    "Key" : "Schlëssel",
     "seconds ago" : "Sekonnen hier"
 },
 "nplurals=2; plural=(n != 1);");

@@ -356,10 +356,14 @@ class Row2Mapper {
 		}
 	}
 
+	/**
+	 * Resolves the placeholders (@me, @selection-id-…) of view filters. A filter marked
+	 * literal, from a request or a search, compares its value as given.
+	 */
 	private function replacePlaceholderValues(array &$filters, string $userId): void {
 		foreach ($filters as &$filterGroup) {
 			foreach ($filterGroup as &$filter) {
-				if (is_array($filter['value'])) {
+				if (is_array($filter['value']) || ($filter['literal'] ?? false)) {
 					continue;
 				}
 				if (str_starts_with((string)$filter['value'], '@')) {
@@ -1124,29 +1128,42 @@ class Row2Mapper {
 	 * @return int
 	 */
 	public function countRowsForView(View $view, string $userId): int {
-		$filter = $view->getFilterArray();
+		try {
+			return $this->countRows($view->getTableId(), $view->getColumnsArray(), $view->getFilterArray(), $userId);
+		} catch (InternalError $e) {
+			$this->logger->error($e->getMessage(), ['exception' => $e]);
+			return 0;
+		}
+	}
 
-		if (empty($filter)) {
-			return $this->countRowsForTable($view->getTableId());
+	/**
+	 * Counts the rows of a table that match a filter.
+	 *
+	 * @param int[] $columnIds the columns the filter may refer to
+	 * @param array $filter a list of OR groups, each a list of filters that must all match
+	 * @throws InternalError
+	 */
+	public function countRows(int $tableId, array $columnIds, array $filter, string $userId): int {
+		if ($filter === []) {
+			return $this->countRowsForTable($tableId);
 		}
 
 		try {
-			$this->columnMapper->preloadColumns($view->getColumnsArray(), $filter);
+			$this->columnMapper->preloadColumns($columnIds, $filter);
 
 			$qb = $this->db->getQueryBuilder();
 			$qb->select($qb->func()->count('*', 'counter'))
 				->from('tables_row_sleeves', 'sleeves')
-				->where($qb->expr()->eq('table_id', $qb->createNamedParameter($view->getTableId(), IQueryBuilder::PARAM_INT)));
-
+				->where($qb->expr()->eq('table_id', $qb->createNamedParameter($tableId, IQueryBuilder::PARAM_INT)));
 			$this->addFilterToQuery($qb, $filter, $userId);
 
 			$result = $this->db->executeQuery($qb->getSQL(), $qb->getParameters(), $qb->getParameterTypes());
 			$count = (int)$result->fetchOne();
 			$result->closeCursor();
 			return $count;
-		} catch (InternalError|Exception $e) {
+		} catch (Exception $e) {
 			$this->logger->error($e->getMessage(), ['exception' => $e]);
-			return 0;
+			throw new InternalError(static::class . ' - ' . __FUNCTION__ . ': ' . $e->getMessage());
 		}
 	}
 

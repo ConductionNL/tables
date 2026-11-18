@@ -792,6 +792,40 @@
                     }
                 }
             },
+            "RowPage": {
+                "type": "object",
+                "required": [
+                    "results",
+                    "total",
+                    "limit",
+                    "page",
+                    "pages"
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Row"
+                        }
+                    },
+                    "total": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "pages": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
             "Share": {
                 "type": "object",
                 "required": [
@@ -3029,6 +3063,13 @@
                                 "properties": {
                                     "permissionType": {
                                         "type": "string",
+                                        "enum": [
+                                            "read",
+                                            "create",
+                                            "update",
+                                            "delete",
+                                            "manage"
+                                        ],
                                         "description": "Permission type that should be changed"
                                     },
                                     "permissionValue": {
@@ -3576,7 +3617,9 @@
                                         "type": "string",
                                         "enum": [
                                             "user",
-                                            "group"
+                                            "group",
+                                            "circle",
+                                            "remote"
                                         ],
                                         "description": "Receiver type"
                                     },
@@ -12709,31 +12752,33 @@
                                         "description": "provide this parameter to set a new description"
                                     },
                                     "nodes": {
-                                        "type": "object",
+                                        "type": "array",
                                         "nullable": true,
                                         "description": "provide this parameter to set a new list of nodes.",
-                                        "required": [
-                                            "id",
-                                            "type",
-                                            "permissions",
-                                            "order"
-                                        ],
-                                        "properties": {
-                                            "id": {
-                                                "type": "integer",
-                                                "format": "int64"
-                                            },
-                                            "type": {
-                                                "type": "integer",
-                                                "format": "int64"
-                                            },
-                                            "permissions": {
-                                                "type": "integer",
-                                                "format": "int64"
-                                            },
-                                            "order": {
-                                                "type": "integer",
-                                                "format": "int64"
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "id",
+                                                "type",
+                                                "permissions"
+                                            ],
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "type": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "permissions": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "order": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                }
                                             }
                                         }
                                     }
@@ -16344,6 +16389,339 @@
                     },
                     "400": {
                         "description": "Invalid request parameters",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Current user is not logged in",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {}
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "operationId": "rowocs-get-rows",
+                "summary": "[api v2] List the rows of a table or a view",
+                "description": "Filters, search and sort apply to the columns the table or view shows and to the meta fields, which every row carries; on a view they narrow its own filter, never widen it. Filter values and the search term are compared as given, placeholders such as @me only work in the view's own filter.",
+                "tags": [
+                    "rowocs"
+                ],
+                "security": [
+                    {
+                        "bearer_auth": []
+                    },
+                    {
+                        "basic_auth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "nodeCollection",
+                        "in": "path",
+                        "description": "Indicates whether to list the rows of a table or view",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "enum": [
+                                "tables",
+                                "views"
+                            ],
+                            "pattern": "^(tables|views)$"
+                        }
+                    },
+                    {
+                        "name": "nodeId",
+                        "in": "path",
+                        "description": "The identifier of the targeted table or view",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "description": "The page to return, an integer of at least 1, defaults to 1",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "description": "The number of rows to skip, an alternative to page",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "The number of rows per page, an integer of at least 1, defaults to 25, a limit above 500 is lowered to 500",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "sort",
+                        "in": "query",
+                        "description": "Comma separated technical names, column ids or meta fields (id, createdBy, createdAt, updatedBy, updatedAt), a minus sorts descending. Defaults to the sort of the table or view",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "description": "Text to look for in the text cells and the selection labels",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "fields",
+                        "in": "query",
+                        "description": "Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null
+                        }
+                    },
+                    {
+                        "name": "filter",
+                        "in": "query",
+                        "description": "Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true
+                        }
+                    },
+                    {
+                        "name": "OCS-APIRequest",
+                        "in": "header",
+                        "description": "Required to be true for the API request to pass",
+                        "required": true,
+                        "schema": {
+                            "type": "boolean",
+                            "default": true
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Rows returned",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "$ref": "#/components/schemas/RowPage"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "No permissions",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "ocs"
+                                    ],
+                                    "properties": {
+                                        "ocs": {
+                                            "type": "object",
+                                            "required": [
+                                                "meta",
+                                                "data"
+                                            ],
+                                            "properties": {
+                                                "meta": {
+                                                    "$ref": "#/components/schemas/OCSMeta"
+                                                },
+                                                "data": {
+                                                    "type": "object",
+                                                    "required": [
+                                                        "message"
+                                                    ],
+                                                    "properties": {
+                                                        "message": {
+                                                            "type": "string"
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid query parameters, or the table or view is federated",
                         "content": {
                             "application/json": {
                                 "schema": {

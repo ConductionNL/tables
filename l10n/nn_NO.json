@@ -84,6 +84,8 @@
     "Page" : "Side",
     "Content" : "Innhald",
     "Select" : "Vel",
+    "Calendar" : "Kalendar",
+    "Folder" : "Mappe",
     "ID" : "ID",
     "seconds ago" : "sekund sidan"
 },"pluralForm" :"nplurals=2; plural=(n != 1);"
