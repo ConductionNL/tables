@@ -43,6 +43,7 @@ class RowObjectSerializerTest extends TestCase {
 			5 => $this->column(5, Column::TYPE_RELATION, '', 'project'),
 			6 => $this->column(6, Column::TYPE_SELECTION, Column::SUBTYPE_SELECTION_CHECK, 'is_active'),
 			7 => $this->column(7, Column::TYPE_NUMBER, '', 'age'),
+			8 => $this->column(8, Column::TYPE_DATETIME, Column::SUBTYPE_DATETIME_TIME, 'starts_at'),
 		];
 		$this->rowSleeveMapper = $this->createMock(RowSleeveMapper::class);
 		$this->logger = $this->createMock(LoggerInterface::class);
@@ -101,7 +102,7 @@ class RowObjectSerializerTest extends TestCase {
 	public function testEveryColumnHasAPropertyAlsoWithoutAStoredCell(): void {
 		$object = $this->serializer->serialize($this->row([1 => 'Alice']));
 
-		$this->assertSame(['@self', 'name', 'meeting', 'birthday', 'website', 'project', 'is_active', 'age'], array_keys($object));
+		$this->assertSame(['@self', 'name', 'meeting', 'birthday', 'website', 'project', 'is_active', 'age', 'starts_at'], array_keys($object));
 		$this->assertSame('Alice', $object['name']);
 		$this->assertNull($object['age']);
 	}
@@ -124,6 +125,12 @@ class RowObjectSerializerTest extends TestCase {
 		$object = $this->serializer->serialize($this->row([2 => '2026-10-16 14:30', 3 => '2026-10-16']));
 		$this->assertSame('2026-10-16T14:30:00+02:00', $object['meeting']);
 		$this->assertSame('2026-10-16', $object['birthday']);
+	}
+
+	public function testATimeIsReturnedAsItIsStored(): void {
+		$this->logger->expects($this->never())->method('warning');
+
+		$this->assertSame('09:30', $this->serializer->serialize($this->row([8 => '09:30']))['starts_at']);
 	}
 
 	public function testADatetimeInTheDaylightSavingGapIsReadAsTheMomentAfterTheJump(): void {
