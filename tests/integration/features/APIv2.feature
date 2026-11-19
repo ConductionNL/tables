@@ -723,6 +723,53 @@ Feature: APIv2
     And the listed object of row "first" has the uuid of row "target" as "project"
 
   @api2 @rows
+  Scenario: Read and write rows via v2 in the object shape as XML
+    Given table "Object targets" with emoji "🎯" exists for user "participant1-v2" as "xml-targets" via v2
+    And column "label" exists with following properties
+      | type          | text                    |
+      | subtype       | line                    |
+      | mandatory     | 0                       |
+    And using table "xml-targets"
+    And user "participant1-v2" creates row "xml-target" with following values:
+      | label         | Target                  |
+    And table "Object XML" with emoji "🧩" exists for user "participant1-v2" as "xml-shape" via v2
+    And column "name" exists with following properties
+      | type          | text                    |
+      | subtype       | line                    |
+      | mandatory     | 0                       |
+    And column "amount" exists with following properties
+      | type          | number                  |
+      | mandatory     | 0                       |
+    And column "done" exists with following properties
+      | type          | selection               |
+      | subtype       | check                   |
+      | mandatory     | 0                       |
+    And column "website" exists with following properties
+      | type          | text                    |
+      | subtype       | link                    |
+      | textAllowedPattern | url                |
+      | mandatory     | 0                       |
+    And relation column "project" exists on table "xml-shape" pointing to table "xml-targets" using label column "label"
+    And using table "xml-shape"
+    And user "participant1-v2" creates row "xml-first" relating "project" to row "xml-target" with following values:
+      | name          | AHA                     |
+      | done          | true                    |
+      | website       | {"title":"Nextcloud","subline":"URL","providerId":"url","value":"https://nextcloud.com"} |
+    When user "participant1-v2" gets row "xml-first" of table "xml-shape" using v2 in the object shape as XML
+    Then the XML object is row "xml-first" with following values
+      | name          | AHA                     |
+      | amount        | nil                     |
+      | done          | true                    |
+      | website       | <title>Nextcloud</title><url>https://nextcloud.com</url><providerId>url</providerId> |
+    And the XML object of row "xml-first" has the uuid of row "xml-target" as "project"
+    When user "participant1-v2" creates a row in table "xml-shape" using v2 in the object shape as XML with
+      | missing       | "x"                     |
+      | 1st           | "x"                     |
+    Then the XML validation error has following errors
+      | missing       | There is no column with this technical name. |
+      | 1st           | There is no column with this technical name. |
+
+  @api2 @rows
   Scenario: Try to create rows via v2 with permissions
     Given table "Rows check" with emoji "👨🏻‍💻" exists for user "participant1-v2" as "base1" via v2
     And column "one" exists with following properties

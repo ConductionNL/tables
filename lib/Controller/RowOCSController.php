@@ -23,6 +23,7 @@ use OCA\Tables\Model\RowShape;
 use OCA\Tables\ResponseDefinitions;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowObjectSerializer;
+use OCA\Tables\Service\RowObjectXmlShaper;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
@@ -53,6 +54,7 @@ class RowOCSController extends AOCSController {
 		private readonly ViewService $viewService,
 		private readonly FederationService $federationService,
 		private readonly RowObjectSerializer $rowObjectSerializer,
+		private readonly RowObjectXmlShaper $rowObjectXmlShaper,
 	) {
 		parent::__construct($request, $logger, $n, $userId);
 	}
@@ -63,11 +65,11 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to create a row on a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string|array<string, mixed> $data The values of the row: keyed by column id, or with shape "object" keyed by technical name
-	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
+	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells". The data is sent as JSON or form data; in an XML response a row in the object shape has an element per column, see the shape of getRow
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{message: string}|TablesRowValidationError, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name
+	 * 400: Invalid request parameters or an unknown shape (nothing is written then), or with shape "object" the values that cannot be stored, per technical name; in XML errors has an element per technical name, by the rules of the object shape
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -77,7 +79,7 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'POST', url: '/api/2/{nodeCollection}/{nodeId}/rows', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
 	public function createRow(string $nodeCollection, int $nodeId, mixed $data, ?string $shape = null): DataResponse {
 		try {
-			$rowShape = $this->rowShapeFromRequest($shape);
+			$rowShape = RowShape::fromRequest($shape);
 		} catch (\InvalidArgumentException $e) {
 			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
 		}
@@ -122,7 +124,7 @@ class RowOCSController extends AOCSController {
 			}
 			return new DataResponse($this->shapeRow($this->rowService->create($tableId, $viewId, $newRowData), $rowShape));
 		} catch (RowValidationError $e) {
-			return $this->handleRowValidationError($e);
+			return $this->rowValidationError($e);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -151,7 +153,7 @@ class RowOCSController extends AOCSController {
 	 * @param string|null $search Text to look for in the text cells and the selection labels
 	 * @param string|null $fields Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned
 	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, in UTC unless the time ends in Z or an offset such as +02:00 (written %2B02:00 in the query string, where + means a space), an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns
-	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON
+	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC. In XML a row is an element holding <self/>, with the metadata as attributes and an attribute without a value left out, and an element per column named by its technical name; a name that is not an ASCII XML name (a letter or _, then letters, digits, _, . or -), or is element or self, becomes <element name="...">, which holds the value in <value> unless it is a list or an object, so there a scalar and an object with only a value property look the same (no column type gives such an object). null is an empty element with nil="true", unprefixed because xsi:nil would need a namespace declaration; an empty string or list is an empty element without it. Booleans are true and false, a list has an <element> per item and an object a child element per property, by the same rules
 	 * @return DataResponse<Http::STATUS_OK, TablesRowPage|TablesRowObjectPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Rows returned
@@ -182,7 +184,7 @@ class RowOCSController extends AOCSController {
 			}
 			try {
 				$query = RowListQuery::createFromRequest($page, $offset, $limit, $sort, $search, $fields, $filter);
-				$rowShape = $this->rowShapeFromRequest($shape);
+				$rowShape = RowShape::fromRequest($shape);
 			} catch (\InvalidArgumentException $e) {
 				throw new BadRequestError($e->getMessage());
 			}
@@ -190,7 +192,7 @@ class RowOCSController extends AOCSController {
 			$found = $this->rowService->findPage($query, $tableId, $viewId, $this->userId);
 			return new DataResponse([
 				'results' => $rowShape === RowShape::Object
-					? $this->rowObjectSerializer->serializeAll(array_values($found['rows']))
+					? $this->rowObjects($found['rows'])
 					: array_values(array_map(static fn ($row) => $row->jsonSerialize(), $found['rows'])),
 				'total' => $found['total'],
 				'limit' => $query->limit,
@@ -214,11 +216,11 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to get a row from a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row, either its integer id or its uuid
-	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON
+	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC. In XML a row is an element holding <self/>, with the metadata as attributes and an attribute without a value left out, and an element per column named by its technical name; a name that is not an ASCII XML name (a letter or _, then letters, digits, _, . or -), or is element or self, becomes <element name="...">, which holds the value in <value> unless it is a list or an object, so there a scalar and an object with only a value property look the same (no column type gives such an object). null is an empty element with nil="true", unprefixed because xsi:nil would need a namespace declaration; an empty string or list is an empty element without it. Booleans are true and false, a list has an <element> per item and an object a child element per property, by the same rules
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid row identifier, an unknown shape or the object shape for a response that is not JSON, or the table or view is federated
+	 * 400: Invalid row identifier, an unknown shape, or the table or view is federated
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -230,7 +232,7 @@ class RowOCSController extends AOCSController {
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
 			try {
-				$rowShape = $this->rowShapeFromRequest($shape);
+				$rowShape = RowShape::fromRequest($shape);
 			} catch (\InvalidArgumentException $e) {
 				throw new BadRequestError($e->getMessage());
 			}
@@ -257,11 +259,11 @@ class RowOCSController extends AOCSController {
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row to update, either its integer id or its uuid
 	 * @param string|array<string, mixed> $data The values to change: keyed by column id, or with shape "object" keyed by technical name
-	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
+	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells". The data is sent as JSON or form data; in an XML response a row in the object shape has an element per column, see the shape of getRow
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{message: string}|TablesRowValidationError, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row updated
-	 * 400: Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name
+	 * 400: Invalid request parameters or an unknown shape (nothing is written then), or with shape "object" the values that cannot be stored, per technical name; in XML errors has an element per technical name, by the rules of the object shape
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -271,7 +273,7 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'PUT', url: '/api/2/{nodeCollection}/{nodeId}/rows/{rowId}', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
 	public function updateRow(string $nodeCollection, int $nodeId, string $rowId, mixed $data, ?string $shape = null): DataResponse {
 		try {
-			$rowShape = $this->rowShapeFromRequest($shape);
+			$rowShape = RowShape::fromRequest($shape);
 		} catch (\InvalidArgumentException $e) {
 			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
 		}
@@ -301,7 +303,7 @@ class RowOCSController extends AOCSController {
 			$resolvedRowId = $this->rowService->resolveRowId($rowId, $tableId, $viewId);
 			return new DataResponse($this->shapeRow($this->rowService->updateSet($resolvedRowId, $viewId, $values, $this->userId, $tableId), $rowShape));
 		} catch (RowValidationError $e) {
-			return $this->handleRowValidationError($e);
+			return $this->rowValidationError($e);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
 		} catch (NotFoundError $e) {
@@ -355,17 +357,10 @@ class RowOCSController extends AOCSController {
 	}
 
 	/**
-	 * The shape a request asks for. The object shape is refused for an XML response, which
-	 * OCS gives unless the format parameter or else the Accept header asks for JSON.
-	 *
-	 * @throws \InvalidArgumentException
+	 * OCS answers in XML unless the format parameter or else the Accept header asks for JSON.
 	 */
-	private function rowShapeFromRequest(?string $shape): RowShape {
-		$rowShape = RowShape::fromRequest($shape);
-		if ($rowShape === RowShape::Object && $this->request->getFormat() !== 'json') {
-			throw new \InvalidArgumentException('The object shape is only available as JSON.');
-		}
-		return $rowShape;
+	private function isXmlResponse(): bool {
+		return $this->request->getFormat() !== 'json';
 	}
 
 	/**
@@ -373,7 +368,32 @@ class RowOCSController extends AOCSController {
 	 * @throws InternalError
 	 */
 	private function shapeRow(Row2 $row, RowShape $rowShape): array {
-		return $rowShape === RowShape::Object ? $this->rowObjectSerializer->serialize($row) : $row->jsonSerialize();
+		if ($rowShape === RowShape::Cells) {
+			return $row->jsonSerialize();
+		}
+		$object = $this->rowObjectSerializer->serialize($row);
+		return $this->isXmlResponse() ? $this->rowObjectXmlShaper->shapeRow($object) : $object;
+	}
+
+	/**
+	 * @param Row2[] $rows
+	 * @return list<TablesRowObject>
+	 * @throws InternalError
+	 */
+	private function rowObjects(array $rows): array {
+		$objects = $this->rowObjectSerializer->serializeAll(array_values($rows));
+		return $this->isXmlResponse() ? $this->rowObjectXmlShaper->shapeRows($objects) : $objects;
+	}
+
+	/**
+	 * @return DataResponse<Http::STATUS_BAD_REQUEST, TablesRowValidationError, array{}>
+	 */
+	private function rowValidationError(RowValidationError $e): DataResponse {
+		$response = $this->handleRowValidationError($e);
+		if ($this->isXmlResponse()) {
+			$response->setData($this->rowObjectXmlShaper->shapeValidationError($response->getData()));
+		}
+		return $response;
 	}
 
 	/**

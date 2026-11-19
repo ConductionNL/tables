@@ -8827,7 +8827,7 @@ export interface operations {
                 readonly fields?: string | null;
                 /** @description Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, in UTC unless the time ends in Z or an offset such as +02:00 (written %2B02:00 in the query string, where + means a space), an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns */
                 readonly filter?: string | null;
-                /** @description The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON */
+                /** @description The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC. In XML a row is an element holding <self/>, with the metadata as attributes and an attribute without a value left out, and an element per column named by its technical name; a name that is not an ASCII XML name (a letter or _, then letters, digits, _, . or -), or is element or self, becomes <element name="...">, which holds the value in <value> unless it is a list or an object, so there a scalar and an object with only a value property look the same (no column type gives such an object). null is an empty element with nil="true", unprefixed because xsi:nil would need a namespace declaration; an empty string or list is an empty element without it. Booleans are true and false, a list has an <element> per item and an object a child element per property, by the same rules */
                 readonly shape?: "cells" | "object" | null;
             };
             readonly header: {
@@ -8961,7 +8961,7 @@ export interface operations {
                         readonly [key: string]: Record<string, never>;
                     };
                     /**
-                     * @description The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
+                     * @description The shape of the data and of the returned row, defaults to "cells". The data is sent as JSON or form data; in an XML response a row in the object shape has an element per column, see the shape of getRow
                      * @default null
                      * @enum {string|null}
                      */
@@ -8984,7 +8984,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name */
+            /** @description Invalid request parameters or an unknown shape (nothing is written then), or with shape "object" the values that cannot be stored, per technical name; in XML errors has an element per technical name, by the rules of the object shape */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9067,7 +9067,7 @@ export interface operations {
     readonly "rowocs-get-row": {
         readonly parameters: {
             readonly query?: {
-                /** @description The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON */
+                /** @description The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC. In XML a row is an element holding <self/>, with the metadata as attributes and an attribute without a value left out, and an element per column named by its technical name; a name that is not an ASCII XML name (a letter or _, then letters, digits, _, . or -), or is element or self, becomes <element name="...">, which holds the value in <value> unless it is a list or an object, so there a scalar and an object with only a value property look the same (no column type gives such an object). null is an empty element with nil="true", unprefixed because xsi:nil would need a namespace declaration; an empty string or list is an empty element without it. Booleans are true and false, a list has an <element> per item and an object a child element per property, by the same rules */
                 readonly shape?: "cells" | "object" | null;
             };
             readonly header: {
@@ -9100,7 +9100,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid row identifier, an unknown shape or the object shape for a response that is not JSON, or the table or view is federated */
+            /** @description Invalid row identifier, an unknown shape, or the table or view is federated */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9205,7 +9205,7 @@ export interface operations {
                         readonly [key: string]: Record<string, never>;
                     };
                     /**
-                     * @description The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
+                     * @description The shape of the data and of the returned row, defaults to "cells". The data is sent as JSON or form data; in an XML response a row in the object shape has an element per column, see the shape of getRow
                      * @default null
                      * @enum {string|null}
                      */
@@ -9228,7 +9228,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name */
+            /** @description Invalid request parameters or an unknown shape (nothing is written then), or with shape "object" the values that cannot be stored, per technical name; in XML errors has an element per technical name, by the rules of the object shape */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
