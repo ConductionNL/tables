@@ -165,6 +165,7 @@ class RowObjectInputConverterTest extends TestCase {
 			'another relation' => [Column::TYPE_RELATION, '', '0199f1a0-7c3e-7d2a-9b1e-000000000000', 42],
 			'another row id' => [Column::TYPE_RELATION, '', 41, 42],
 			'a cleared relation' => [Column::TYPE_RELATION, '', null, 42],
+			'a label of digits equal to the stored row id' => [Column::TYPE_RELATION, '', '42', 42],
 			'a value for an empty cell' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, 'x', null],
 			'null for a value' => [Column::TYPE_TEXT, Column::SUBTYPE_TEXT_LINE, null, 'x'],
 			'a day that rolls over into the stored one' => [Column::TYPE_DATETIME, '', '2026-02-30T14:30', '2026-03-02 14:30'],
