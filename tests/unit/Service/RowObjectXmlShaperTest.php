@@ -260,6 +260,40 @@ class RowObjectXmlShaperTest extends TestCase {
 		}
 	}
 
+	/**
+	 * XMLWriter writes characters XML does not allow as they are, so the shaper replaces
+	 * them and the document stays well-formed.
+	 */
+	public function testCharactersXmlDoesNotAllowBecomeReplacementCharacters(): void {
+		$object = $this->self();
+		$object['@self']['createdBy'] = "al\x01ice";
+		$object["a\x01"] = "control\x01";
+		$object["\xff"] = "invalid\xff";
+		$errors = ["a\x01" => 'There is no column with this technical name.', "\xff" => 'There is no column with this technical name.'];
+
+		foreach ([false, true] as $v1) {
+			foreach ([
+				[$this->shaper->shapeRow($object), Http::STATUS_OK],
+				[$this->shaper->shapeValidationError(['message' => 'The row has 2 invalid values.', 'errors' => $errors]), Http::STATUS_BAD_REQUEST],
+			] as [$data, $status]) {
+				$xml = ($v1 ? new V1Response(new DataResponse($data, $status), 'xml') : new V2Response(new DataResponse($data, $status), 'xml'))->render();
+				$document = new \DOMDocument();
+				$this->assertTrue($document->loadXML($xml), $xml);
+
+				$names = [];
+				foreach ((new \DOMXPath($document))->query('//element[@name]') as $element) {
+					$this->assertInstanceOf(\DOMElement::class, $element);
+					$names[$element->getAttribute('name')] = $element->getElementsByTagName('value')->item(0)?->textContent;
+				}
+				$this->assertSame(["a\u{FFFD}", "\u{FFFD}"], array_keys($names));
+				if ($status === Http::STATUS_OK) {
+					$this->assertSame(["control\u{FFFD}", "invalid\u{FFFD}"], array_values($names));
+					$this->assertSame("al\u{FFFD}ice", $document->getElementsByTagName('self')->item(0)?->getAttribute('createdBy'));
+				}
+			}
+		}
+	}
+
 	public function testAShapedRowRendersAsOcsXmlAndTheUnshapedOneDoesNot(): void {
 		$object = $this->self() + ['name' => 'Alice'];
 

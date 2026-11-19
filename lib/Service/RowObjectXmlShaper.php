@@ -26,6 +26,10 @@ use OCA\Tables\ResponseDefinitions;
  *   prefix such as `xsi:` is not namespace-well-formed; an empty string or an empty list
  *   becomes an empty element without it;
  * - booleans become `true` and `false`, numbers are written as JSON writes them;
+ * - text, attribute values and the name in `<element name="KEY">` hold only characters
+ *   XML 1.0 allows: invalid UTF-8 and other characters, such as control characters,
+ *   become U+FFFD, because XMLWriter writes them as they are and the document would not
+ *   be well-formed;
  * - a list becomes `<element>` children, an object child elements by key, both by the
  *   same rules.
  *
@@ -39,6 +43,9 @@ class RowObjectXmlShaper {
 	 * `D` keeps `$` from matching before a trailing newline.
 	 */
 	private const SAFE_NAME = '/^[A-Za-z_][A-Za-z0-9_.\-]*$/D';
+	/** A character XML 1.0 does not allow. */
+	private const NOT_XML_CHAR = '/[^\x{9}\x{A}\x{D}\x{20}-\x{D7FF}\x{E000}-\x{FFFD}\x{10000}-\x{10FFFF}]/u';
+	private const REPLACEMENT_CHARACTER = "\u{FFFD}";
 	private const LIST_ITEM = 'element';
 	private const SELF = 'self';
 
@@ -113,7 +120,7 @@ class RowObjectXmlShaper {
 			$shaped[$name] = $this->shapeValue($value);
 			return;
 		}
-		$fallback = ['@attributes' => ['name' => $name]];
+		$fallback = ['@attributes' => ['name' => $this->xmlString($name)]];
 		if (is_array($value)) {
 			$shaped[] = $fallback + $this->shapeArray($value);
 			return;
@@ -144,8 +151,21 @@ class RowObjectXmlShaper {
 		return match (true) {
 			is_bool($value) => $value ? 'true' : 'false',
 			is_float($value) => json_encode($value, JSON_THROW_ON_ERROR),
-			is_scalar($value) => (string)$value,
+			is_scalar($value) => $this->xmlString((string)$value),
 			default => json_encode($value, JSON_THROW_ON_ERROR),
 		};
+	}
+
+	private function xmlString(string $value): string {
+		if (!mb_check_encoding($value, 'UTF-8')) {
+			$substitute = mb_substitute_character();
+			mb_substitute_character(0xFFFD);
+			try {
+				$value = mb_scrub($value, 'UTF-8');
+			} finally {
+				mb_substitute_character($substitute);
+			}
+		}
+		return preg_replace(self::NOT_XML_CHAR, self::REPLACEMENT_CHARACTER, $value) ?? $value;
 	}
 }
