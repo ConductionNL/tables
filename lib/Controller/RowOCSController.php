@@ -77,7 +77,7 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'POST', url: '/api/2/{nodeCollection}/{nodeId}/rows', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
 	public function createRow(string $nodeCollection, int $nodeId, mixed $data, ?string $shape = null): DataResponse {
 		try {
-			$rowShape = RowShape::fromRequest($shape);
+			$rowShape = $this->rowShapeFromRequest($shape);
 		} catch (\InvalidArgumentException $e) {
 			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
 		}
@@ -271,7 +271,7 @@ class RowOCSController extends AOCSController {
 	#[ApiRoute(verb: 'PUT', url: '/api/2/{nodeCollection}/{nodeId}/rows/{rowId}', requirements: ['nodeCollection' => '(tables|views)', 'nodeId' => '(\d+)'])]
 	public function updateRow(string $nodeCollection, int $nodeId, string $rowId, mixed $data, ?string $shape = null): DataResponse {
 		try {
-			$rowShape = RowShape::fromRequest($shape);
+			$rowShape = $this->rowShapeFromRequest($shape);
 		} catch (\InvalidArgumentException $e) {
 			return $this->handleBadRequestError(new BadRequestError($e->getMessage()));
 		}

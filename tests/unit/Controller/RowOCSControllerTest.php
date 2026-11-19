@@ -298,6 +298,23 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_OK, $this->controller->getRows('tables', 3, shape: 'cells')->getStatus());
 	}
 
+	/**
+	 * @dataProvider xmlResponseFormat
+	 */
+	public function testAnObjectShapeWriteIsRefusedForAnXmlResponseBeforeAnythingIsWritten(?string $format): void {
+		$this->responseFormat = $format;
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
+
+		foreach ([
+			$this->controller->createRow('tables', 3, ['name' => 'Alice'], 'object'),
+			$this->controller->updateRow('tables', 3, self::UUID, ['name' => 'Alice'], 'object'),
+		] as $response) {
+			$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+			$this->assertSame(['message' => 'The object shape is only available as JSON.'], $response->getData());
+		}
+	}
+
 	public function testCellsShapeIsTheDefault(): void {
 		$this->rowService->method('resolveRowId')->willReturn(7);
 		$this->rowService->method('findInNode')->willReturn($this->row(7));
