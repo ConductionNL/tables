@@ -204,6 +204,8 @@ class RowObjectSerializerTest extends TestCase {
 		foreach ($result['cells'] as $cell) {
 			$written[$cell['columnId']] = $cell['value'];
 		}
-		$this->assertSame($stored, $written);
+		// every column without a stored value is read as null and written back as null
+		$expected = array_map(static fn (int $columnId): mixed => $stored[$columnId] ?? null, array_combine(array_keys($this->columns), array_keys($this->columns)));
+		$this->assertSame($expected, $written);
 	}
 }
