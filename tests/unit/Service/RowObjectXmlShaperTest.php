@@ -125,6 +125,8 @@ class RowObjectXmlShaperTest extends TestCase {
 			'a dollar sign, which OCS writes as a comment' => ['$comment'],
 			'the name of a list item' => ['element'],
 			'the name of the metadata' => ['self'],
+			'a trailing newline' => ["name\n"],
+			'a non-ASCII letter' => ['größe'],
 		];
 	}
 
@@ -152,10 +154,6 @@ class RowObjectXmlShaperTest extends TestCase {
 		$this->assertSame(['@attributes' => ['name' => '1'], 'value' => self::NIL], $shaped[0]);
 		$this->assertSame(['@attributes' => ['name' => '2'], '4', '5'], $shaped[1]);
 		$this->assertSame(['@attributes' => ['name' => '3'], 'title' => 'Nextcloud', ['@attributes' => ['name' => '4'], 'value' => 'true']], $shaped[2]);
-	}
-
-	public function testUnicodeLettersAreSafeNames(): void {
-		$this->assertSame('Ja', $this->shaper->shapeRow($this->self() + ['größe' => 'Ja'])['größe']);
 	}
 
 	public function testShapeRowsShapesEachRow(): void {
@@ -227,6 +225,38 @@ class RowObjectXmlShaperTest extends TestCase {
 			$this->assertSame('false', (string)$row->done);
 			$this->assertSame('12', (string)$row->element['name']);
 			$this->assertSame('imported', (string)$row->element->value);
+		}
+	}
+
+	/**
+	 * XMLWriter refuses some names that Unicode counts as letters, so only ASCII names
+	 * become elements.
+	 */
+	public function testNonAsciiNamesRenderAsNamedElements(): void {
+		$names = ['µ', 'ǅ', 'ᐁ', '𝒜', 'größe'];
+		$object = $this->self();
+		$errors = [];
+		foreach ($names as $name) {
+			$object[$name] = 'value of ' . $name;
+			$errors[$name] = 'There is no column with this technical name.';
+		}
+
+		foreach ([false, true] as $v1) {
+			$row = $this->renderXml($this->shaper->shapeRow($object), v1: $v1)->data;
+			$error = $this->renderXml(
+				$this->shaper->shapeValidationError(['message' => 'The row has 5 invalid values.', 'errors' => $errors]),
+				Http::STATUS_BAD_REQUEST,
+				$v1,
+			)->data->errors;
+
+			$this->assertCount(count($names), $row->element);
+			$this->assertCount(count($names), $error->element);
+			foreach ($names as $i => $name) {
+				$this->assertSame($name, (string)$row->element[$i]['name']);
+				$this->assertSame('value of ' . $name, (string)$row->element[$i]->value);
+				$this->assertSame($name, (string)$error->element[$i]['name']);
+				$this->assertSame('There is no column with this technical name.', (string)$error->element[$i]->value);
+			}
 		}
 	}
 

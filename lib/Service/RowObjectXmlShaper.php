@@ -17,10 +17,11 @@ use OCA\Tables\ResponseDefinitions;
  *
  * - the metadata in `@self` becomes `<self/>` with a member per attribute, an attribute
  *   whose value is null is left out;
- * - a property becomes an element named by its key; a key that is not an XML NCName, or
- *   that is `element` (or `self` for a row), becomes `<element name="KEY">`, with the
- *   value in `<value>` when it is not a list or an object, because an OCS element cannot
- *   have attributes and text;
+ * - a property becomes an element named by its key; a key that is not an ASCII XML name
+ *   (a letter or `_`, then letters, digits, `_`, `.` or `-`), or that is `element` (or
+ *   `self` for a row), becomes `<element name="KEY">`, with the value in `<value>` when
+ *   it is not a list or an object, because an OCS element cannot have attributes and
+ *   text;
  * - null becomes an empty element with `nil="true"`, unprefixed because an undeclared
  *   prefix such as `xsi:` is not namespace-well-formed; an empty string or an empty list
  *   becomes an empty element without it;
@@ -32,7 +33,12 @@ use OCA\Tables\ResponseDefinitions;
  * @psalm-import-type TablesRowValidationError from ResponseDefinitions
  */
 class RowObjectXmlShaper {
-	private const NCNAME = '/^[\p{L}_][\p{L}\p{N}_.\-]*$/u';
+	/**
+	 * ASCII only: XMLWriter, which renders OCS XML, refuses some names that Unicode counts
+	 * as letters (such as `µ` or `ǅ`), which would make a 500 after the controller returned.
+	 * `D` keeps `$` from matching before a trailing newline.
+	 */
+	private const SAFE_NAME = '/^[A-Za-z_][A-Za-z0-9_.\-]*$/D';
 	private const LIST_ITEM = 'element';
 	private const SELF = 'self';
 
@@ -103,7 +109,7 @@ class RowObjectXmlShaper {
 	 */
 	private function addProperty(array &$shaped, int|string $key, mixed $value, array $reservedNames): void {
 		$name = (string)$key;
-		if (preg_match(self::NCNAME, $name) === 1 && !in_array($name, $reservedNames, true)) {
+		if (preg_match(self::SAFE_NAME, $name) === 1 && !in_array($name, $reservedNames, true)) {
 			$shaped[$name] = $this->shapeValue($value);
 			return;
 		}
