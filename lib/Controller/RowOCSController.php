@@ -150,8 +150,8 @@ class RowOCSController extends AOCSController {
 	 * @param string|null $sort Comma separated technical names, column ids or meta fields (id, createdBy, createdAt, updatedBy, updatedAt), a minus sorts descending. Defaults to the sort of the table or view
 	 * @param string|null $search Text to look for in the text cells and the selection labels
 	 * @param string|null $fields Comma separated technical names or column ids of the columns to return, the metadata of a row is always returned
-	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns
-	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC
+	 * @param array<string, string|array<string, string>>|null $filter Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, in UTC unless the time ends in Z or an offset such as +02:00 (written %2B02:00 in the query string, where + means a space), an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns
+	 * @param 'cells'|'object'|null $shape The shape of the returned rows, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON
 	 * @return DataResponse<Http::STATUS_OK, TablesRowPage|TablesRowObjectPage, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Rows returned
@@ -182,7 +182,7 @@ class RowOCSController extends AOCSController {
 			}
 			try {
 				$query = RowListQuery::createFromRequest($page, $offset, $limit, $sort, $search, $fields, $filter);
-				$rowShape = RowShape::fromRequest($shape);
+				$rowShape = $this->rowShapeFromRequest($shape);
 			} catch (\InvalidArgumentException $e) {
 				throw new BadRequestError($e->getMessage());
 			}
@@ -214,11 +214,11 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to get a row from a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row, either its integer id or its uuid
-	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC
+	 * @param 'cells'|'object'|null $shape The shape of the returned row, defaults to "cells". With "object" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid row identifier, or the table or view is federated
+	 * 400: Invalid row identifier, an unknown shape or the object shape for a response that is not JSON, or the table or view is federated
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -230,7 +230,7 @@ class RowOCSController extends AOCSController {
 		[$tableId, $viewId] = $this->splitNode($nodeCollection, $nodeId);
 		try {
 			try {
-				$rowShape = RowShape::fromRequest($shape);
+				$rowShape = $this->rowShapeFromRequest($shape);
 			} catch (\InvalidArgumentException $e) {
 				throw new BadRequestError($e->getMessage());
 			}
@@ -352,6 +352,20 @@ class RowOCSController extends AOCSController {
 		} catch (InternalError|\Exception $e) {
 			return $this->handleError($e);
 		}
+	}
+
+	/**
+	 * The shape a request asks for. The object shape is refused for an XML response, which
+	 * OCS gives unless the format parameter or else the Accept header asks for JSON.
+	 *
+	 * @throws \InvalidArgumentException
+	 */
+	private function rowShapeFromRequest(?string $shape): RowShape {
+		$rowShape = RowShape::fromRequest($shape);
+		if ($rowShape === RowShape::Object && $this->request->getFormat() !== 'json') {
+			throw new \InvalidArgumentException('The object shape is only available as JSON.');
+		}
+		return $rowShape;
 	}
 
 	/**

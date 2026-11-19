@@ -62,8 +62,12 @@ class RowQueryResolver {
 		'datetime' => [['Y-m-d H:i'], 'a date and time as YYYY-MM-DD HH:MM'],
 		'datetime-date' => [['Y-m-d'], 'a date as YYYY-MM-DD'],
 		'datetime-time' => [['H:i'], 'a time as HH:MM'],
-		'meta-datetime' => [['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d\\TH:i', 'Y-m-d\\TH:i:s'], 'a date as YYYY-MM-DD, optionally followed by a space or T and a time as HH:MM or HH:MM:SS'],
+		'meta-datetime' => [['Y-m-d', 'Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d\\TH:i', 'Y-m-d\\TH:i:s'], 'a date as YYYY-MM-DD, optionally followed by a space or T and a time as HH:MM or HH:MM:SS, which may end in Z or an offset such as +02:00'],
 	];
+	/**
+	 * The formats of a meta date with a time, which may carry a UTC offset.
+	 */
+	private const META_DATETIME_FORMATS_WITH_TIME = ['Y-m-d H:i', 'Y-m-d H:i:s', 'Y-m-d\\TH:i', 'Y-m-d\\TH:i:s'];
 	private const COMPARISONS = [
 		FilterOperator::IS_EQUAL, FilterOperator::IS_NOT_EQUAL,
 		FilterOperator::IS_GREATER_THAN, FilterOperator::IS_GREATER_THAN_OR_EQUAL,
@@ -213,10 +217,30 @@ class RowQueryResolver {
 		$columnId = $this->resolveColumnId($filter['field'], $columnsByName);
 		$column = $columnId > 0 ? $columnsByName[$columnId] : null;
 		$operator = $filter['operator'] ?? $this->defaultOperator($column);
+		$typeKey = $column === null ? (self::META_FIELD_TYPES[$columnId] ?? '') : $this->columnTypeKey($column);
+		$value = $typeKey === 'meta-datetime' ? $this->metaDatetimeInUtc($filter['value']) : $filter['value'];
 
-		$this->assertFilterFitsField($filter['field'], $column === null ? (self::META_FIELD_TYPES[$columnId] ?? '') : $this->columnTypeKey($column), $operator, $filter['value']);
+		$this->assertFilterFitsField($filter['field'], $typeKey, $operator, $value);
 
-		return ['columnId' => $columnId, 'operator' => $operator->value, 'value' => $filter['value'], 'literal' => true];
+		return ['columnId' => $columnId, 'operator' => $operator->value, 'value' => $value, 'literal' => true];
+	}
+
+	/**
+	 * The meta fields are stored in UTC, so a time with Z or an offset is converted to UTC and
+	 * written without it. Any other value is returned unchanged.
+	 */
+	private function metaDatetimeInUtc(string $value): string {
+		if (preg_match('/^(.+?)(Z|[+-](?:(?:0\d|1[0-3]):[0-5]\d|14:00))\z/', $value, $matches) !== 1) {
+			return $value;
+		}
+		$offset = new DateTimeZone($matches[2] === 'Z' ? '+00:00' : $matches[2]);
+		foreach (self::META_DATETIME_FORMATS_WITH_TIME as $format) {
+			$parsed = DateTimeImmutable::createFromFormat('!' . $format, $matches[1], $offset);
+			if ($parsed !== false && $parsed->format($format) === $matches[1]) {
+				return $parsed->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+			}
+		}
+		return $value;
 	}
 
 	/**

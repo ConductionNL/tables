@@ -218,13 +218,16 @@ class RowService extends SuperService {
 			$criteria['sort'] ?: null,
 			$filterUserId,
 		);
-		$this->attachAliasPayloads($rows, $columns);
-		foreach ($rows as $row) {
-			if ($isMetadataOnly) {
+		if ($isMetadataOnly) {
+			foreach ($rows as $row) {
 				$row->filterDataByColumns([]);
 			}
-			$row->filterDataByAliasByColumns($criteria['columnIds']);
 		}
+		$returnedColumnIds = $criteria['columnIds'];
+		$this->attachAliasPayloads($rows, array_values(array_filter(
+			$columns,
+			static fn (Column $column): bool => in_array($column->getId(), $returnedColumnIds, true),
+		)));
 		return ['rows' => $rows, 'total' => $total];
 	}
 
