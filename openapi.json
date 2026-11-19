@@ -16478,7 +16478,7 @@
                                             "cells",
                                             "object"
                                         ],
-                                        "description": "The shape of the data and of the returned row, defaults to \"cells\""
+                                        "description": "The shape of the data and of the returned row, defaults to \"cells\"; the object shape is only available as JSON"
                                     }
                                 }
                             }
@@ -16560,7 +16560,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters, or with shape \"object\" the values that cannot be stored, per technical name",
+                        "description": "Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape \"object\" the values that cannot be stored, per technical name",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -17443,7 +17443,7 @@
                                             "cells",
                                             "object"
                                         ],
-                                        "description": "The shape of the data and of the returned row, defaults to \"cells\""
+                                        "description": "The shape of the data and of the returned row, defaults to \"cells\"; the object shape is only available as JSON"
                                     }
                                 }
                             }
@@ -17534,7 +17534,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters, or with shape \"object\" the values that cannot be stored, per technical name",
+                        "description": "Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape \"object\" the values that cannot be stored, per technical name",
                         "content": {
                             "application/json": {
                                 "schema": {

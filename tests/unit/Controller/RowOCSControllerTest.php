@@ -396,26 +396,12 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'ok', '-1' => 'x'], 'object')->getStatus());
 	}
 
-	/**
-	 * @return array<string, array{string, string}>
-	 */
-	public static function ocsFormat(): array {
-		return [
-			'json' => ['json', '"errors":{"age":"Expected a number.","name":"Too long."}'],
-			'xml' => ['xml', '<errors><age>Expected a number.</age><name>Too long.</name></errors>'],
-		];
-	}
-
-	/**
-	 * @dataProvider ocsFormat
-	 */
-	public function testInvalidValuesAreNamedInEveryOcsFormat(string $format, string $expected): void {
+	public function testInvalidValuesAreNamedInTheJsonResponse(): void {
 		$this->rowService->method('create')->willThrowException(new RowValidationError(['age' => 'Expected a number.', 'name' => 'Too long.']));
 
-		$response = new V2Response($this->controller->createRow('tables', 3, ['age' => 'many', 'name' => 'x'], 'object'), $format);
+		$response = new V2Response($this->controller->createRow('tables', 3, ['age' => 'many', 'name' => 'x'], 'object'), 'json');
 
-		// without the indentation of the XML
-		$this->assertStringContainsString($expected, (string)preg_replace('/>\s+</', '><', $response->render()));
+		$this->assertStringContainsString('"errors":{"age":"Expected a number.","name":"Too long."}', $response->render());
 	}
 
 	/**

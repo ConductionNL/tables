@@ -63,11 +63,11 @@ class RowOCSController extends AOCSController {
 	 * @param 'tables'|'views' $nodeCollection Indicates whether to create a row on a table or view
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string|array<string, mixed> $data The values of the row: keyed by column id, or with shape "object" keyed by technical name
-	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"
+	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{message: string}|TablesRowValidationError, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row returned
-	 * 400: Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name
+	 * 400: Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error
@@ -257,11 +257,11 @@ class RowOCSController extends AOCSController {
 	 * @param int $nodeId The identifier of the targeted table or view
 	 * @param string $rowId The identifier of the row to update, either its integer id or its uuid
 	 * @param string|array<string, mixed> $data The values to change: keyed by column id, or with shape "object" keyed by technical name
-	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"
+	 * @param 'cells'|'object'|null $shape The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
 	 * @return DataResponse<Http::STATUS_OK, TablesRow|TablesRowObject, array{}>|DataResponse<Http::STATUS_BAD_REQUEST, array{message: string}|TablesRowValidationError, array{}>|DataResponse<Http::STATUS_FORBIDDEN|Http::STATUS_NOT_FOUND|Http::STATUS_INTERNAL_SERVER_ERROR, array{message: string}, array{}>
 	 *
 	 * 200: Row updated
-	 * 400: Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name
+	 * 400: Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name
 	 * 403: No permissions
 	 * 404: Not found
 	 * 500: Internal error

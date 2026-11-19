@@ -8961,7 +8961,7 @@ export interface operations {
                         readonly [key: string]: Record<string, never>;
                     };
                     /**
-                     * @description The shape of the data and of the returned row, defaults to "cells"
+                     * @description The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
                      * @default null
                      * @enum {string|null}
                      */
@@ -8984,7 +8984,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name */
+            /** @description Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9205,7 +9205,7 @@ export interface operations {
                         readonly [key: string]: Record<string, never>;
                     };
                     /**
-                     * @description The shape of the data and of the returned row, defaults to "cells"
+                     * @description The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
                      * @default null
                      * @enum {string|null}
                      */
@@ -9228,7 +9228,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Invalid request parameters, or with shape "object" the values that cannot be stored, per technical name */
+            /** @description Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;

@@ -21,7 +21,7 @@ final class RowObjectInput {
 	 * @throws InvalidArgumentException when a property name is a number, as in a list; a
 	 *                                  technical name starts with a letter, and the errors
 	 *                                  of a row are keyed by property name, which keeps them
-	 *                                  an object in JSON and named elements in XML
+	 *                                  an object in JSON
 	 */
 	public function __construct(
 		public readonly array $values,
