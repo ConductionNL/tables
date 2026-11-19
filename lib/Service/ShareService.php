@@ -866,29 +866,6 @@ class ShareService extends SuperService {
 		}
 	}
 
-	/**
-	 * Whether the application is shared with anyone but its owner. Shared
-	 * applications keep their slugs, so the routes others use stay stable.
-	 *
-	 * @throws InternalError
-	 */
-	public function isContextShared(Context $context): bool {
-		try {
-			$shares = $this->mapper->findAllSharesForNode('context', $context->getId());
-		} catch (Exception $e) {
-			$this->logger->error('Could not look up the shares of context ' . $context->getId() . ': ' . $e->getMessage(), ['exception' => $e]);
-			throw new InternalError('Could not look up the shares of the application');
-		}
-		foreach ($shares as $share) {
-			$isOwnerSelfShare = $share->getReceiverType() === ShareReceiverType::USER
-				&& $share->getReceiver() === $context->getOwnerId();
-			if (!$isOwnerSelfShare) {
-				return true;
-			}
-		}
-		return false;
-	}
-
 	public function deleteAllForContext(Context $context): void {
 		try {
 			$this->atomic(function () use ($context): void {

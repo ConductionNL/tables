@@ -7290,7 +7290,7 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug. */
+                    /** @description provide this parameter to set a new list of nodes; an added node can get a slug, a node that is kept keeps its slug, and a node that is removed frees its slug. */
                     readonly nodes?: readonly {
                         /** Format: int64 */
                         readonly id: number;
@@ -7302,11 +7302,6 @@ export interface operations {
                         readonly order?: number;
                         readonly slug?: string;
                     }[] | null;
-                    /**
-                     * @description provide this parameter to set a new slug; not possible while the context is shared
-                     * @default null
-                     */
-                    readonly slug?: string | null;
                 };
             };
         };
@@ -7325,7 +7320,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description invalid or taken slug, a slug change on a shared context, or another bad request */
+            /** @description invalid or taken slug, a slug change on a kept node, or another bad request */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -7743,11 +7738,6 @@ export interface operations {
                         readonly addTables: readonly components["schemas"]["Table"][];
                         readonly modifyTables: readonly components["schemas"]["Table"][];
                     };
-                    /**
-                     * @description Slug of the context from the scheme; ignored when it is invalid, already used by the owner, or the context is shared
-                     * @default null
-                     */
-                    readonly slug?: string | null;
                 };
             };
         };

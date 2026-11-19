@@ -141,20 +141,19 @@ class ContextController extends AOCSController {
 	 * @param ?string $name provide this parameter to set a new name
 	 * @param ?string $iconName provide this parameter to set a new icon
 	 * @param ?string $description provide this parameter to set a new description
-	 * @param ?list<array{id: int, type: int, permissions: int, order?: int, slug?: string}> $nodes provide this parameter to set a new list of nodes, optionally with a new slug; while the context is shared a node it keeps cannot get a new slug, and a node that is removed frees its slug.
-	 * @param ?string $slug provide this parameter to set a new slug; not possible while the context is shared
+	 * @param ?list<array{id: int, type: int, permissions: int, order?: int, slug?: string}> $nodes provide this parameter to set a new list of nodes; an added node can get a slug, a node that is kept keeps its slug, and a node that is removed frees its slug.
 	 *
 	 * @return DataResponse<Http::STATUS_OK, TablesContext, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
 	 * 200: returning the full context information
-	 * 400: invalid or taken slug, a slug change on a shared context, or another bad request
+	 * 400: invalid or taken slug, a slug change on a kept node, or another bad request
 	 * 403: No permissions
 	 * 404: Not found
 	 *
 	 * @CanManageContext
 	 */
 	#[NoAdminRequired]
-	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes, ?string $slug = null): DataResponse {
+	public function update(int $contextId, ?string $name, ?string $iconName, ?string $description, ?array $nodes): DataResponse {
 		try {
 			if ($iconName !== null && !$this->isValidIcon($iconName)) {
 				return new DataResponse(['message' => 'Invalid icon name'], Http::STATUS_BAD_REQUEST);
@@ -167,7 +166,6 @@ class ContextController extends AOCSController {
 				$iconName,
 				$description,
 				$nodes,
-				$slug,
 			)->jsonSerialize());
 		} catch (Exception|MultipleObjectsReturnedException $e) {
 			return $this->handleError($e);
@@ -175,8 +173,6 @@ class ContextController extends AOCSController {
 			return $this->handlePermissionError($e);
 		} catch (BadRequestError $e) {
 			return $this->handleBadRequestError($e);
-		} catch (InternalError $e) {
-			return $this->handleError($e);
 		} catch (DoesNotExistException $e) {
 			return $this->handleNotFoundError(new NotFoundError($e->getMessage(), $e->getCode(), $e));
 		}
@@ -369,7 +365,6 @@ class ContextController extends AOCSController {
 	 * @param string $description Description of the context
 	 * @param list<array{node_type: int, node_uuid: string, permissions: int, slug?: string}> $nodes Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free
 	 * @psalm-param array{addTables: list<TablesTable>, modifyTables: list<TablesTable>} $tables Tables to be added or modified
-	 * @param ?string $slug Slug of the context from the scheme; ignored when it is invalid, already used by the owner, or the context is shared
 	 *
 	 * @return DataResponse<Http::STATUS_OK, array<string, mixed>, array{}>|DataResponse<Http::STATUS_INTERNAL_SERVER_ERROR|Http::STATUS_NOT_FOUND|Http::STATUS_FORBIDDEN|Http::STATUS_BAD_REQUEST, array{message: string}, array{}>
 	 *
@@ -380,10 +375,10 @@ class ContextController extends AOCSController {
 	 */
 	#[NoAdminRequired]
 	#[RequirePermission(permission: Application::PERMISSION_MANAGE, typeParam: 'context', idParam: 'contextId')]
-	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables, ?string $slug = null): DataResponse {
+	public function importScheme(int $contextId, string $name, string $iconName, string $description, array $nodes, array $tables): DataResponse {
 		try {
 			$this->db->beginTransaction();
-			$context = $this->contextService->importScheme($contextId, $name, $iconName, $description, $nodes, $tables, $this->userId, $slug);
+			$context = $this->contextService->importScheme($contextId, $name, $iconName, $description, $nodes, $tables, $this->userId);
 			$this->db->commit();
 			return new DataResponse($context->jsonSerialize());
 		} catch (\InvalidArgumentException $e) {
