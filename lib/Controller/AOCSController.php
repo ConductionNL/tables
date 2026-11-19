@@ -13,6 +13,8 @@ use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\InternalError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Errors\RowValidationError;
+use OCA\Tables\ResponseDefinitions;
 use OCP\AppFramework\Http;
 use OCP\AppFramework\Http\DataResponse;
 use OCP\AppFramework\OCSController;
@@ -20,6 +22,9 @@ use OCP\IL10N;
 use OCP\IRequest;
 use Psr\Log\LoggerInterface;
 
+/**
+ * @psalm-import-type TablesRowValidationError from ResponseDefinitions
+ */
 abstract class AOCSController extends OCSController {
 
 	public function __construct(
@@ -65,5 +70,13 @@ abstract class AOCSController extends OCSController {
 	protected function handleBadRequestError(BadRequestError $e): DataResponse {
 		$this->logger->warning('An bad request was encountered: ' . $e->getMessage(), ['exception' => $e]);
 		return new DataResponse(['message' => $e->translatedMessage ?: $e->getMessage()], Http::STATUS_BAD_REQUEST);
+	}
+
+	/**
+	 * @return DataResponse<Http::STATUS_BAD_REQUEST, TablesRowValidationError, array{}>
+	 */
+	protected function handleRowValidationError(RowValidationError $e): DataResponse {
+		$this->logger->warning('An bad request was encountered: ' . $e->getMessage(), ['exception' => $e]);
+		return new DataResponse(['message' => $e->translatedMessage ?: $e->getMessage(), 'errors' => $e->errors], Http::STATUS_BAD_REQUEST);
 	}
 }

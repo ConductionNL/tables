@@ -24,7 +24,15 @@ use Psr\Log\LoggerInterface;
 /**
  * Turns rows into the object shape of api/2: one property per column the row is read
  * with, keyed by its technical name and null when the row has no value for it, and the
- * metadata in `@self`.
+ * metadata in `@self`. A row that was read can be written back unchanged: a value that is
+ * the one its cell is read as is neither validated nor written again, also when it could
+ * no longer be stored as it is, such as a cell that refers to a user, group or selection
+ * option that no longer exists, a datetime stored in an unknown format, with seconds, or
+ * at a wall time in a daylight saving gap (read as the moment after the jump), a value
+ * outside the column's current limits or a relation outside its target view. A changed
+ * value is converted and validated, and refused for a column that is read-only in the
+ * view. A relation to a row that no longer exists reads as null, so writing it back
+ * clears a writable relation and leaves a read-only or mandatory one as it is.
  *
  * @psalm-import-type TablesRowObject from ResponseDefinitions
  * @psalm-import-type TablesRowSelf from ResponseDefinitions
@@ -78,6 +86,17 @@ class RowObjectSerializer {
 			]);
 		}
 		return $objects;
+	}
+
+	/**
+	 * The value one stored cell is read as, in the object shape.
+	 *
+	 * @param array<int, ?string> $relationTargets from findRelationTargets(), for a relation cell
+	 */
+	public function readValue(Column $column, mixed $stored, array $relationTargets): mixed {
+		$value = $this->value($column, $stored, $relationTargets);
+		$this->takeUnknownDatetimes();
+		return $value;
 	}
 
 	/**
@@ -194,6 +213,15 @@ class RowObjectSerializer {
 				}
 			}
 		}
+		return $this->findRelationTargets($targetRowIds);
+	}
+
+	/**
+	 * @param int[] $targetRowIds
+	 * @return array<int, ?string> the uuid per existing target row id, null while it has none
+	 * @throws InternalError
+	 */
+	public function findRelationTargets(array $targetRowIds): array {
 		if ($targetRowIds === []) {
 			return [];
 		}

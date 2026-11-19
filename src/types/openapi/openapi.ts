@@ -1400,6 +1400,12 @@ export type components = {
             readonly type: number;
             readonly displayName: string;
         };
+        readonly RowValidationError: {
+            readonly message: string;
+            readonly errors: {
+                readonly [key: string]: string;
+            };
+        };
         readonly Share: {
             /** Format: int64 */
             readonly id: number;
@@ -8950,10 +8956,16 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description An array containing the column identifiers and their values */
+                    /** @description The values of the row: keyed by column id, or with shape "object" keyed by technical name */
                     readonly data: string | {
                         readonly [key: string]: Record<string, never>;
                     };
+                    /**
+                     * @description The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
+                     * @default null
+                     * @enum {string|null}
+                     */
+                    readonly shape?: "cells" | "object" | null;
                 };
             };
         };
@@ -8967,12 +8979,12 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["RowObject"];
                         };
                     };
                 };
             };
-            /** @description Invalid request parameters */
+            /** @description Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -8983,7 +8995,7 @@ export interface operations {
                             readonly meta: components["schemas"]["OCSMeta"];
                             readonly data: {
                                 readonly message: string;
-                            };
+                            } | components["schemas"]["RowValidationError"];
                         };
                     };
                 };
@@ -9188,10 +9200,16 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description An array containing the column identifiers and their values */
+                    /** @description The values to change: keyed by column id, or with shape "object" keyed by technical name */
                     readonly data: string | {
                         readonly [key: string]: Record<string, never>;
                     };
+                    /**
+                     * @description The shape of the data and of the returned row, defaults to "cells"; the object shape is only available as JSON
+                     * @default null
+                     * @enum {string|null}
+                     */
+                    readonly shape?: "cells" | "object" | null;
                 };
             };
         };
@@ -9205,12 +9223,12 @@ export interface operations {
                     readonly "application/json": {
                         readonly ocs: {
                             readonly meta: components["schemas"]["OCSMeta"];
-                            readonly data: components["schemas"]["Row"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["RowObject"];
                         };
                     };
                 };
             };
-            /** @description Invalid request parameters */
+            /** @description Invalid request parameters, an unknown shape or the object shape for a response that is not JSON (nothing is written then), or with shape "object" the values that cannot be stored, per technical name */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -9221,7 +9239,7 @@ export interface operations {
                             readonly meta: components["schemas"]["OCSMeta"];
                             readonly data: {
                                 readonly message: string;
-                            };
+                            } | components["schemas"]["RowValidationError"];
                         };
                     };
                 };

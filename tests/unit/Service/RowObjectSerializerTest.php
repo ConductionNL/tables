@@ -11,8 +11,11 @@ namespace OCA\Tables\Tests\Unit\Service;
 
 use OCA\Tables\Db\Column;
 use OCA\Tables\Db\Row2;
+use OCA\Tables\Db\Row2Mapper;
 use OCA\Tables\Db\RowSleeveMapper;
 use OCA\Tables\Helper\InstanceTimezone;
+use OCA\Tables\Model\RowObjectInput;
+use OCA\Tables\Service\RowObjectInputConverter;
 use OCA\Tables\Service\RowObjectSerializer;
 use OCP\IConfig;
 use PHPUnit\Framework\MockObject\MockObject;
@@ -177,5 +180,32 @@ class RowObjectSerializerTest extends TestCase {
 		$this->assertSame('true', $object['is_active']);
 		$this->assertSame(42, $object['age']);
 		$this->assertNull($object['meeting']);
+	}
+
+	public function testWhatIsReadCanBeWrittenBackUnchanged(): void {
+		$this->rowSleeveMapper->method('findUuidsByIds')->willReturn([42 => self::TARGET_UUID]);
+		$row2Mapper = $this->createMock(Row2Mapper::class);
+		$row2Mapper->method('findIdByUuid')->with(self::TARGET_UUID)->willReturn(42);
+		$converter = new RowObjectInputConverter($row2Mapper, $this->instanceTimezone, $this->serializer);
+		$stored = [
+			1 => 'Alice',
+			2 => '2026-10-16 14:30',
+			3 => '2026-10-16',
+			4 => json_encode(['title' => 'Nextcloud', 'value' => 'https://nextcloud.com', 'providerId' => 'url']),
+			5 => 42,
+			6 => 'true',
+			7 => 42,
+		];
+
+		$result = $converter->toCells(new RowObjectInput($this->serializer->serialize($this->row($stored))), array_values($this->columns));
+
+		$this->assertSame([], $result['errors']);
+		$written = [];
+		foreach ($result['cells'] as $cell) {
+			$written[$cell['columnId']] = $cell['value'];
+		}
+		// every column without a stored value is read as null and written back as null
+		$expected = array_map(static fn (int $columnId): mixed => $stored[$columnId] ?? null, array_combine(array_keys($this->columns), array_keys($this->columns)));
+		$this->assertSame($expected, $written);
 	}
 }

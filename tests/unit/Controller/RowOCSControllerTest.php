@@ -16,7 +16,9 @@ use OCA\Tables\Db\Table;
 use OCA\Tables\Errors\BadRequestError;
 use OCA\Tables\Errors\NotFoundError;
 use OCA\Tables\Errors\PermissionError;
+use OCA\Tables\Errors\RowValidationError;
 use OCA\Tables\Model\RowListQuery;
+use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowObjectSerializer;
 use OCA\Tables\Service\RowService;
@@ -296,6 +298,23 @@ class RowOCSControllerTest extends TestCase {
 		$this->assertSame(Http::STATUS_OK, $this->controller->getRows('tables', 3, shape: 'cells')->getStatus());
 	}
 
+	/**
+	 * @dataProvider xmlResponseFormat
+	 */
+	public function testAnObjectShapeWriteIsRefusedForAnXmlResponseBeforeAnythingIsWritten(?string $format): void {
+		$this->responseFormat = $format;
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
+
+		foreach ([
+			$this->controller->createRow('tables', 3, ['name' => 'Alice'], 'object'),
+			$this->controller->updateRow('tables', 3, self::UUID, ['name' => 'Alice'], 'object'),
+		] as $response) {
+			$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+			$this->assertSame(['message' => 'The object shape is only available as JSON.'], $response->getData());
+		}
+	}
+
 	public function testCellsShapeIsTheDefault(): void {
 		$this->rowService->method('resolveRowId')->willReturn(7);
 		$this->rowService->method('findInNode')->willReturn($this->row(7));
@@ -308,8 +327,114 @@ class RowOCSControllerTest extends TestCase {
 	public function testUnknownShapeIsABadRequest(): void {
 		$this->rowService->expects($this->never())->method('findInNode');
 		$this->rowService->expects($this->never())->method('findPage');
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
 
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRow('tables', 3, '7', 'flat')->getStatus());
 		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->getRows('tables', 3, shape: 'flat')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['name' => 'x'], 'flat')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'x'], 'flat')->getStatus());
+	}
+
+	public function testCreateRowInTheObjectShapeKeepsTheTechnicalNames(): void {
+		$row = $this->row(7);
+		$this->rowService->expects($this->once())
+			->method('create')
+			->with(3, null, $this->callback(fn ($input): bool => $input instanceof RowObjectInput && $input->values === ['name' => 'Alice']))
+			->willReturn($row);
+		$this->rowObjectSerializer->method('serialize')->with($row)->willReturn(['name' => 'Alice']);
+
+		$response = $this->controller->createRow('tables', 3, ['name' => 'Alice'], 'object');
+
+		$this->assertSame(['name' => 'Alice'], $response->getData());
+	}
+
+	public function testInvalidValuesComeBackPerProperty(): void {
+		$this->rowService->method('create')->willThrowException(new RowValidationError(['age' => 'Expected a number.']));
+
+		$response = $this->controller->createRow('tables', 3, ['age' => 'many'], 'object');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertSame('{"message":"The row has 1 invalid value.","errors":{"age":"Expected a number."}}', json_encode($response->getData()));
+	}
+
+	public function testInvalidValuesOfAnUpdateComeBackPerProperty(): void {
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('updateSet')->willThrowException(new RowValidationError(['age' => 'Expected a number.']));
+
+		$response = $this->controller->updateRow('tables', 3, '7', ['age' => 'many'], 'object');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
+		$this->assertSame(['message' => 'The row has 1 invalid value.', 'errors' => ['age' => 'Expected a number.']], $response->getData());
+	}
+
+	public function testUpdateRowInTheObjectShape(): void {
+		$row = $this->row(7);
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->expects($this->once())
+			->method('updateSet')
+			->with(7, null, $this->callback(fn ($input): bool => $input instanceof RowObjectInput && $input->values === ['name' => 'Bob']), 'user1', 3)
+			->willReturn($row);
+		$this->rowObjectSerializer->method('serialize')->willReturn(['name' => 'Bob']);
+
+		$this->assertSame(['name' => 'Bob'], $this->controller->updateRow('tables', 3, self::UUID, ['name' => 'Bob'], 'object')->getData());
+	}
+
+	public function testObjectShapeRefusesAList(): void {
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['a'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['a'], 'object')->getStatus());
+	}
+
+	public function testObjectShapeRefusesANumericPropertyName(): void {
+		$this->rowService->expects($this->never())->method('create');
+		$this->rowService->expects($this->never())->method('updateSet');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow('tables', 3, ['0' => 'x', 'name' => 'ok'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow('tables', 3, '7', ['name' => 'ok', '-1' => 'x'], 'object')->getStatus());
+	}
+
+	public function testInvalidValuesAreNamedInTheJsonResponse(): void {
+		$this->rowService->method('create')->willThrowException(new RowValidationError(['age' => 'Expected a number.', 'name' => 'Too long.']));
+
+		$response = new V2Response($this->controller->createRow('tables', 3, ['age' => 'many', 'name' => 'x'], 'object'), 'json');
+
+		$this->assertStringContainsString('"errors":{"age":"Expected a number.","name":"Too long."}', $response->render());
+	}
+
+	/**
+	 * @return array<string, array{'tables'|'views'}>
+	 */
+	public static function nodeCollection(): array {
+		return [
+			'table' => ['tables'],
+			'view' => ['views'],
+		];
+	}
+
+	/**
+	 * @dataProvider nodeCollection
+	 */
+	public function testObjectShapeIsRefusedOnAFederatedNode(string $nodeCollection): void {
+		$this->federationService->method('isNodeFederated')->willReturn(true);
+		$this->federationService->expects($this->never())->method('updateRow');
+		$this->federationService->expects($this->never())->method('createRow');
+
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->updateRow($nodeCollection, 3, '7', ['name' => 'Bob'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_BAD_REQUEST, $this->controller->createRow($nodeCollection, 3, ['name' => 'Bob'], 'object')->getStatus());
+	}
+
+	/**
+	 * @dataProvider nodeCollection
+	 */
+	public function testFederationIsLookedUpOncePerWrite(string $nodeCollection): void {
+		$this->federationService->expects($this->exactly(2))->method('isNodeFederated')->willReturn(false);
+		$this->rowService->method('create')->willReturn($this->row(7));
+		$this->rowService->method('updateSet')->willReturn($this->row(7));
+
+		$this->assertSame(Http::STATUS_OK, $this->controller->createRow($nodeCollection, 3, ['name' => 'Bob'], 'object')->getStatus());
+		$this->assertSame(Http::STATUS_OK, $this->controller->updateRow($nodeCollection, 3, '7', ['name' => 'Bob'], 'object')->getStatus());
 	}
 }
