@@ -792,6 +792,119 @@
                     }
                 }
             },
+            "RowLink": {
+                "type": "object",
+                "required": [
+                    "title",
+                    "url",
+                    "providerId"
+                ],
+                "properties": {
+                    "title": {
+                        "type": "string"
+                    },
+                    "url": {
+                        "type": "string"
+                    },
+                    "providerId": {
+                        "type": "string"
+                    }
+                }
+            },
+            "RowObject": {
+                "allOf": [
+                    {
+                        "type": "object",
+                        "required": [
+                            "@self"
+                        ],
+                        "properties": {
+                            "@self": {
+                                "$ref": "#/components/schemas/RowSelf"
+                            }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": {
+                            "nullable": true,
+                            "anyOf": [
+                                {
+                                    "$ref": "#/components/schemas/RowObjectValue"
+                                },
+                                {
+                                    "$ref": "#/components/schemas/RowSelf"
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+            "RowObjectPage": {
+                "type": "object",
+                "required": [
+                    "results",
+                    "total",
+                    "limit",
+                    "page",
+                    "pages"
+                ],
+                "properties": {
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/RowObject"
+                        }
+                    },
+                    "total": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "pages": {
+                        "type": "integer",
+                        "format": "int64"
+                    }
+                }
+            },
+            "RowObjectValue": {
+                "anyOf": [
+                    {
+                        "type": "string"
+                    },
+                    {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    {
+                        "type": "number",
+                        "format": "double"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer",
+                            "format": "int64"
+                        }
+                    },
+                    {
+                        "$ref": "#/components/schemas/RowLink"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/RowUsergroup"
+                        }
+                    }
+                ]
+            },
             "RowPage": {
                 "type": "object",
                 "required": [
@@ -823,6 +936,68 @@
                     "pages": {
                         "type": "integer",
                         "format": "int64"
+                    }
+                }
+            },
+            "RowSelf": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "rowId",
+                    "tableId",
+                    "createdBy",
+                    "createdAt",
+                    "updatedBy",
+                    "updatedAt"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "rowId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "tableId": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "createdBy": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "createdAt": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "updatedBy": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "nullable": true
+                    }
+                }
+            },
+            "RowUsergroup": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "type",
+                    "displayName"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string"
+                    },
+                    "type": {
+                        "type": "integer",
+                        "format": "int64"
+                    },
+                    "displayName": {
+                        "type": "string"
                     }
                 }
             },
@@ -16634,10 +16809,24 @@
                     {
                         "name": "filter",
                         "in": "query",
-                        "description": "Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns",
+                        "description": "Filters as filter[field]=value or filter[field][operator]=value, all of which must match. A deep object in the query string (for example filter[age][is-greater-than]=30&filter[name]=jane), shown as a string because the API description cannot express nested query parameters. field is a technical name, a column id or a meta field; operator is one of the view filter operators that fit the field's type (without one: is-equal, or contains-item on multi-value columns; long and rich text need an operator such as contains); a value is compared as given and written as the column stores it: a decimal number; a row id for relations and id; YYYY-MM-DD HH:MM for date and time columns, YYYY-MM-DD for date columns, HH:MM for time columns; YYYY-MM-DD with an optional HH:MM or HH:MM:SS, after a space or a T, for createdAt and updatedAt, in UTC unless the time ends in Z or an offset such as +02:00 (written %2B02:00 in the query string, where + means a space), an exact moment, so compare those with is-greater-than and is-lower-than rather than is-equal; an option id for selections; true or false for checkboxes; a user, group or team id for usergroup columns",
                         "schema": {
                             "type": "string",
                             "nullable": true
+                        }
+                    },
+                    {
+                        "name": "shape",
+                        "in": "query",
+                        "description": "The shape of the returned rows, defaults to \"cells\". With \"object\" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null,
+                            "enum": [
+                                "cells",
+                                "object"
+                            ]
                         }
                     },
                     {
@@ -16673,7 +16862,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/RowPage"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/RowPage"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObjectPage"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16915,6 +17111,20 @@
                         }
                     },
                     {
+                        "name": "shape",
+                        "in": "query",
+                        "description": "The shape of the returned row, defaults to \"cells\". With \"object\" a row is one object with a property per column, keyed by its technical name and null without a value: datetimes with the offset of the instance timezone, links as {title, url, providerId}, relations as the uuid of the target row (its row id while it has no uuid yet, null when it no longer exists), and the metadata in @self, with its times in UTC; only available as JSON",
+                        "schema": {
+                            "type": "string",
+                            "nullable": true,
+                            "default": null,
+                            "enum": [
+                                "cells",
+                                "object"
+                            ]
+                        }
+                    },
+                    {
                         "name": "OCS-APIRequest",
                         "in": "header",
                         "description": "Required to be true for the API request to pass",
@@ -16947,7 +17157,14 @@
                                                     "$ref": "#/components/schemas/OCSMeta"
                                                 },
                                                 "data": {
-                                                    "$ref": "#/components/schemas/Row"
+                                                    "anyOf": [
+                                                        {
+                                                            "$ref": "#/components/schemas/Row"
+                                                        },
+                                                        {
+                                                            "$ref": "#/components/schemas/RowObject"
+                                                        }
+                                                    ]
                                                 }
                                             }
                                         }
@@ -16995,7 +17212,7 @@
                         }
                     },
                     "400": {
-                        "description": "Invalid row identifier, or the table or view is federated",
+                        "description": "Invalid row identifier, an unknown shape or the object shape for a response that is not JSON, or the table or view is federated",
                         "content": {
                             "application/json": {
                                 "schema": {

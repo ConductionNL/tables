@@ -231,6 +231,7 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$found = $this->rowService->findPage($this->query(['fields' => 'name', 'sort' => 'name', 'limit' => '1']), self::$testTableId, null, 'test_user');
 
 		$this->assertSame([$this->columnsByName['name']->getId()], array_column($found['rows'][0]->getData(), 'columnId'));
+		$this->assertSame(['name'], array_keys($found['rows'][0]->getColumnsByAlias()));
 	}
 
 	public function testOnlyMetadataStillReturnsTheRows(): void {
@@ -238,6 +239,56 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 
 		$this->assertCount(5, $found['rows']);
 		$this->assertSame([], $found['rows'][0]->getData());
+		$this->assertSame([], $found['rows'][0]->getColumnsByAlias());
+	}
+
+	public function testEveryReturnedColumnIsCarriedWithTheRow(): void {
+		$found = $this->rowService->findPage($this->query([]), self::$testTableId, null, 'test_user');
+
+		foreach ($found['rows'] as $row) {
+			$this->assertSame(array_keys($this->columnsByName), array_keys($row->getColumnsByAlias()));
+		}
+	}
+
+	public static function sharedColumnMapProvider(): array {
+		return [
+			'all columns' => [[], null],
+			'fields' => [['fields' => 'name,age'], null],
+			'metadata only' => [['fields' => 'id'], null],
+			'view' => [[], ['name', 'department']],
+		];
+	}
+
+	/**
+	 * @dataProvider sharedColumnMapProvider
+	 * @param list<string>|null $viewColumns
+	 */
+	public function testTheRowsOfOneListingShareOneColumnMap(array $parameters, ?array $viewColumns): void {
+		$viewId = null;
+		if ($viewColumns !== null) {
+			$view = new View();
+			$view->setId(self::VIEW_ID);
+			$view->setTableId(self::$testTableId);
+			$view->setColumns(json_encode(array_map(fn (string $name): int => $this->columnsByName[$name]->getId(), $viewColumns)));
+			$this->viewMapper->method('find')->willReturn($view);
+			$viewId = self::VIEW_ID;
+		}
+
+		$found = $this->rowService->findPage($this->query($parameters), $viewId === null ? self::$testTableId : null, $viewId, 'test_user');
+		$this->assertCount(5, $found['rows']);
+		$columnsByAlias = $found['rows'][0]->getColumnsByAlias();
+		foreach ($found['rows'] as $row) {
+			$this->assertSame($columnsByAlias, $row->getColumnsByAlias());
+		}
+		if ($columnsByAlias === []) {
+			return;
+		}
+
+		ob_start();
+		debug_zval_dump($columnsByAlias);
+		$dump = (string)ob_get_clean();
+		$this->assertSame(1, preg_match('/^array\(\d+\) refcount\((\d+)\)/', $dump, $matches), $dump);
+		$this->assertGreaterThan(count($found['rows']), (int)$matches[1], 'Each row holds its own copy of the column map.');
 	}
 
 	public function testARequestFilterNeverWidensTheView(): void {
@@ -251,6 +302,23 @@ class RowServiceFindPageTest extends DatabaseTestCase {
 		$found = $this->rowService->findPage($this->query(['filter' => ['name' => ['is-not-equal' => 'Charlie']], 'sort' => 'name']), null, self::VIEW_ID, 'test_user');
 
 		$this->assertSame(['names' => ['Alice', 'Eve'], 'total' => 2], $this->namesOf($found));
+	}
+
+	public function testAViewCarriesOnlyItsOwnColumnsWithItsRows(): void {
+		$view = new View();
+		$view->setId(self::VIEW_ID);
+		$view->setTableId(self::$testTableId);
+		$view->setColumns(json_encode([$this->columnsByName['name']->getId(), $this->columnsByName['department']->getId()]));
+		$this->viewMapper->method('find')->willReturn($view);
+
+		$found = $this->rowService->findPage($this->query(['sort' => 'name']), null, self::VIEW_ID, 'test_user');
+		$this->assertNotSame([], $found['rows']);
+		foreach ($found['rows'] as $row) {
+			$this->assertSame(['name', 'department'], array_keys($row->getColumnsByAlias()));
+		}
+
+		$single = $this->rowService->findInNode($found['rows'][0]->getId(), null, self::VIEW_ID, 'test_user');
+		$this->assertSame(['name', 'department'], array_keys($single->getColumnsByAlias()));
 	}
 
 	public function testASearchInAViewWithoutSearchableColumnsReturnsNothing(): void {

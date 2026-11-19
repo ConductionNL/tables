@@ -113,6 +113,29 @@ class RowSleeveMapper extends QBMapper {
 	}
 
 	/**
+	 * @param int[] $ids
+	 * @return array<int, ?string> the uuid per row id of the rows that exist, null for a row that has no uuid yet
+	 * @throws Exception
+	 */
+	public function findUuidsByIds(array $ids): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('id', 'uuid')
+			->from($this->table)
+			->where($qb->expr()->in('id', $qb->createParameter('chunk')));
+
+		$uuids = [];
+		foreach (array_chunk(array_values(array_unique($ids)), self::DB_CHUNK_SIZE) as $chunk) {
+			$qb->setParameter('chunk', $chunk, IQueryBuilder::PARAM_INT_ARRAY);
+			$result = $qb->executeQuery();
+			while ($row = $result->fetchAssociative()) {
+				$uuids[(int)$row['id']] = $row['uuid'] === null ? null : (string)$row['uuid'];
+			}
+			$result->closeCursor();
+		}
+		return $uuids;
+	}
+
+	/**
 	 * @param int $sleeveId
 	 * @throws Exception
 	 */

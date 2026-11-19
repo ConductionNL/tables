@@ -109,4 +109,43 @@ class RowSleeveMapperTest extends DatabaseTestCase {
 		$this->expectException(Exception::class);
 		$this->insertSleeve($this->createTable(), $uuid);
 	}
+
+	public function testFindUuidsByIdsReturnsTheUuidPerRowId(): void {
+		$tableId = $this->createTable();
+		$first = $this->insertSleeve($tableId);
+		$second = $this->insertSleeve($tableId);
+
+		$uuids = $this->mapper->findUuidsByIds([$first->getId(), $second->getId(), $first->getId()]);
+
+		ksort($uuids);
+		$this->assertSame([$first->getId() => $first->getUuid(), $second->getId() => $second->getUuid()], $uuids);
+	}
+
+	public function testFindUuidsByIdsGivesNullForARowWithoutAUuidAndLeavesOutMissingRows(): void {
+		$tableId = $this->createTable();
+		$withUuid = $this->insertSleeve($tableId);
+		$withoutUuid = $this->insertSleeve($tableId);
+		$qb = $this->connection->getQueryBuilder();
+		$qb->update('tables_row_sleeves')
+			->set('uuid', $qb->createNamedParameter(null))
+			->where($qb->expr()->eq('id', $qb->createNamedParameter($withoutUuid->getId())))
+			->executeStatement();
+
+		$uuids = $this->mapper->findUuidsByIds([$withUuid->getId(), $withoutUuid->getId(), $withoutUuid->getId() + 1000]);
+
+		ksort($uuids);
+		$this->assertSame([$withUuid->getId() => $withUuid->getUuid(), $withoutUuid->getId() => null], $uuids);
+	}
+
+	public function testFindUuidsByIdsReadsEveryChunk(): void {
+		$tableId = $this->createTable();
+		$first = $this->insertSleeve($tableId);
+		$last = $this->insertSleeve($tableId);
+		$missingIds = range($last->getId() + 1, $last->getId() + 1500);
+
+		$uuids = $this->mapper->findUuidsByIds([$first->getId(), ...$missingIds, $last->getId()]);
+
+		ksort($uuids);
+		$this->assertSame([$first->getId() => $first->getUuid(), $last->getId() => $last->getUuid()], $uuids);
+	}
 }

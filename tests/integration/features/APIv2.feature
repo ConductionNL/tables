@@ -642,6 +642,87 @@ Feature: APIv2
     Then the reported status is 200
 
   @api2 @rows
+  Scenario: Read rows via v2 in the object shape
+    Given table "Object shape" with emoji "🧩" exists for user "participant1-v2" as "base1" via v2
+    And column "one" exists with following properties
+      | type          | text                    |
+      | subtype       | line                    |
+      | mandatory     | 0                       |
+    And column "two" exists with following properties
+      | type          | number                  |
+      | mandatory     | 0                       |
+    And column "four" exists with following properties
+      | type          | datetime                |
+      | subtype       | date                    |
+      | mandatory     | 0                       |
+    When row exists using v2 with following values
+      | one           | AHA                     |
+      | four          | 2023-12-24              |
+    And the rows of the table are listed using v2 in the object shape
+    Then the object of the last created row has following values
+      | one           | "AHA"                   |
+      | two           | null                    |
+      | four          | "2023-12-24"            |
+
+  @api2 @rows
+  Scenario: Read rows of a table and a view via v2 in the object shape
+    Given table "Object targets" with emoji "🎯" exists for user "participant1-v2" as "object-targets" via v2
+    And column "label" exists with following properties
+      | type          | text                    |
+      | subtype       | line                    |
+      | mandatory     | 0                       |
+    And using table "object-targets"
+    And user "participant1-v2" creates row "target" with following values:
+      | label         | Target                  |
+    And table "Object shape" with emoji "🧩" exists for user "participant1-v2" as "object-shape" via v2
+    And column "name" exists with following properties
+      | type          | text                    |
+      | subtype       | line                    |
+      | mandatory     | 0                       |
+    And column "meeting" exists with following properties
+      | type          | datetime                |
+      | mandatory     | 0                       |
+    And column "starts" exists with following properties
+      | type          | datetime                |
+      | subtype       | time                    |
+      | mandatory     | 0                       |
+    And column "website" exists with following properties
+      | type          | text                    |
+      | subtype       | link                    |
+      | textAllowedPattern | url                |
+      | mandatory     | 0                       |
+    And relation column "project" exists on table "object-shape" pointing to table "object-targets" using label column "label"
+    And using table "object-shape"
+    And user "participant1-v2" creates row "first" relating "project" to row "target" with following values:
+      | name          | AHA                     |
+      | meeting       | 2026-10-16 14:30        |
+      | starts        | 09:30                   |
+      | website       | {"title":"Nextcloud","subline":"URL","providerId":"url","value":"https://nextcloud.com"} |
+    And user "participant1-v2" creates row "second" with following values:
+      | name          | Empty                   |
+    When user "participant1-v2" lists the rows of table "object-shape" using v2 in the object shape
+    Then the listed objects have exactly the properties "name,meeting,starts,website,project"
+    And the listed object of row "first" has following values
+      | name          | "AHA"                   |
+      | meeting       | "2026-10-16T14:30:00+00:00" |
+      | starts        | "09:30"                 |
+      | website       | {"title":"Nextcloud","url":"https://nextcloud.com","providerId":"url"} |
+    And the listed object of row "first" has the uuid of row "target" as "project"
+    And the listed object of row "second" has following values
+      | name          | "Empty"                 |
+      | meeting       | null                    |
+      | starts        | null                    |
+      | website       | null                    |
+      | project       | null                    |
+    When user "participant1-v2" create view "Object view" with emoji "👁" for "object-shape" as "object-view"
+    And user "participant1-v2" sets columnSettings "name,project" to view "object-view"
+    And user "participant1-v2" lists the rows of view "object-view" using v2 in the object shape
+    Then the listed objects have exactly the properties "name,project"
+    And the listed object of row "first" has following values
+      | name          | "AHA"                   |
+    And the listed object of row "first" has the uuid of row "target" as "project"
+
+  @api2 @rows
   Scenario: Try to create rows via v2 with permissions
     Given table "Rows check" with emoji "👨🏻‍💻" exists for user "participant1-v2" as "base1" via v2
     And column "one" exists with following properties
