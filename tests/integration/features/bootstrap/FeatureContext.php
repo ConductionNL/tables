@@ -74,6 +74,7 @@ class FeatureContext implements Context {
 	private ?array $relationsData = null;
 	/** @var list<array<string, mixed>> */
 	private array $listedObjects = [];
+	private ?\SimpleXMLElement $xmlData = null;
 
 	/**
 	 * FeatureContext constructor.
@@ -1770,6 +1771,102 @@ class FeatureContext implements Context {
 		$this->sendOcsRequest('GET', sprintf('/apps/tables/api/2/%ss/%d/rows?shape=object', $nodeType, $node['id']));
 		Assert::assertEquals(200, $this->response->getStatusCode());
 		$this->listedObjects = $this->getDataFromResponse($this->response)['ocs']['data']['results'];
+	}
+
+	/**
+	 * @When user :user gets row :rowAlias of :nodeType :nodeAlias using v2 in the object shape as XML
+	 */
+	public function userGetsRowV2InTheObjectShapeAsXml(string $user, string $rowAlias, string $nodeType, string $nodeAlias): void {
+		$this->setCurrentUser($user);
+		$node = $this->collectionManager->getByAlias($nodeType, $nodeAlias);
+		$row = $this->collectionManager->getByAlias('row', $rowAlias);
+		$this->sendOcsRequest('GET', sprintf('/apps/tables/api/2/%ss/%d/rows/%s?shape=object&format=xml', $nodeType, $node['id'], $row['uuid']));
+		$this->xmlData = $this->xmlDataFromResponse();
+	}
+
+	/**
+	 * @When user :user creates a row in :nodeType :nodeAlias using v2 in the object shape as XML with
+	 *
+	 * @param TableNode $properties property names and values as JSON
+	 */
+	public function userCreatesRowV2InTheObjectShapeAsXml(string $user, string $nodeType, string $nodeAlias, TableNode $properties): void {
+		$this->setCurrentUser($user);
+		$node = $this->collectionManager->getByAlias($nodeType, $nodeAlias);
+		$data = [];
+		foreach ($properties->getRows() as $row) {
+			$data[$row[0]] = json_decode($row[1], true, 512, JSON_THROW_ON_ERROR);
+		}
+		$this->sendOcsRequest('POST', sprintf('/apps/tables/api/2/%ss/%d/rows?format=xml', $nodeType, $node['id']), [
+			'data' => json_encode($data, JSON_THROW_ON_ERROR),
+			'shape' => 'object',
+		]);
+		$this->xmlData = $this->xmlDataFromResponse();
+	}
+
+	private function xmlDataFromResponse(): \SimpleXMLElement {
+		$body = (string)$this->response->getBody();
+		Assert::assertStringStartsWith('application/xml', $this->response->getHeaderLine('Content-Type'), $body);
+		$document = simplexml_load_string($body);
+		Assert::assertNotFalse($document, $body);
+		return $document->data;
+	}
+
+	/**
+	 * @Then the XML object is row :rowAlias with following values
+	 *
+	 * @param TableNode $properties column aliases and the expected inner XML of their element, or nil
+	 */
+	public function theXmlObjectIsRowWithFollowingValues(string $rowAlias, TableNode $properties): void {
+		Assert::assertEquals(200, $this->response->getStatusCode());
+		$row = $this->collectionManager->getByAlias('row', $rowAlias);
+		Assert::assertSame($row['uuid'], (string)$this->xmlData->self['id']);
+		Assert::assertSame((string)$row['id'], (string)$this->xmlData->self['rowId']);
+		foreach ($properties->getRows() as $property) {
+			$technicalName = $this->collectionManager->getByAlias('column', $property[0])['technicalName'];
+			$element = $this->xmlData->{$technicalName};
+			Assert::assertCount(1, $element, $technicalName);
+			$this->assertXmlValue($property[1], $element, $technicalName);
+		}
+	}
+
+	/**
+	 * @Then the XML object of row :rowAlias has the uuid of row :targetRowAlias as :columnAlias
+	 */
+	public function theXmlObjectRelatesTo(string $rowAlias, string $targetRowAlias, string $columnAlias): void {
+		Assert::assertSame($this->collectionManager->getByAlias('row', $rowAlias)['uuid'], (string)$this->xmlData->self['id']);
+		$technicalName = $this->collectionManager->getByAlias('column', $columnAlias)['technicalName'];
+		Assert::assertSame($this->collectionManager->getByAlias('row', $targetRowAlias)['uuid'], (string)$this->xmlData->{$technicalName});
+	}
+
+	/**
+	 * @Then the XML validation error has following errors
+	 *
+	 * @param TableNode $errors property names and the expected message
+	 */
+	public function theXmlValidationErrorHasFollowingErrors(TableNode $errors): void {
+		Assert::assertEquals(400, $this->response->getStatusCode());
+		$actual = [];
+		foreach ($this->xmlData->errors->children() as $name => $element) {
+			$actual[$name === 'element' ? (string)$element['name'] : $name] = $name === 'element' ? (string)$element->value : (string)$element;
+		}
+		$expected = $errors->getRowsHash();
+		ksort($expected);
+		ksort($actual);
+		Assert::assertSame($expected, $actual);
+	}
+
+	private function assertXmlValue(string $expected, \SimpleXMLElement $element, string $name): void {
+		if ($expected === 'nil') {
+			Assert::assertSame('true', (string)$element['nil'], $name);
+			Assert::assertSame('', (string)$element, $name);
+			return;
+		}
+		Assert::assertNull($element['nil'], $name);
+		$inner = '';
+		foreach ($element->children() as $child) {
+			$inner .= $child->asXML();
+		}
+		Assert::assertSame($expected, $inner === '' ? (string)$element : $inner, $name);
 	}
 
 	/**

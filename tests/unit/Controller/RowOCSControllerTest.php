@@ -21,6 +21,7 @@ use OCA\Tables\Model\RowListQuery;
 use OCA\Tables\Model\RowObjectInput;
 use OCA\Tables\Service\FederationService;
 use OCA\Tables\Service\RowObjectSerializer;
+use OCA\Tables\Service\RowObjectXmlShaper;
 use OCA\Tables\Service\RowService;
 use OCA\Tables\Service\TableService;
 use OCA\Tables\Service\ViewService;
@@ -60,6 +61,7 @@ class RowOCSControllerTest extends TestCase {
 			$this->createMock(ViewService::class),
 			$this->federationService,
 			$this->rowObjectSerializer,
+			new RowObjectXmlShaper(),
 		);
 	}
 
@@ -281,37 +283,88 @@ class RowOCSControllerTest extends TestCase {
 	/**
 	 * @dataProvider xmlResponseFormat
 	 */
-	public function testObjectShapeIsRefusedForAnXmlResponse(?string $format): void {
+	public function testObjectShapeIsReadAsXmlForAnXmlResponse(?string $format): void {
 		$this->responseFormat = $format;
 		$this->rowService->method('resolveRowId')->willReturn(7);
 		$this->rowService->method('findInNode')->willReturn($this->row(7));
 		$this->rowService->method('findPage')->willReturn(['rows' => [$this->row(7)], 'total' => 1]);
-		$this->rowObjectSerializer->method('serialize')->willReturn(['@self' => ['id' => self::UUID], 'name' => 'Alice']);
-		$this->rowObjectSerializer->method('serializeAll')->willReturn([['@self' => ['id' => self::UUID], 'name' => 'Alice']]);
+		$object = ['@self' => ['id' => self::UUID, 'rowId' => 7, 'updatedBy' => null], 'name' => 'Alice', 'age' => null];
+		$this->rowObjectSerializer->method('serialize')->willReturn($object);
+		$this->rowObjectSerializer->method('serializeAll')->willReturn([$object]);
+		$shaped = ['self' => ['@attributes' => ['id' => self::UUID, 'rowId' => '7']], 'name' => 'Alice', 'age' => ['@attributes' => ['nil' => 'true']]];
 
-		foreach ([$this->controller->getRow('tables', 3, self::UUID, 'object'), $this->controller->getRows('tables', 3, shape: 'object')] as $response) {
-			$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
-			$this->assertSame(['message' => 'The object shape is only available as JSON.'], $response->getData());
-			$this->assertStringContainsString('<message>The object shape is only available as JSON.</message>', (new V2Response($response, 'xml'))->render());
-		}
-		$this->assertSame(Http::STATUS_OK, $this->controller->getRow('tables', 3, self::UUID, 'cells')->getStatus());
-		$this->assertSame(Http::STATUS_OK, $this->controller->getRows('tables', 3, shape: 'cells')->getStatus());
+		$row = $this->controller->getRow('tables', 3, self::UUID, 'object');
+		$rows = $this->controller->getRows('tables', 3, shape: 'object');
+
+		$this->assertSame(Http::STATUS_OK, $row->getStatus());
+		$this->assertSame($shaped, $row->getData());
+		$this->assertSame(Http::STATUS_OK, $rows->getStatus());
+		$this->assertSame([$shaped], $rows->getData()['results']);
+		$xml = simplexml_load_string((new V2Response($row, 'xml'))->render());
+		$this->assertSame(self::UUID, (string)$xml->data->self['id']);
+		$this->assertSame('Alice', (string)$xml->data->name);
+		$this->assertSame('true', (string)$xml->data->age['nil']);
 	}
 
 	/**
 	 * @dataProvider xmlResponseFormat
 	 */
-	public function testAnObjectShapeWriteIsRefusedForAnXmlResponseBeforeAnythingIsWritten(?string $format): void {
+	public function testAnObjectShapeWriteIsAnsweredAsXmlForAnXmlResponse(?string $format): void {
 		$this->responseFormat = $format;
-		$this->rowService->expects($this->never())->method('create');
-		$this->rowService->expects($this->never())->method('updateSet');
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->expects($this->once())->method('create')->willReturn($this->row(7));
+		$this->rowService->expects($this->once())->method('updateSet')->willReturn($this->row(7));
+		$this->rowObjectSerializer->method('serialize')->willReturn(['@self' => ['rowId' => 7], 'done' => true]);
 
 		foreach ([
-			$this->controller->createRow('tables', 3, ['name' => 'Alice'], 'object'),
-			$this->controller->updateRow('tables', 3, self::UUID, ['name' => 'Alice'], 'object'),
+			$this->controller->createRow('tables', 3, ['done' => true], 'object'),
+			$this->controller->updateRow('tables', 3, self::UUID, ['done' => true], 'object'),
+		] as $response) {
+			$this->assertSame(Http::STATUS_OK, $response->getStatus());
+			$this->assertSame(['self' => ['@attributes' => ['rowId' => '7']], 'done' => 'true'], $response->getData());
+		}
+	}
+
+	public function testTheObjectShapeIsNotShapedForXmlInAJsonResponse(): void {
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('findInNode')->willReturn($this->row(7));
+		$object = ['@self' => ['id' => self::UUID, 'updatedBy' => null], 'done' => true, 'age' => null];
+		$this->rowObjectSerializer->method('serialize')->willReturn($object);
+
+		$this->assertSame($object, $this->controller->getRow('tables', 3, self::UUID, 'object')->getData());
+	}
+
+	/**
+	 * @dataProvider xmlResponseFormat
+	 */
+	public function testTheCellsShapeIsNotShapedForXml(?string $format): void {
+		$this->responseFormat = $format;
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('findInNode')->willReturn($this->row(7));
+		$this->rowObjectSerializer->expects($this->never())->method('serialize');
+
+		$this->assertSame($this->row(7)->jsonSerialize(), $this->controller->getRow('tables', 3, self::UUID, 'cells')->getData());
+	}
+
+	/**
+	 * @dataProvider xmlResponseFormat
+	 */
+	public function testInvalidValuesAreNamedInTheXmlResponse(?string $format): void {
+		$this->responseFormat = $format;
+		$this->rowService->method('resolveRowId')->willReturn(7);
+		$this->rowService->method('create')->willThrowException(new RowValidationError(['age' => 'Expected a number.', 'first name' => 'There is no column with this technical name.']));
+		$this->rowService->method('updateSet')->willThrowException(new RowValidationError(['age' => 'Expected a number.', 'first name' => 'There is no column with this technical name.']));
+
+		foreach ([
+			$this->controller->createRow('tables', 3, ['age' => 'many', 'first name' => 'x'], 'object'),
+			$this->controller->updateRow('tables', 3, '7', ['age' => 'many', 'first name' => 'x'], 'object'),
 		] as $response) {
 			$this->assertSame(Http::STATUS_BAD_REQUEST, $response->getStatus());
-			$this->assertSame(['message' => 'The object shape is only available as JSON.'], $response->getData());
+			$xml = simplexml_load_string((new V2Response($response, 'xml'))->render());
+			$this->assertSame('The row has 2 invalid values.', (string)$xml->data->message);
+			$this->assertSame('Expected a number.', (string)$xml->data->errors->age);
+			$this->assertSame('first name', (string)$xml->data->errors->element['name']);
+			$this->assertSame('There is no column with this technical name.', (string)$xml->data->errors->element->value);
 		}
 	}
 
