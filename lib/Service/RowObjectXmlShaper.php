@@ -21,7 +21,9 @@ use OCA\Tables\ResponseDefinitions;
  *   (a letter or `_`, then letters, digits, `_`, `.` or `-`), or that is `element` (or
  *   `self` for a row), becomes `<element name="KEY">`, with the value in `<value>` when
  *   it is not a list or an object, because an OCS element cannot have attributes and
- *   text;
+ *   text; so under the fallback a scalar `"x"` and an object `{"value": "x"}` render
+ *   the same, which no column type runs into, because none gives an object with a
+ *   `value` property;
  * - null becomes an empty element with `nil="true"`, unprefixed because an undeclared
  *   prefix such as `xsi:` is not namespace-well-formed; an empty string or an empty list
  *   becomes an empty element without it;
