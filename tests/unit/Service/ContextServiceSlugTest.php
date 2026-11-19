@@ -450,6 +450,7 @@ final class ContextServiceSlugTest extends TestCase {
 			return $context;
 		});
 		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true]);
+		$this->givePagesIds();
 		$this->contextMapper->expects($this->once())->method('update')
 			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'application-7-2'))
 			->willReturnArgument(0);
@@ -637,6 +638,7 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->contextMapper->method('update')->willReturnArgument(0);
 		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
 		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$this->givePagesIds();
 		$inserted = [];
 		$this->contextNodeRelMapper->method('insert')
 			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
@@ -672,6 +674,18 @@ final class ContextServiceSlugTest extends TestCase {
 		], 3);
 
 		$this->assertSame(['table-5-2', 'table-5'], $insertedSlugs);
+	}
+
+	private function givePagesIds(): void {
+		$this->pageMapper->method('insert')->willReturnCallback(static function (Page $page): Page {
+			$page->setId(3);
+			return $page;
+		});
+		$contentId = 20;
+		$this->pageContentMapper->method('insert')->willReturnCallback(static function (PageContent $content) use (&$contentId): PageContent {
+			$content->setId($contentId++);
+			return $content;
+		});
 	}
 
 	/**
