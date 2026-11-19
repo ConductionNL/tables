@@ -186,6 +186,14 @@ class RowObjectInputConverterTest extends TestCase {
 		$this->assertFalse($this->isReadAs($this->column(1, $type, $subtype), $given, $stored));
 	}
 
+	public function testARelationToATargetWithoutAUuidIsReadAsItsRowIdOnlyAsAnInteger(): void {
+		$this->rowSleeveMapper->method('findUuidsByIds')->willReturn([42 => null]);
+		$column = $this->column(1, Column::TYPE_RELATION);
+
+		$this->assertTrue($this->isReadAs($column, 42, 42));
+		$this->assertFalse($this->isReadAs($column, '42', 42));
+	}
+
 	private function isReadAs(Column $column, mixed $given, mixed $stored): bool {
 		$name = RowObjectInputConverter::nameOf($column);
 		return $this->converter->findValuesAsRead([$name => $given], [$name => $column], [$column->getId() => $stored]) === [$name => true];

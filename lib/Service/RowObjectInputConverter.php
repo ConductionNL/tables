@@ -124,7 +124,8 @@ class RowObjectInputConverter {
 
 	private function matchesRead(Column $column, mixed $given, mixed $stored, mixed $read): bool {
 		if ($column->getType() === Column::TYPE_RELATION && $read !== null && !self::isEmpty($given)) {
-			// a string is a uuid or a label, as the relation type reads it, never the row id itself
+			// only an int is the row id here; a string may be a label, which the relation type
+			// looks up before an id, so it is compared as a uuid and otherwise resolved on write
 			if (is_int($given)) {
 				return (int)$given === (int)$stored;
 			}
