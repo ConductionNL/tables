@@ -32,6 +32,7 @@ use OCA\Tables\Model\FilterSet;
 use OCA\Tables\Model\SortRuleSet;
 use OCA\Tables\Model\ViewSettings;
 use OCA\Tables\Service\Support\AuditLogServiceInterface;
+use OCA\Tables\Validation\SlugValidator;
 use OCP\AppFramework\Db\DoesNotExistException;
 use OCP\AppFramework\Db\MultipleObjectsReturnedException;
 use OCP\AppFramework\Db\TTransactional;
@@ -130,10 +131,18 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
-	 * @throws Exception|PermissionError|InvalidArgumentException
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
+	 * @param ?string $slug unique among the owner's applications; application-{id} when null
+	 * @throws Exception|PermissionError|InvalidArgumentException|BadRequestError
 	 */
-	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType): Context {
+	public function create(string $name, string $iconName, string $description, array $nodes, string $ownerId, int $ownerType, ?string $slug = null): Context {
+		if ($slug !== null) {
+			$this->assertSlugValid($slug);
+			if (isset($this->contextMapper->findSlugsForOwner($ownerType, $ownerId)[$slug])) {
+				throw new BadRequestError('The slug ' . $slug . ' is already used by another application of the owner.');
+			}
+		}
+
 		$context = new Context();
 		$context->setName(trim($name));
 		$context->setIcon(trim($iconName));
@@ -141,8 +150,8 @@ class ContextService {
 		$context->setOwnerId($ownerId);
 		$context->setOwnerType($ownerType);
 
-		$this->atomic(function () use ($context, $nodes): void {
-			$this->contextMapper->insert($context);
+		$this->atomic(function () use ($context, $nodes, $slug): void {
+			$this->insertContext($context, $slug);
 
 			if (!empty($nodes)) {
 				$context->resetUpdatedFields();
@@ -160,10 +169,16 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
+	 * Slugs are fixed once given: a node the application keeps cannot get a new
+	 * slug. The slugs in the request are checked against the nodes the
+	 * application has after the update, before anything is written, so an added
+	 * node can take the slug of a node removed in the same request. All changes
+	 * are written in one transaction.
+	 *
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
 	 * @throws Exception
 	 * @throws DoesNotExistException
-	 * @throws PermissionError|MultipleObjectsReturnedException
+	 * @throws PermissionError|MultipleObjectsReturnedException|BadRequestError
 	 */
 	public function update(int $contextId, string $userId, ?string $name, ?string $iconName, ?string $description, ?array $nodes): Context {
 		$context = $this->contextMapper->findById($contextId, $userId);
@@ -178,6 +193,73 @@ class ContextService {
 			$context->setDescription(trim($description));
 		}
 
+		if ($nodes !== null) {
+			$this->assertNodeSlugsAfterUpdate($context, $nodes);
+		}
+
+		/** @var array{0: Context, 1: list<array{nodeType: int, nodeId: int}>, 2: list<array{nodeType: int, nodeId: int}>, 3: list<array{nodeType: int, nodeId: int, previousPermissions: int, permissions: int}>} $result */
+		$result = $this->atomic(fn (): array => $this->writeUpdate($context, $userId, $nodes), $this->dbc);
+		[$context, $addedNodes, $removedNodes, $updatedNodes] = $result;
+
+		$this->auditLogService->log(Operation::ContextUpdated, 'Tables application with ID %s was updated', [
+			'contextId' => $contextId,
+			'addedNodes' => $addedNodes,
+			'removedNodes' => $removedNodes,
+			'updatedNodes' => $updatedNodes,
+		]);
+
+		return $context;
+	}
+
+	/**
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
+	 * @throws BadRequestError
+	 */
+	private function assertNodeSlugsAfterUpdate(Context $context, array $nodes): void {
+		$currentSlugs = [];
+		foreach ($context->getNodes() ?? [] as $currentNode) {
+			$currentSlugs[sprintf('t%di%d', $currentNode['node_type'], $currentNode['node_id'])] = $currentNode['slug'] ?? null;
+		}
+
+		// like the update itself, the last entry wins for a node listed more than once
+		$nodesByKey = [];
+		foreach ($nodes as $node) {
+			$nodesByKey[sprintf('t%di%d', $node['type'], $node['id'])] = $node;
+		}
+
+		$slugsAfterUpdate = [];
+		foreach ($nodesByKey as $key => $node) {
+			$requestedSlug = $node['slug'] ?? null;
+			if (array_key_exists($key, $currentSlugs)) {
+				if ($requestedSlug !== null && $requestedSlug !== $currentSlugs[$key]) {
+					throw new BadRequestError('The slug of a node in an application cannot be changed.');
+				}
+				$slugAfterUpdate = $currentSlugs[$key];
+			} else {
+				if ($requestedSlug !== null) {
+					$this->assertSlugValid($requestedSlug);
+				}
+				$slugAfterUpdate = $requestedSlug;
+			}
+			if ($slugAfterUpdate === null) {
+				continue;
+			}
+			if (isset($slugsAfterUpdate[$slugAfterUpdate])) {
+				throw new BadRequestError('The slug ' . $slugAfterUpdate . ' is already used in this application.');
+			}
+			$slugsAfterUpdate[$slugAfterUpdate] = true;
+		}
+	}
+
+	/**
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}>|null $nodes
+	 * @return array{0: Context, 1: list<array{nodeType: int, nodeId: int}>, 2: list<array{nodeType: int, nodeId: int}>, 3: list<array{nodeType: int, nodeId: int, previousPermissions: int, permissions: int}>}
+	 * @throws Exception
+	 * @throws DoesNotExistException
+	 * @throws PermissionError|MultipleObjectsReturnedException|BadRequestError
+	 */
+	private function writeUpdate(Context $context, string $userId, ?array $nodes): array {
+		$contextId = $context->getId();
 		$hasUpdatedNodeInformation = false;
 		$addedNodes = [];
 		$removedNodes = [];
@@ -203,20 +285,6 @@ class ContextService {
 				$key = sprintf('t%di%d', $node['type'], $node['id']);
 				if (isset($oldNodeResolvableIdMapper[$key])) {
 					$nodesBeingKept[$key] = $node;
-					if ($node['permissions'] !== $currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions']) {
-						$nodeRel = $this->contextNodeRelMapper->findById($currentNodes[$oldNodeResolvableIdMapper[$key]]['id']);
-						$updatedNodes[] = [
-							'nodeType' => $nodeRel->getNodeType(),
-							'nodeId' => $nodeRel->getNodeId(),
-							'previousPermissions' => $nodeRel->getPermissions(),
-							'permissions' => (int)$node['permissions'],
-						];
-						$nodeRel->setPermissions($node['permissions']);
-						$this->contextNodeRelMapper->update($nodeRel);
-						$currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions'] = $nodeRel->getPermissions();
-						$hasUpdatedNodeInformation = true;
-					}
-					unset($oldNodeResolvableIdMapper[$key]);
 					continue;
 				}
 				$nodesBeingAdded[$key] = $node;
@@ -225,10 +293,8 @@ class ContextService {
 			foreach (array_diff_key($oldNodeResolvableIdMapper, $nodesBeingAdded, $nodesBeingKept) as $toRemoveId) {
 				$nodesBeingRemoved[$toRemoveId] = $currentNodes[$toRemoveId];
 			}
-			unset($nodesBeingKept);
 
-			$hasUpdatedNodeInformation = $hasUpdatedNodeInformation || !empty($nodesBeingAdded) || !empty($nodesBeingRemoved);
-
+			// removals go first, so their slugs are free for the nodes that are added
 			foreach ($nodesBeingRemoved as $node) {
 				$removedNodes[] = ['nodeType' => (int)$node['node_type'], 'nodeId' => (int)$node['node_id']];
 				/** @var ContextNodeRelation $removedNode */
@@ -241,6 +307,29 @@ class ContextService {
 			}
 			unset($nodesBeingRemoved);
 
+			foreach ($nodesBeingKept as $key => $node) {
+				$currentNode = $currentNodes[$oldNodeResolvableIdMapper[$key]];
+				if ($node['permissions'] === $currentNode['permissions']) {
+					continue;
+				}
+				$nodeRel = $this->contextNodeRelMapper->findById($currentNode['id']);
+				$updatedNodes[] = [
+					'nodeType' => $nodeRel->getNodeType(),
+					'nodeId' => $nodeRel->getNodeId(),
+					'previousPermissions' => $nodeRel->getPermissions(),
+					'permissions' => (int)$node['permissions'],
+				];
+				$nodeRel->setPermissions($node['permissions']);
+				$this->contextNodeRelMapper->update($nodeRel);
+				$currentNodes[$oldNodeResolvableIdMapper[$key]]['permissions'] = $nodeRel->getPermissions();
+				$hasUpdatedNodeInformation = true;
+			}
+			unset($nodesBeingKept);
+
+			$hasUpdatedNodeInformation = $hasUpdatedNodeInformation || !empty($nodesBeingAdded) || !empty($removedNodes);
+
+			// a default slug must not take a slug that a later node of this request asks for
+			$requestedSlugs = self::requestedSlugs($nodesBeingAdded);
 			foreach ($nodesBeingAdded as $node) {
 				$nodeType = (int)($node['type']);
 				$nodeId = (int)($node['id']);
@@ -257,7 +346,9 @@ class ContextService {
 					$node['type'],
 					$node['permissions'],
 					$node['order'] ?? 100,
-					$userId
+					$userId,
+					$node['slug'] ?? null,
+					$requestedSlugs,
 				);
 				$currentNodes[$addedNode->getId()] = $addedNode->jsonSerialize();
 				$currentPages[$updatedContent->getPageId()]['content'][$updatedContent->getId()] = $updatedContent->jsonSerialize();
@@ -320,14 +411,7 @@ class ContextService {
 			$context->setNodes($currentNodes);
 			$context->setPages($currentPages);
 		}
-		$this->auditLogService->log(Operation::ContextUpdated, 'Tables application with ID %s was updated', [
-			'contextId' => $contextId,
-			'addedNodes' => $addedNodes,
-			'removedNodes' => $removedNodes,
-			'updatedNodes' => $updatedNodes,
-		]);
-
-		return $context;
+		return [$context, $addedNodes, $removedNodes, $updatedNodes];
 	}
 
 	/**
@@ -385,6 +469,11 @@ class ContextService {
 			throw new BadRequestError('User does not exist');
 		}
 
+		$isOwnerChanging = $newOwnerId !== $context->getOwnerId() || $newOwnerType !== $context->getOwnerType();
+		if ($isOwnerChanging && isset($this->contextMapper->findSlugsForOwner($newOwnerType, $newOwnerId)[$context->getSlug()])) {
+			throw new BadRequestError('The new owner already has an application with the slug ' . $context->getSlug() . '.');
+		}
+
 		$oldOwnerId = $context->getOwnerId();
 		$context->setOwnerId($newOwnerId);
 		$context->setOwnerType($newOwnerType);
@@ -395,6 +484,13 @@ class ContextService {
 				$this->shareService->transferSharesForContext($contextId, $newOwnerId, $oldOwnerId);
 				return $context;
 			}, $this->dbc);
+		} catch (Exception $e) {
+			$conflict = $this->toSlugConflict($e, 'The new owner already has an application with the slug ' . $context->getSlug() . '.');
+			if ($conflict instanceof BadRequestError) {
+				throw $conflict;
+			}
+			$this->logger->error('Failed to transfer context ownership: ' . $e->getMessage(), ['exception' => $e]);
+			throw new InternalError('Failed to transfer context ownership: ' . $e->getMessage());
 		} catch (\Exception $e) {
 			$this->logger->error('Failed to transfer context ownership: ' . $e->getMessage(), ['exception' => $e]);
 			throw new InternalError('Failed to transfer context ownership: ' . $e->getMessage());
@@ -414,9 +510,9 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId): ContextNodeRelation {
+	public function addNodeToContextById(int $contextId, int $nodeId, int $nodeType, int $permissions, ?string $userId, ?string $slug = null, array $reservedSlugs = []): ContextNodeRelation {
 		$context = $this->contextMapper->findById($contextId, $userId);
-		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions);
+		return $this->addNodeToContext($context, $nodeId, $nodeType, $permissions, $slug, $reservedSlugs);
 	}
 
 	/**
@@ -441,8 +537,8 @@ class ContextService {
 	 * @throws DoesNotExistException
 	 * @throws Exception
 	 */
-	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId): array {
-		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId);
+	public function addNodeToContextAndStartpage(int $contextId, int $nodeId, int $nodeType, int $permissions, int $order, string $userId, ?string $slug = null, array $reservedSlugs = []): array {
+		$relation = $this->addNodeToContextById($contextId, $nodeId, $nodeType, $permissions, $userId, $slug, $reservedSlugs);
 		$pageContent = $this->addNodeRelToPage($relation, $order);
 		return [$relation, $pageContent];
 	}
@@ -459,16 +555,61 @@ class ContextService {
 	}
 
 	/**
+	 * @param ?string $slug unique within the application; table-{id} or view-{id} when null
+	 * @param array<string, true> $reservedSlugs slugs a default slug must avoid, because other nodes of the same request ask for them
 	 * @throws Exception
+	 * @throws BadRequestError
 	 */
-	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions): ContextNodeRelation {
+	public function addNodeToContext(Context $context, int $nodeId, int $nodeType, int $permissions, ?string $slug = null, array $reservedSlugs = []): ContextNodeRelation {
+		if ($slug === null) {
+			$slug = self::uniqueSlug(
+				self::defaultNodeSlug($nodeType, $nodeId),
+				$this->contextNodeRelMapper->findSlugsByContextId($context->getId()) + $reservedSlugs,
+			);
+		} else {
+			$this->assertNodeSlugAvailable($context->getId(), $slug);
+		}
+
 		$contextNodeRel = new ContextNodeRelation();
 		$contextNodeRel->setContextId($context->getId());
 		$contextNodeRel->setNodeId($nodeId);
 		$contextNodeRel->setNodeType($nodeType);
 		$contextNodeRel->setPermissions($permissions);
+		$contextNodeRel->setSlug($slug);
 
-		return $this->contextNodeRelMapper->insert($contextNodeRel);
+		try {
+			return $this->contextNodeRelMapper->insert($contextNodeRel);
+		} catch (Exception $e) {
+			throw $this->toSlugConflict($e, 'The slug ' . $slug . ' is already used in this application.');
+		}
+	}
+
+	/**
+	 * Finds the table or view that an application, both given by slug,
+	 * calls by the given slug. A relation to any other node type is not found.
+	 *
+	 * @throws BadRequestError when more than one application the user can access has the slug
+	 * @throws NotFoundError
+	 * @throws Exception
+	 */
+	public function resolveNode(string $contextSlug, string $nodeSlug, string $userId): ContextNodeRelation {
+		$contextIds = $this->contextMapper->findIdsBySlug($contextSlug, $userId);
+		if ($contextIds === []) {
+			throw new NotFoundError('No application with the slug ' . $contextSlug . ' found.');
+		}
+		if (count($contextIds) > 1) {
+			throw new BadRequestError('The slug ' . $contextSlug . ' matches more than one application you can access.');
+		}
+
+		try {
+			$nodeRelation = $this->contextNodeRelMapper->findByContextAndSlug($contextIds[0], $nodeSlug);
+		} catch (DoesNotExistException|MultipleObjectsReturnedException $e) {
+			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.', 0, $e);
+		}
+		if (!in_array($nodeRelation->getNodeType(), [Application::NODE_TYPE_TABLE, Application::NODE_TYPE_VIEW], true)) {
+			throw new NotFoundError('The application ' . $contextSlug . ' has no table or view with the slug ' . $nodeSlug . '.');
+		}
+		return $nodeRelation;
 	}
 
 	public function addNodeRelToPage(ContextNodeRelation $nodeRel, ?int $order = null, ?int $pageId = null): PageContent {
@@ -543,6 +684,116 @@ class ContextService {
 		return $this->pageContentMapper->update($pageContent);
 	}
 
+	/**
+	 * Inserts the context under the given slug, or under
+	 * application-{id} when it is null. The id only exists after the insert, so the
+	 * row first gets a random slug that no client can choose, within one
+	 * transaction so the random slug never stays.
+	 *
+	 * @throws Exception
+	 * @throws BadRequestError when another request took the slug
+	 */
+	protected function insertContext(Context $context, ?string $slug): void {
+		if ($slug !== null) {
+			$context->setSlug($slug);
+			try {
+				$this->contextMapper->insert($context);
+			} catch (Exception $e) {
+				throw $this->toSlugConflict($e, 'The slug ' . $slug . ' is already used by another application of the owner.');
+			}
+			return;
+		}
+
+		$this->atomic(function () use ($context): void {
+			$context->setSlug('_' . bin2hex(random_bytes(16)));
+			$this->contextMapper->insert($context);
+			$context->setSlug(self::uniqueSlug(
+				'application-' . $context->getId(),
+				$this->contextMapper->findSlugsForOwner($context->getOwnerType(), $context->getOwnerId()),
+			));
+			$this->contextMapper->update($context);
+		}, $this->dbc);
+	}
+
+	/**
+	 * @throws BadRequestError
+	 */
+	private function assertSlugValid(string $slug): void {
+		if (SlugValidator::isTooLong($slug)) {
+			throw new BadRequestError('Slug must not exceed ' . SlugValidator::MAX_LENGTH . ' characters.');
+		}
+		if (!SlugValidator::hasValidCharacters($slug)) {
+			throw new BadRequestError('Slug must start with a lowercase letter and contain only lowercase letters and numbers, in groups separated by single dashes.');
+		}
+	}
+
+	/**
+	 * @throws BadRequestError
+	 * @throws Exception
+	 */
+	private function assertNodeSlugAvailable(int $contextId, string $slug): void {
+		$this->assertSlugValid($slug);
+		if (isset($this->contextNodeRelMapper->findSlugsByContextId($contextId)[$slug])) {
+			throw new BadRequestError('The slug ' . $slug . ' is already used in this application.');
+		}
+	}
+
+	/**
+	 * A unique constraint violation means another request took the slug
+	 * after it was checked.
+	 */
+	private function toSlugConflict(Exception $e, string $message): BadRequestError|Exception {
+		if ($e->getReason() === Exception::REASON_UNIQUE_CONSTRAINT_VIOLATION) {
+			return new BadRequestError($message, 0, $e);
+		}
+		return $e;
+	}
+
+	public static function defaultNodeSlug(int $nodeType, int $nodeId): string {
+		return ($nodeType === Application::NODE_TYPE_VIEW ? 'view-' : 'table-') . $nodeId;
+	}
+
+	/**
+	 * The base slug, or the base with the lowest free suffix -2, -3, ...
+	 *
+	 * @param array<string, true> $taken
+	 */
+	public static function uniqueSlug(string $base, array $taken): string {
+		$slug = $base;
+		for ($suffix = 2; isset($taken[$slug]); $suffix++) {
+			$slug = $base . '-' . $suffix;
+		}
+		return $slug;
+	}
+
+	/**
+	 * The valid slugs the given nodes ask for.
+	 *
+	 * @param array<array-key, array<string, mixed>> $nodes
+	 * @return array<string, true>
+	 */
+	private static function requestedSlugs(array $nodes): array {
+		$slugs = [];
+		foreach ($nodes as $node) {
+			if (isset($node['slug']) && is_string($node['slug']) && SlugValidator::isValid($node['slug'])) {
+				$slugs[$node['slug']] = true;
+			}
+		}
+		return $slugs;
+	}
+
+	/**
+	 * The requested slug when it is valid and free, else null.
+	 *
+	 * @param array<string, true> $taken
+	 */
+	private static function availableSlug(mixed $requested, array $taken): ?string {
+		if (!is_string($requested) || !SlugValidator::isValid($requested) || isset($taken[$requested])) {
+			return null;
+		}
+		return $requested;
+	}
+
 	protected function insertPage(Context $context): void {
 		$page = new Page();
 		$page->setContextId($context->getId());
@@ -572,13 +823,14 @@ class ContextService {
 	}
 
 	/**
-	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int}> $nodes
-	 * @throws PermissionError|InvalidArgumentException
+	 * @psalm-param list<array{id: int, type: int, permissions?: int, order?: int, slug?: string}> $nodes
+	 * @throws PermissionError|InvalidArgumentException|BadRequestError
 	 */
 	protected function insertNodesFromArray(Context $context, array $nodes): void {
 		$addedNodes = [];
 
 		$userId = $context->getOwnerType() === Application::OWNER_TYPE_USER ? $context->getOwnerId() : null;
+		$requestedSlugs = self::requestedSlugs($nodes);
 		foreach ($nodes as $node) {
 			try {
 				$nodeType = (int)($node['type']);
@@ -587,7 +839,7 @@ class ContextService {
 				if (!$this->permissionsService->canManageNodeById($nodeType, $nodeId, $userId)) {
 					throw new PermissionError(sprintf('Owner cannot manage node %d (type %d)', $nodeId, $nodeType));
 				}
-				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ);
+				$contextNodeRel = $this->addNodeToContext($context, $nodeId, $nodeType, $node['permissions'] ?? Application::PERMISSION_READ, $node['slug'] ?? null, $requestedSlugs);
 				$addedNodes[] = $contextNodeRel->jsonSerialize();
 			} catch (Exception $e) {
 				$this->logger->warning('Could not add node {ntype}/{nid} to context {cid}, skipping.', [
@@ -634,17 +886,28 @@ class ContextService {
 		$newContext->setDescription($context['description'] ?? '');
 		$newContext->setOwnerId($table->getOwnership() ?? '');
 		$newContext->setOwnerType($context['ownerType'] ?? 0);
-		$this->contextMapper->insert($newContext);
+		$this->insertContext($newContext, self::availableSlug(
+			$context['slug'] ?? null,
+			$this->contextMapper->findSlugsForOwner($newContext->getOwnerType(), $newContext->getOwnerId()),
+		));
 
 		// insert nodes
 		$nodeRelMap = [];
 		if (!empty($context['nodes'])) {
+			$takenNodeSlugs = [];
+			$requestedSlugs = self::requestedSlugs($context['nodes']);
 			foreach ($context['nodes'] as $nodeArr) {
+				$nodeType = (int)($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
+				$slug = self::availableSlug($nodeArr['slug'] ?? null, $takenNodeSlugs)
+					?? self::uniqueSlug(self::defaultNodeSlug($nodeType, $table->getId()), $takenNodeSlugs + $requestedSlugs);
+				$takenNodeSlugs[$slug] = true;
+
 				$contextNodeRel = new ContextNodeRelation();
 				$contextNodeRel->setContextId($newContext->getId());
 				$contextNodeRel->setNodeId($table->getId());
-				$contextNodeRel->setNodeType($nodeArr['node_type'] ?? $nodeArr['nodeType'] ?? 0);
+				$contextNodeRel->setNodeType($nodeType);
 				$contextNodeRel->setPermissions($nodeArr['permissions'] ?? 0);
+				$contextNodeRel->setSlug($slug);
 				$contextNodeRel = $this->contextNodeRelMapper->insert($contextNodeRel);
 				$nodeRelMap[$nodeArr['id'] ?? null] = $contextNodeRel;
 			}
@@ -729,6 +992,7 @@ class ContextService {
 			array_values($nodes),
 			$context->getPages(),
 			array_values($tables),
+			$context->getSlug(),
 		);
 	}
 
@@ -862,28 +1126,78 @@ class ContextService {
 			$tableService->updateTableStructure($table->getId(), $tableScheme['columns'], $tableScheme['views'], $tableScheme['columnOrder'], $tableScheme['sort'], $userId);
 		}
 
+		$context = $this->contextMapper->findById($contextId, $userId);
+		$currentNodeSlugs = [];
+		foreach ($context->getNodes() ?? [] as $currentNode) {
+			$currentNodeSlugs[sprintf('t%di%d', $currentNode['node_type'], $currentNode['node_id'])] = $currentNode['slug'];
+		}
+
 		// Resolve node ids for the new tables and views
 		$resolvedNodes = [];
 		foreach ($nodes as $node) {
 			if ($node['node_type'] === Application::NODE_TYPE_TABLE) {
-				$table = $this->tableMapper->findByUuid($node['node_uuid']);
-				$resolvedNodes[] = [
-					'id' => $table->getId(),
-					'type' => $node['node_type'],
-					'permissions' => $node['permissions'],
-				];
+				$nodeId = $this->tableMapper->findByUuid($node['node_uuid'])->getId();
 			} elseif ($node['node_type'] === Application::NODE_TYPE_VIEW) {
-				$view = $this->viewMapper->findByUuid($node['node_uuid']);
-				$resolvedNodes[] = [
-					'id' => $view->getId(),
-					'type' => $node['node_type'],
-					'permissions' => $node['permissions'],
-				];
+				$nodeId = $this->viewMapper->findByUuid($node['node_uuid'])->getId();
+			} else {
+				continue;
+			}
+			$resolvedNodes[] = [
+				'id' => $nodeId,
+				'type' => $node['node_type'],
+				'permissions' => $node['permissions'],
+				'slug' => $node['slug'] ?? null,
+			];
+		}
+
+		return $this->update(
+			$contextId,
+			$userId,
+			$name,
+			$iconName,
+			$description,
+			$this->withImportableNodeSlugs($resolvedNodes, $currentNodeSlugs),
+		);
+	}
+
+	/**
+	 * Nodes the application already has keep their slug. A new node takes the
+	 * slug from the scheme when it is valid and free, else it gets the default.
+	 * A node the scheme lists more than once is imported once, with its last entry and at its place.
+	 *
+	 * @param list<array{id: int, type: int, permissions: int, slug: mixed}> $nodes
+	 * @param array<string, string> $currentNodeSlugs
+	 * @return list<array{id: int, type: int, permissions: int, slug?: string}>
+	 */
+	private function withImportableNodeSlugs(array $nodes, array $currentNodeSlugs): array {
+		$takenSlugs = [];
+		foreach ($nodes as $node) {
+			$key = sprintf('t%di%d', $node['type'], $node['id']);
+			if (isset($currentNodeSlugs[$key])) {
+				$takenSlugs[$currentNodeSlugs[$key]] = true;
 			}
 		}
 
-		$context = $this->update($contextId, $userId, $name, $iconName, $description, $resolvedNodes);
+		// like the update, the last entry of a node listed more than once wins, values and position
+		$nodesByKey = [];
+		foreach ($nodes as $node) {
+			$key = sprintf('t%di%d', $node['type'], $node['id']);
+			unset($nodesByKey[$key]);
+			$nodesByKey[$key] = $node;
+		}
 
-		return $context;
+		$importableNodes = [];
+		foreach ($nodesByKey as $key => $node) {
+			$requestedSlug = $node['slug'];
+			unset($node['slug']);
+			$isNew = !isset($currentNodeSlugs[$key]);
+			$slug = $isNew ? self::availableSlug($requestedSlug, $takenSlugs) : null;
+			if ($slug !== null) {
+				$node['slug'] = $slug;
+				$takenSlugs[$slug] = true;
+			}
+			$importableNodes[] = $node;
+		}
+		return $importableNodes;
 	}
 }

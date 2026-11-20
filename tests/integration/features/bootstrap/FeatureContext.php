@@ -2775,11 +2775,15 @@ class FeatureContext implements Context {
 
 		foreach ($updatedNodes as $row) {
 			$permissions = $this->humanReadablePermissionToInt($row['permissions']);
-			$nodes[] = [
+			$node = [
 				'id' => $row['type'] === 'table' ? $this->tableIds[$row['alias']] : $this->viewIds[$row['alias']],
 				'type' => $row['type'] === 'table' ? 0 : 1,
 				'permissions' => $permissions,
 			];
+			if (!empty($row['slug'])) {
+				$node['slug'] = $row['slug'];
+			}
+			$nodes[] = $node;
 		}
 
 		$this->sendOcsRequest(
@@ -3096,6 +3100,111 @@ class FeatureContext implements Context {
 		if ($this->response->getStatusCode() === 200) {
 			$this->collectionManager->forget('row', $row['id']);
 		}
+	}
+
+	/**
+	 * @return string the path of a node of a Context by slug: /apps/tables/api/2/contexts/{contextSlug}/{nodeSlug}
+	 */
+	private function contextNodePathBySlug(string $contextAlias, string $nodeType, string $nodeAlias): string {
+		$context = $this->collectionManager->getByAlias('context', $contextAlias);
+		$node = $this->collectionManager->getByAlias($nodeType, $nodeAlias);
+		$nodeTypeId = $nodeType === 'view' ? 1 : 0;
+		foreach ($context['nodes'] as $contextNode) {
+			$contextNodeType = (int)($contextNode['nodeType'] ?? $contextNode['node_type']);
+			$contextNodeId = (int)($contextNode['nodeId'] ?? $contextNode['node_id']);
+			if ($contextNodeType === $nodeTypeId && $contextNodeId === (int)$node['id']) {
+				return sprintf('/apps/tables/api/2/contexts/%s/%s', $context['slug'], $contextNode['slug']);
+			}
+		}
+		throw new \LogicException(sprintf('Context %s does not contain %s %s', $contextAlias, $nodeType, $nodeAlias));
+	}
+
+	/**
+	 * @return array<int, mixed> the values by column id
+	 */
+	private function rowValuesByColumnId(TableNode $properties): array {
+		$values = [];
+		foreach ($properties->getRows() as $row) {
+			$values[$this->collectionManager->getByAlias('column', $row[0])['id']] = $row[1];
+		}
+		return $values;
+	}
+
+	/**
+	 * @When user :user lists the rows of :nodeType :nodeAlias in Context :contextAlias by slug
+	 */
+	public function userListsTheRowsOfANodeInAContextBySlug(string $user, string $nodeType, string $nodeAlias, string $contextAlias): void {
+		$this->setCurrentUser($user);
+		$this->sendOcsRequest('GET', $this->contextNodePathBySlug($contextAlias, $nodeType, $nodeAlias));
+	}
+
+	/**
+	 * @Then the rows listed by slug are :rowAliasList
+	 */
+	public function theRowsListedBySlugAre(string $rowAliasList): void {
+		$expectedIds = array_map(
+			fn (string $rowAlias): int => (int)$this->collectionManager->getByAlias('row', trim($rowAlias))['id'],
+			explode(',', $rowAliasList),
+		);
+		$actualIds = array_map(
+			static fn (array $row): int => (int)$row['id'],
+			$this->getDataFromResponse($this->response)['ocs']['data'],
+		);
+		sort($expectedIds);
+		sort($actualIds);
+		Assert::assertSame($expectedIds, $actualIds);
+	}
+
+	/**
+	 * @When user :user fetches row :rowAlias of :nodeType :nodeAlias in Context :contextAlias by slug
+	 */
+	public function userFetchesARowOfANodeInAContextBySlug(string $user, string $rowAlias, string $nodeType, string $nodeAlias, string $contextAlias): void {
+		$this->setCurrentUser($user);
+		$row = $this->collectionManager->getByAlias('row', $rowAlias);
+		$this->sendOcsRequest('GET', $this->contextNodePathBySlug($contextAlias, $nodeType, $nodeAlias) . '/' . $row['id']);
+	}
+
+	/**
+	 * @Then the row fetched by slug is :rowAlias
+	 */
+	public function theRowFetchedBySlugIs(string $rowAlias): void {
+		$expected = $this->collectionManager->getByAlias('row', $rowAlias);
+		$actual = $this->getDataFromResponse($this->response)['ocs']['data'];
+		Assert::assertSame((int)$expected['id'], (int)$actual['id']);
+	}
+
+	/**
+	 * @When user :user creates a row in :nodeType :nodeAlias of Context :contextAlias by slug with following values:
+	 */
+	public function userCreatesARowInANodeOfAContextBySlug(string $user, string $nodeType, string $nodeAlias, string $contextAlias, TableNode $properties): void {
+		$this->setCurrentUser($user);
+		$this->sendOcsRequest(
+			'POST',
+			$this->contextNodePathBySlug($contextAlias, $nodeType, $nodeAlias),
+			['data' => $this->rowValuesByColumnId($properties)],
+		);
+	}
+
+	/**
+	 * @When user :user updates row :rowAlias of :nodeType :nodeAlias in Context :contextAlias by slug with following values:
+	 */
+	public function userUpdatesARowOfANodeInAContextBySlug(string $user, string $rowAlias, string $nodeType, string $nodeAlias, string $contextAlias, TableNode $properties): void {
+		$this->setCurrentUser($user);
+		$row = $this->collectionManager->getByAlias('row', $rowAlias);
+		$this->sendOcsRequest(
+			'PUT',
+			$this->contextNodePathBySlug($contextAlias, $nodeType, $nodeAlias) . '/' . $row['id'],
+			['data' => $this->rowValuesByColumnId($properties)],
+		);
+	}
+
+	/**
+	 * @When user :user deletes row :rowAlias of :nodeType :nodeAlias in Context :contextAlias by slug
+	 */
+	public function userDeletesARowOfANodeInAContextBySlug(string $user, string $rowAlias, string $nodeType, string $nodeAlias, string $contextAlias): void {
+		$this->setCurrentUser($user);
+		$row = $this->collectionManager->getByAlias('row', $rowAlias);
+		$this->sendOcsRequest('DELETE', $this->contextNodePathBySlug($contextAlias, $nodeType, $nodeAlias) . '/' . $row['id']);
 	}
 
 	/**

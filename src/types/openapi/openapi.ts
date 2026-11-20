@@ -1093,6 +1093,58 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/ocs/v2.php/apps/tables/api/2/contexts/{contextSlug}/{nodeSlug}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * [api v2] List the rows of a table or view of a context, both addressed by slug
+         * @description The user needs read access to the table or view, directly or through a context.
+         */
+        readonly get: operations["rowocs-index-context-rows"];
+        readonly put?: never;
+        /**
+         * [api v2] Create a row in a table or view of a context, both addressed by slug
+         * @description The user needs create access to the table or view, directly or through a context.
+         */
+        readonly post: operations["rowocs-create-context-row"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/ocs/v2.php/apps/tables/api/2/contexts/{contextSlug}/{nodeSlug}/{rowId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        /**
+         * [api v2] Get a row of a table or view of a context, both addressed by slug
+         * @description The user needs read access to the table or view, directly or through a context.
+         */
+        readonly get: operations["rowocs-show-context-row"];
+        /**
+         * [api v2] Update a row in a table or view of a context, both addressed by slug
+         * @description The user needs update access to the table or view, directly or through a context.
+         */
+        readonly put: operations["rowocs-update-context-row"];
+        readonly post?: never;
+        /**
+         * [api v2] Delete a row in a table or view of a context, both addressed by slug
+         * @description The user needs delete access to the table or view, directly or through a context.
+         */
+        readonly delete: operations["rowocs-delete-context-row"];
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/ocs/v2.php/apps/tables/api/2/{nodeCollection}/{nodeId}/share": {
         readonly parameters: {
             readonly query?: never;
@@ -1194,6 +1246,7 @@ export type components = {
             /** Format: int64 */
             readonly id: number;
             readonly name: string;
+            readonly slug: string;
             readonly iconName: string;
             readonly description: string;
             readonly owner: string;
@@ -2378,8 +2431,11 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description Permission type that should be changed */
-                    readonly permissionType: string;
+                    /**
+                     * @description Permission type that should be changed
+                     * @enum {string}
+                     */
+                    readonly permissionType: "read" | "create" | "update" | "delete" | "manage";
                     /** @description New permission value */
                     readonly permissionValue: boolean;
                 };
@@ -2752,7 +2808,7 @@ export interface operations {
                      * @description Receiver type
                      * @enum {string}
                      */
-                    readonly receiverType: "user" | "group";
+                    readonly receiverType: "user" | "group" | "circle" | "remote";
                     /**
                      * @description Permission if receiver can read data
                      * @default false
@@ -7093,7 +7149,7 @@ export interface operations {
                      */
                     readonly description?: string;
                     /**
-                     * @description optional nodes to be connected to this context
+                     * @description optional nodes to be connected to this context, each with an optional slug unique within the context
                      * @default []
                      */
                     readonly nodes?: readonly {
@@ -7103,7 +7159,13 @@ export interface operations {
                         readonly type: number;
                         /** Format: int64 */
                         readonly permissions?: number;
+                        readonly slug?: string;
                     }[];
+                    /**
+                     * @description Slug of the context, unique among the owner's contexts; application-{id} when omitted
+                     * @default null
+                     */
+                    readonly slug?: string | null;
                 };
             };
         };
@@ -7283,8 +7345,8 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes. */
-                    readonly nodes?: {
+                    /** @description provide this parameter to set a new list of nodes; an added node can get a slug, a node that is kept keeps its slug, and a node that is removed frees its slug. */
+                    readonly nodes?: readonly {
                         /** Format: int64 */
                         readonly id: number;
                         /** Format: int64 */
@@ -7292,8 +7354,9 @@ export interface operations {
                         /** Format: int64 */
                         readonly permissions: number;
                         /** Format: int64 */
-                        readonly order: number;
-                    } | null;
+                        readonly order?: number;
+                        readonly slug?: string;
+                    }[] | null;
                 };
             };
         };
@@ -7312,7 +7375,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description bad request */
+            /** @description invalid or taken slug, a slug change on a kept node, or another bad request */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -7716,13 +7779,14 @@ export interface operations {
                     readonly iconName: string;
                     /** @description Description of the context */
                     readonly description: string;
-                    /** @description Ordered meta data of the related nodes */
+                    /** @description Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free */
                     readonly nodes: readonly {
                         /** Format: int64 */
                         readonly node_type: number;
                         readonly node_uuid: string;
                         /** Format: int64 */
                         readonly permissions: number;
+                        readonly slug?: string;
                     }[];
                     /** @description Tables to be added or modified */
                     readonly tables: {
@@ -9136,6 +9200,590 @@ export interface operations {
                 };
             };
             /** @description Invalid row identifier */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Internal error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "rowocs-index-context-rows": {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Limit the number of returned rows */
+                readonly limit?: number | null;
+                /** @description Skip this number of rows */
+                readonly offset?: number | null;
+            };
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context, by the same rule */
+                readonly nodeSlug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Rows returned; for a federated table or view, the rows of the remote link share, without tableId, createdBy and lastEditBy */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: readonly components["schemas"]["Row"][] | readonly components["schemas"]["PublicRow"][];
+                        };
+                    };
+                };
+            };
+            /** @description The slug matches more than one context */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Internal error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "rowocs-create-context-row": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context, by the same rule */
+                readonly nodeSlug: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** @description An array containing the column identifiers and their values */
+                    readonly data: string | {
+                        readonly [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Row returned; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["PublicRow"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid request parameters, or the slug matches more than one context */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Internal error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "rowocs-show-context-row": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context, by the same rule */
+                readonly nodeSlug: string;
+                /** @description The identifier of the row, either its integer id or its uuid */
+                readonly rowId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Row returned */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["Row"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid row identifier, or the slug matches more than one context */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Internal error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "rowocs-update-context-row": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context, by the same rule */
+                readonly nodeSlug: string;
+                /** @description The identifier of the row to update, either its integer id or its uuid */
+                readonly rowId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": {
+                    /** @description An array containing the column identifiers and their values */
+                    readonly data: string | {
+                        readonly [key: string]: Record<string, never>;
+                    };
+                };
+            };
+        };
+        readonly responses: {
+            /** @description Row updated; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["PublicRow"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid request parameters or row identifier, or the slug matches more than one context */
+            readonly 400: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Current user is not logged in */
+            readonly 401: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: unknown;
+                        };
+                    };
+                };
+            };
+            /** @description No permissions */
+            readonly 403: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Not found */
+            readonly 404: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+            /** @description Internal error */
+            readonly 500: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: {
+                                readonly message: string;
+                            };
+                        };
+                    };
+                };
+            };
+        };
+    };
+    readonly "rowocs-delete-context-row": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Required to be true for the API request to pass */
+                readonly "OCS-APIRequest": boolean;
+            };
+            readonly path: {
+                /** @description The slug of the context: lowercase letters and digits in groups separated by single dashes, starting with a letter */
+                readonly contextSlug: string;
+                /** @description The slug of the table or view within the context, by the same rule */
+                readonly nodeSlug: string;
+                /** @description The identifier of the row to delete, either its integer id or its uuid */
+                readonly rowId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Row deleted; for a federated table or view, the row of the remote link share, without tableId, createdBy and lastEditBy */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": {
+                        readonly ocs: {
+                            readonly meta: components["schemas"]["OCSMeta"];
+                            readonly data: components["schemas"]["Row"] | components["schemas"]["PublicRow"];
+                        };
+                    };
+                };
+            };
+            /** @description Invalid row identifier, or the slug matches more than one context */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;

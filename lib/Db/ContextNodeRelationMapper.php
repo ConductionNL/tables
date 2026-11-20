@@ -66,4 +66,38 @@ class ContextNodeRelationMapper extends QBMapper {
 		$row = $this->findOneQuery($qb);
 		return $this->mapRowToEntity($row);
 	}
+
+	/**
+	 * @return array<string, true> the slugs used in the application
+	 * @throws Exception
+	 */
+	public function findSlugsByContextId(int $contextId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('slug')
+			->from($this->tableName)
+			->where($qb->expr()->eq('context_id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)));
+
+		$result = $qb->executeQuery();
+		$slugs = [];
+		while ($row = $result->fetchAssociative()) {
+			$slugs[(string)$row['slug']] = true;
+		}
+		$result->closeCursor();
+		return $slugs;
+	}
+
+	/**
+	 * @throws MultipleObjectsReturnedException
+	 * @throws DoesNotExistException
+	 * @throws Exception
+	 */
+	public function findByContextAndSlug(int $contextId, string $slug): ContextNodeRelation {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('*')
+			->from($this->tableName)
+			->where($qb->expr()->eq('context_id', $qb->createNamedParameter($contextId, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->eq('slug', $qb->createNamedParameter($slug)));
+
+		return $this->findEntity($qb);
+	}
 }
