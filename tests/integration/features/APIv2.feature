@@ -362,6 +362,28 @@ Feature: APIv2
     And known Context "c1" has "icon" set to "tennis"
     And known Context "c1" has "description" set to "Lorem ipsum dolor etc pp"
 
+  @api2 @contexts @contexts-update @slugs
+  Scenario: A node keeps its slug, an added node can choose one
+    Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2
+    And table "Table 2 via api v2" with emoji "📸" exists for user "participant1-v2" as "t2" via v2
+    And user "participant1-v2" creates the Context "c1" with name "Enchanting Guitar" with icon "tennis" and description "Lorem ipsum dolor etc pp" and nodes:
+      | alias | type  | permissions |
+      | t1    | table | read        |
+    When user "participant1-v2" updates the nodes of the Context "c1" to
+      | alias | type  | permissions | slug    |
+      | t1    | table | read        | clients |
+    Then the reported status is "400"
+    When user "participant1-v2" updates the nodes of the Context "c1" to
+      | alias | type  | permissions | slug   |
+      | t1    | table | read        |        |
+      | t2    | table | read        | orders |
+    Then the reported status is "200"
+    When user "participant1-v2" updates the nodes of the Context "c1" to
+      | alias | type  | permissions | slug    |
+      | t1    | table | read        |         |
+      | t2    | table | read        | sales   |
+    Then the reported status is "400"
+
   @api2 @contexts @contexts-update
   Scenario: Add a table to an owned context
     Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2

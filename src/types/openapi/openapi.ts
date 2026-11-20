@@ -1193,6 +1193,7 @@ export type components = {
             /** Format: int64 */
             readonly id: number;
             readonly name: string;
+            readonly slug: string;
             readonly iconName: string;
             readonly description: string;
             readonly owner: string;
@@ -2375,8 +2376,11 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": {
-                    /** @description Permission type that should be changed */
-                    readonly permissionType: string;
+                    /**
+                     * @description Permission type that should be changed
+                     * @enum {string}
+                     */
+                    readonly permissionType: "read" | "create" | "update" | "delete" | "manage";
                     /** @description New permission value */
                     readonly permissionValue: boolean;
                 };
@@ -2749,7 +2753,7 @@ export interface operations {
                      * @description Receiver type
                      * @enum {string}
                      */
-                    readonly receiverType: "user" | "group";
+                    readonly receiverType: "user" | "group" | "circle" | "remote";
                     /**
                      * @description Permission if receiver can read data
                      * @default false
@@ -7090,7 +7094,7 @@ export interface operations {
                      */
                     readonly description?: string;
                     /**
-                     * @description optional nodes to be connected to this context
+                     * @description optional nodes to be connected to this context, each with an optional slug unique within the context
                      * @default []
                      */
                     readonly nodes?: readonly {
@@ -7100,7 +7104,13 @@ export interface operations {
                         readonly type: number;
                         /** Format: int64 */
                         readonly permissions?: number;
+                        readonly slug?: string;
                     }[];
+                    /**
+                     * @description Slug of the context, unique among the owner's contexts; application-{id} when omitted
+                     * @default null
+                     */
+                    readonly slug?: string | null;
                 };
             };
         };
@@ -7280,8 +7290,8 @@ export interface operations {
                     readonly iconName?: string | null;
                     /** @description provide this parameter to set a new description */
                     readonly description?: string | null;
-                    /** @description provide this parameter to set a new list of nodes. */
-                    readonly nodes?: {
+                    /** @description provide this parameter to set a new list of nodes; an added node can get a slug, a node that is kept keeps its slug, and a node that is removed frees its slug. */
+                    readonly nodes?: readonly {
                         /** Format: int64 */
                         readonly id: number;
                         /** Format: int64 */
@@ -7289,8 +7299,9 @@ export interface operations {
                         /** Format: int64 */
                         readonly permissions: number;
                         /** Format: int64 */
-                        readonly order: number;
-                    } | null;
+                        readonly order?: number;
+                        readonly slug?: string;
+                    }[] | null;
                 };
             };
         };
@@ -7309,7 +7320,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description bad request */
+            /** @description invalid or taken slug, a slug change on a kept node, or another bad request */
             readonly 400: {
                 headers: {
                     readonly [name: string]: unknown;
@@ -7713,13 +7724,14 @@ export interface operations {
                     readonly iconName: string;
                     /** @description Description of the context */
                     readonly description: string;
-                    /** @description Ordered meta data of the related nodes */
+                    /** @description Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free */
                     readonly nodes: readonly {
                         /** Format: int64 */
                         readonly node_type: number;
                         readonly node_uuid: string;
                         /** Format: int64 */
                         readonly permissions: number;
+                        readonly slug?: string;
                     }[];
                     /** @description Tables to be added or modified */
                     readonly tables: {

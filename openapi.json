@@ -288,6 +288,7 @@
                 "required": [
                     "id",
                     "name",
+                    "slug",
                     "iconName",
                     "description",
                     "owner",
@@ -299,6 +300,9 @@
                         "format": "int64"
                     },
                     "name": {
+                        "type": "string"
+                    },
+                    "slug": {
                         "type": "string"
                     },
                     "iconName": {
@@ -3019,6 +3023,13 @@
                                 "properties": {
                                     "permissionType": {
                                         "type": "string",
+                                        "enum": [
+                                            "read",
+                                            "create",
+                                            "update",
+                                            "delete",
+                                            "manage"
+                                        ],
                                         "description": "Permission type that should be changed"
                                     },
                                     "permissionValue": {
@@ -3566,7 +3577,9 @@
                                         "type": "string",
                                         "enum": [
                                             "user",
-                                            "group"
+                                            "group",
+                                            "circle",
+                                            "remote"
                                         ],
                                         "description": "Receiver type"
                                     },
@@ -12272,7 +12285,7 @@
                                     "nodes": {
                                         "type": "array",
                                         "default": [],
-                                        "description": "optional nodes to be connected to this context",
+                                        "description": "optional nodes to be connected to this context, each with an optional slug unique within the context",
                                         "items": {
                                             "type": "object",
                                             "required": [
@@ -12291,9 +12304,18 @@
                                                 "permissions": {
                                                     "type": "integer",
                                                     "format": "int64"
+                                                },
+                                                "slug": {
+                                                    "type": "string"
                                                 }
                                             }
                                         }
+                                    },
+                                    "slug": {
+                                        "type": "string",
+                                        "nullable": true,
+                                        "default": null,
+                                        "description": "Slug of the context, unique among the owner's contexts; application-{id} when omitted"
                                     }
                                 }
                             }
@@ -12699,31 +12721,36 @@
                                         "description": "provide this parameter to set a new description"
                                     },
                                     "nodes": {
-                                        "type": "object",
+                                        "type": "array",
                                         "nullable": true,
-                                        "description": "provide this parameter to set a new list of nodes.",
-                                        "required": [
-                                            "id",
-                                            "type",
-                                            "permissions",
-                                            "order"
-                                        ],
-                                        "properties": {
-                                            "id": {
-                                                "type": "integer",
-                                                "format": "int64"
-                                            },
-                                            "type": {
-                                                "type": "integer",
-                                                "format": "int64"
-                                            },
-                                            "permissions": {
-                                                "type": "integer",
-                                                "format": "int64"
-                                            },
-                                            "order": {
-                                                "type": "integer",
-                                                "format": "int64"
+                                        "description": "provide this parameter to set a new list of nodes; an added node can get a slug, a node that is kept keeps its slug, and a node that is removed frees its slug.",
+                                        "items": {
+                                            "type": "object",
+                                            "required": [
+                                                "id",
+                                                "type",
+                                                "permissions"
+                                            ],
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "type": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "permissions": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "order": {
+                                                    "type": "integer",
+                                                    "format": "int64"
+                                                },
+                                                "slug": {
+                                                    "type": "string"
+                                                }
                                             }
                                         }
                                     }
@@ -12900,7 +12927,7 @@
                         }
                     },
                     "400": {
-                        "description": "bad request",
+                        "description": "invalid or taken slug, a slug change on a kept node, or another bad request",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -13711,7 +13738,7 @@
                                     },
                                     "nodes": {
                                         "type": "array",
-                                        "description": "Ordered meta data of the related nodes",
+                                        "description": "Ordered meta data of the related nodes; a new node keeps its slug from the scheme when it is valid and free",
                                         "items": {
                                             "type": "object",
                                             "required": [
@@ -13730,6 +13757,9 @@
                                                 "permissions": {
                                                     "type": "integer",
                                                     "format": "int64"
+                                                },
+                                                "slug": {
+                                                    "type": "string"
                                                 }
                                             }
                                         }

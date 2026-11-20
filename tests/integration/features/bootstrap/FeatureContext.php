@@ -2775,11 +2775,15 @@ class FeatureContext implements Context {
 
 		foreach ($updatedNodes as $row) {
 			$permissions = $this->humanReadablePermissionToInt($row['permissions']);
-			$nodes[] = [
+			$node = [
 				'id' => $row['type'] === 'table' ? $this->tableIds[$row['alias']] : $this->viewIds[$row['alias']],
 				'type' => $row['type'] === 'table' ? 0 : 1,
 				'permissions' => $permissions,
 			];
+			if (!empty($row['slug'])) {
+				$node['slug'] = $row['slug'];
+			}
+			$nodes[] = $node;
 		}
 
 		$this->sendOcsRequest(

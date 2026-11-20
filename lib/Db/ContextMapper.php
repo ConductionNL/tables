@@ -36,7 +36,7 @@ class ContextMapper extends QBMapper {
 
 		$qb->select(
 			'c.*',
-			'r.id as node_rel_id', 'r.node_id', 'r.node_type', 'r.permissions',
+			'r.id as node_rel_id', 'r.node_id', 'r.node_type', 'r.permissions', 'r.slug as node_slug',
 			'p.id as page_id', 'p.page_type',
 			'pc.id as content_id', 'pc.order',
 			'n.display_mode as display_mode_default',
@@ -80,6 +80,7 @@ class ContextMapper extends QBMapper {
 		$formatted = [
 			'id' => $rows[0]['id'],
 			'name' => $rows[0]['name'],
+			'slug' => $rows[0]['slug'],
 			'icon' => $rows[0]['icon'],
 			'description' => $rows[0]['description'],
 			'owner_id' => $rows[0]['owner_id'],
@@ -119,6 +120,7 @@ class ContextMapper extends QBMapper {
 				'node_id' => (int)$item['node_id'],
 				'node_type' => (int)$item['node_type'],
 				'permissions' => (int)$item['permissions'],
+				'slug' => $item['node_slug'],
 			];
 			return $carry;
 		}, []);
@@ -275,6 +277,26 @@ class ContextMapper extends QBMapper {
 		}
 
 		return $resultEntities;
+	}
+
+	/**
+	 * @return array<string, true> the slugs of the owner's applications
+	 * @throws Exception
+	 */
+	public function findSlugsForOwner(int $ownerType, string $ownerId): array {
+		$qb = $this->db->getQueryBuilder();
+		$qb->select('slug')
+			->from($this->table)
+			->where($qb->expr()->eq('owner_type', $qb->createNamedParameter($ownerType, IQueryBuilder::PARAM_INT)))
+			->andWhere($qb->expr()->eq('owner_id', $qb->createNamedParameter($ownerId)));
+
+		$result = $qb->executeQuery();
+		$slugs = [];
+		while ($row = $result->fetchAssociative()) {
+			$slugs[(string)$row['slug']] = true;
+		}
+		$result->closeCursor();
+		return $slugs;
 	}
 
 	/**
