@@ -150,41 +150,19 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->service->create('CRM', 'icon', '', [], 'alice', Application::OWNER_TYPE_USER, 'crm');
 	}
 
-	public function testUpdateRenamesTheContext(): void {
-		$context = $this->context(7, 'application-7', 'alice');
-		$this->contextMapper->method('findById')->willReturn($context);
-		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true]);
-		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
-
-		$updated = $this->service->update(7, 'alice', null, null, null, null, 'crm');
-
-		$this->assertSame('crm', $updated->getSlug());
-	}
-
-	public function testUpdateRefusesToRenameASharedContext(): void {
-		$this->contextMapper->method('findById')->willReturn($this->context(7, 'application-7', 'alice'));
-		$this->shareService->method('isContextShared')->willReturn(true);
-		$this->contextMapper->expects($this->never())->method('update');
-
-		$this->expectException(BadRequestError::class);
-		$this->service->update(7, 'alice', null, null, null, null, 'crm');
-	}
-
-	public function testUpdateOfASharedContextKeepingItsSlugSucceeds(): void {
+	public function testUpdateKeepsTheApplicationSlug(): void {
 		$this->contextMapper->method('findById')->willReturn($this->context(7, 'crm', 'alice'));
-		$this->shareService->expects($this->never())->method('isContextShared');
 		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
 
-		$updated = $this->service->update(7, 'alice', 'CRM 2', null, null, null, 'crm');
+		$updated = $this->service->update(7, 'alice', 'CRM 2', null, null, null);
 
 		$this->assertSame('crm', $updated->getSlug());
 		$this->assertSame('CRM 2', $updated->getName());
 	}
 
-	public function testUpdateRefusesToRenameANodeOfASharedContext(): void {
+	public function testUpdateRefusesToChangeTheSlugOfAKeptNode(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTable(7, 5, 'customers'));
-		$this->contextNodeRelMapper->method('findById')->willReturn(new ContextNodeRelation());
-		$this->shareService->method('isContextShared')->willReturn(true);
+		$this->dbc->expects($this->never())->method('beginTransaction');
 		$this->contextNodeRelMapper->expects($this->never())->method('update');
 
 		$this->expectException(BadRequestError::class);
@@ -193,35 +171,19 @@ final class ContextServiceSlugTest extends TestCase {
 		]);
 	}
 
-	public function testUpdateRenamesANodeOfAnUnsharedContext(): void {
+	public function testUpdateAcceptsTheCurrentSlugOfAKeptNode(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTable(7, 5, 'customers'));
-		$this->contextNodeRelMapper->method('findById')->willReturn(new ContextNodeRelation());
-		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn(['customers' => true]);
-		$this->shareService->method('isContextShared')->willReturn(false);
-		$writtenSlugs = [];
-		$this->contextNodeRelMapper->method('update')
-			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$writtenSlugs): ContextNodeRelation {
-				$writtenSlugs[] = $relation->getSlug();
-				return $relation;
-			});
+		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
+		$this->contextNodeRelMapper->expects($this->once())->method('update')
+			->with($this->callback(static fn (ContextNodeRelation $relation): bool => $relation->getPermissions() === Application::PERMISSION_MANAGE && $relation->getSlug() === null))
+			->willReturnArgument(0);
 		$this->contextMapper->method('update')->willReturnArgument(0);
 
-		$this->service->update(7, 'alice', null, null, null, [
-			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'clients'],
+		$updated = $this->service->update(7, 'alice', null, null, null, [
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_MANAGE, 'order' => 10, 'slug' => 'customers'],
 		]);
 
-		$this->assertCount(2, $writtenSlugs);
-		$this->assertStringStartsWith('_', $writtenSlugs[0]);
-		$this->assertSame('clients', $writtenSlugs[1]);
-	}
-
-	public function testUpdateRefusesANameTheOwnerAlreadyUses(): void {
-		$this->contextMapper->method('findById')->willReturn($this->context(7, 'application-7', 'alice'));
-		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true, 'crm' => true]);
-		$this->contextMapper->expects($this->never())->method('update');
-
-		$this->expectException(BadRequestError::class);
-		$this->service->update(7, 'alice', null, null, null, null, 'crm');
+		$this->assertSame('customers', $updated->getNodes()[1]['slug']);
 	}
 
 	public function testTransferRefusesAnOwnerWhoUsesTheNameAlready(): void {
@@ -303,64 +265,38 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->service->resolveNode('crm', 'customers', 'alice');
 	}
 
-	public function testUpdateLetsTwoNodesSwapTheirSlugs(): void {
+	public function testUpdateRefusesToSwapTheSlugsOfTwoKeptNodes(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers', 6 => 'clients']));
-		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
-		$this->shareService->method('isContextShared')->willReturn(false);
-		$writes = [];
-		$this->contextNodeRelMapper->method('update')
-			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$writes): ContextNodeRelation {
-				$writes[] = [$relation->getId(), $relation->getSlug()];
-				return $relation;
-			});
-		$this->contextMapper->method('update')->willReturnArgument(0);
-
-		$this->service->update(7, 'alice', null, null, null, [
-			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'clients'],
-			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 20, 'slug' => 'customers'],
-		]);
-
-		$this->assertCount(4, $writes);
-		$this->assertStringStartsWith('_', $writes[0][1]);
-		$this->assertStringStartsWith('_', $writes[1][1]);
-		$this->assertSame([[1, 'clients'], [2, 'customers']], [$writes[2], $writes[3]]);
-	}
-
-	public function testUpdateGivesAKeptNodeTheSlugOfANodeRemovedInTheSameRequest(): void {
-		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers', 6 => 'clients']));
-		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
-		$this->shareService->method('isContextShared')->willReturn(false);
-		$writes = [];
-		$this->contextNodeRelMapper->method('delete')
-			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$writes): ContextNodeRelation {
-				$writes[] = 'delete ' . $relation->getId();
-				return $relation;
-			});
-		$this->contextNodeRelMapper->method('update')
-			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$writes): ContextNodeRelation {
-				$writes[] = 'update ' . $relation->getId() . ' ' . $relation->getSlug();
-				return $relation;
-			});
-		$this->contextMapper->method('update')->willReturnArgument(0);
-
-		$this->service->update(7, 'alice', null, null, null, [
-			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'customers'],
-		]);
-
-		$this->assertSame('delete 1', $writes[0]);
-		$this->assertSame('update 2 customers', $writes[2]);
-	}
-
-	public function testUpdateRefusesTwoNodesWithTheSameSlugBeforeWritingAnything(): void {
-		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers', 6 => 'clients']));
-		$this->shareService->method('isContextShared')->willReturn(false);
 		$this->dbc->expects($this->never())->method('beginTransaction');
 		$this->contextNodeRelMapper->expects($this->never())->method('update');
 
 		$this->expectException(BadRequestError::class);
 		$this->service->update(7, 'alice', null, null, null, [
-			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_MANAGE, 'order' => 10],
+			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'clients'],
 			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 20, 'slug' => 'customers'],
+		]);
+	}
+
+	public function testUpdateRefusesAKeptNodeTheSlugOfANodeRemovedInTheSameRequest(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers', 6 => 'clients']));
+		$this->dbc->expects($this->never())->method('beginTransaction');
+		$this->contextNodeRelMapper->expects($this->never())->method('delete');
+
+		$this->expectException(BadRequestError::class);
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'customers'],
+		]);
+	}
+
+	public function testUpdateRefusesTwoAddedNodesWithTheSameSlugBeforeWritingAnything(): void {
+		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
+		$this->dbc->expects($this->never())->method('beginTransaction');
+		$this->contextNodeRelMapper->expects($this->never())->method('insert');
+
+		$this->expectException(BadRequestError::class);
+		$this->service->update(7, 'alice', null, null, null, [
+			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 10, 'slug' => 'orders'],
+			['id' => 8, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 20, 'slug' => 'orders'],
 		]);
 	}
 
@@ -380,19 +316,19 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers', 6 => 'clients']));
 		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
 		$this->contextNodeRelMapper->method('update')->willReturnArgument(0);
-		$this->contextMapper->method('update')->willThrowException($this->uniqueConstraintViolation());
+		$this->contextMapper->method('update')->willThrowException($this->createMock(Exception::class));
 		$this->dbc->expects($this->once())->method('beginTransaction');
 		$this->dbc->expects($this->once())->method('rollBack');
 		$this->dbc->expects($this->never())->method('commit');
 
-		$this->expectException(BadRequestError::class);
+		$this->expectException(Exception::class);
 		$this->service->update(7, 'alice', null, null, null, [
 			['id' => 5, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_MANAGE, 'order' => 10],
 			['id' => 6, 'type' => Application::NODE_TYPE_TABLE, 'permissions' => Application::PERMISSION_READ, 'order' => 20],
-		], 'crm-2');
+		]);
 	}
 
-	public function testRemovingANodeOfASharedContextFreesItsSlugForAnAddedNode(): void {
+	public function testRemovingANodeFreesItsSlugForAnAddedNode(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
 		$this->contextNodeRelMapper->method('findById')->willReturnCallback(fn (int $id): ContextNodeRelation => $this->relation($id));
 		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
@@ -402,7 +338,6 @@ final class ContextServiceSlugTest extends TestCase {
 		$existingContent->setId(9);
 		$existingContent->setPageId(4);
 		$this->pageContentMapper->method('findByPageAndNodeRelation')->willReturn($existingContent);
-		$this->shareService->method('isContextShared')->willReturn(true);
 		$this->contextMapper->method('update')->willReturnArgument(0);
 		$this->contextNodeRelMapper->expects($this->once())->method('insert')
 			->with($this->callback(static fn (ContextNodeRelation $relation): bool => $relation->getNodeId() === 6 && $relation->getSlug() === 'customers'))
@@ -432,7 +367,7 @@ final class ContextServiceSlugTest extends TestCase {
 	}
 
 	public function testSchemeImportGivesNewNodesTheirSlugFromTheScheme(): void {
-		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true]);
+		$this->prepareSchemeImport();
 		$this->contextNodeRelMapper->expects($this->never())->method('update');
 		$insertedSlugs = [];
 		$this->contextNodeRelMapper->method('insert')
@@ -441,36 +376,16 @@ final class ContextServiceSlugTest extends TestCase {
 				$relation->setId(10 + $relation->getNodeId());
 				return $relation;
 			});
-		$this->contextMapper->expects($this->once())->method('update')
-			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'sales'))
-			->willReturnArgument(0);
+		$this->contextMapper->expects($this->once())->method('update')->willReturnArgument(0);
 
 		$this->service->importScheme(7, 'CRM', 'icon', '', [
 			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-5', 'permissions' => Application::PERMISSION_READ, 'slug' => 'renamed'],
 			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-6', 'permissions' => Application::PERMISSION_READ, 'slug' => 'clients'],
 			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-8', 'permissions' => Application::PERMISSION_READ, 'slug' => 'customers'],
 			['node_type' => Application::NODE_TYPE_TABLE, 'node_uuid' => 'uuid-9', 'permissions' => Application::PERMISSION_READ, 'slug' => 'Not A Slug'],
-		], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
+		], ['addTables' => [], 'modifyTables' => []], 'alice');
 
 		$this->assertSame([6 => 'clients', 8 => 'table-8', 9 => 'table-9'], $insertedSlugs);
-	}
-
-	public function testSchemeImportKeepsTheSlugOfASharedApplication(): void {
-		$this->prepareSchemeImport(shared: true, ownerSlugs: ['crm' => true]);
-		$this->contextMapper->expects($this->once())->method('update')
-			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'crm'))
-			->willReturnArgument(0);
-
-		$this->service->importScheme(7, 'CRM', 'icon', '', [], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
-	}
-
-	public function testSchemeImportKeepsTheSlugWhenTheOwnerUsesTheSchemeSlug(): void {
-		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true, 'sales' => true]);
-		$this->contextMapper->expects($this->once())->method('update')
-			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'crm'))
-			->willReturnArgument(0);
-
-		$this->service->importScheme(7, 'CRM', 'icon', '', [], ['addTables' => [], 'modifyTables' => []], 'alice', 'sales');
 	}
 
 	public function testImportedContextNeverKeepsTheRandomSlug(): void {
@@ -493,6 +408,7 @@ final class ContextServiceSlugTest extends TestCase {
 			return $context;
 		});
 		$this->contextMapper->method('findSlugsForOwner')->willReturn(['application-7' => true]);
+		$this->givePagesIds();
 		$this->contextMapper->expects($this->once())->method('update')
 			->with($this->callback(static fn (Context $context): bool => $context->getSlug() === 'application-7-2'))
 			->willReturnArgument(0);
@@ -611,7 +527,7 @@ final class ContextServiceSlugTest extends TestCase {
 	}
 
 	public function testSchemeImportAddsANodeListedTwiceOnceWithItsLastEntry(): void {
-		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true]);
+		$this->prepareSchemeImport();
 		$inserted = [];
 		$this->contextNodeRelMapper->method('insert')
 			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
@@ -631,7 +547,7 @@ final class ContextServiceSlugTest extends TestCase {
 	}
 
 	public function testSchemeImportPlacesANodeListedTwiceAtItsLastEntry(): void {
-		$this->prepareSchemeImport(shared: false, ownerSlugs: ['crm' => true]);
+		$this->prepareSchemeImport();
 		$insertedNodeIds = [];
 		$this->contextNodeRelMapper->method('insert')
 			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$insertedNodeIds): ContextNodeRelation {
@@ -652,7 +568,7 @@ final class ContextServiceSlugTest extends TestCase {
 	}
 
 	public function testUpdateKeepsTheOrderOfAddedNodesAndLeavesARequestedSlugToItsNode(): void {
-		$this->prepareSchemeImport(shared: false, ownerSlugs: []);
+		$this->prepareSchemeImport();
 		$inserted = [];
 		$this->contextNodeRelMapper->method('insert')
 			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
@@ -680,6 +596,7 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->contextMapper->method('update')->willReturnArgument(0);
 		$this->contextNodeRelMapper->method('findSlugsByContextId')->willReturn([]);
 		$this->permissionsService->method('canManageNodeById')->willReturn(true);
+		$this->givePagesIds();
 		$inserted = [];
 		$this->contextNodeRelMapper->method('insert')
 			->willReturnCallback(static function (ContextNodeRelation $relation) use (&$inserted): ContextNodeRelation {
@@ -717,13 +634,20 @@ final class ContextServiceSlugTest extends TestCase {
 		$this->assertSame(['table-5-2', 'table-5'], $insertedSlugs);
 	}
 
-	/**
-	 * @param array<string, true> $ownerSlugs
-	 */
-	private function prepareSchemeImport(bool $shared, array $ownerSlugs): void {
+	private function givePagesIds(): void {
+		$this->pageMapper->method('insert')->willReturnCallback(static function (Page $page): Page {
+			$page->setId(3);
+			return $page;
+		});
+		$contentId = 20;
+		$this->pageContentMapper->method('insert')->willReturnCallback(static function (PageContent $content) use (&$contentId): PageContent {
+			$content->setId($contentId++);
+			return $content;
+		});
+	}
+
+	private function prepareSchemeImport(): void {
 		$this->contextMapper->method('findById')->willReturn($this->contextWithTables(7, [5 => 'customers']));
-		$this->contextMapper->method('findSlugsForOwner')->willReturn($ownerSlugs);
-		$this->shareService->method('isContextShared')->willReturn($shared);
 		$this->tableMapper->method('findByUuid')->willReturnCallback(static function (string $uuid): Table {
 			$table = new Table();
 			$table->setId((int)substr($uuid, 5));

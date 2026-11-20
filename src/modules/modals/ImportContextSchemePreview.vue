@@ -30,32 +30,6 @@
 			</div>
 		</div>
 
-		<div v-if="previewData.slug && previewData.slug.from !== previewData.slug.to" class="preview-section preview-section--option">
-			<div class="preview-option">
-				<NcCheckboxRadioSwitch v-model="importSlug" class="preview-option__label" type="switch">
-					{{ t('tables', 'Slug') }}
-				</NcCheckboxRadioSwitch>
-				<div v-if="importSlug" class="preview-card__meta preview-card__meta--compare">
-					<ul class="preview-card__meta--before">
-						<li class="preview-card__meta-title">
-							{{ t('tables', 'From') }}:
-						</li>
-						<li>
-							{{ previewData.slug.from || '' }}
-						</li>
-					</ul>
-					<ul class="preview-card__meta--after">
-						<li class="preview-card__meta-title">
-							{{ t('tables', 'To') }}:
-						</li>
-						<li>
-							{{ previewData.slug.to || '' }}
-						</li>
-					</ul>
-				</div>
-			</div>
-		</div>
-
 		<div class="preview-section preview-section--option">
 			<div class="preview-option">
 				<NcCheckboxRadioSwitch v-model="importIcon" class="preview-option__label" type="switch">
@@ -259,7 +233,6 @@ export default {
 	data() {
 		return {
 			importName: true,
-			importSlug: true,
 			importIcon: true,
 			importDescription: true,
 			importNodes: true,
@@ -281,11 +254,6 @@ export default {
 			immediate: true,
 		},
 		importName: {
-			handler() {
-				this.emitPayload()
-			},
-		},
-		importSlug: {
 			handler() {
 				this.emitPayload()
 			},
@@ -364,9 +332,6 @@ export default {
 							.map(item => ({uuid: item.uuid, ...item.tableSubmitPayload})),
 				},
 				nodes: this.importNodes ? this.previewData.nodes.to : this.previewData.nodes.from,
-			}
-			if (this.importSlug && this.previewData.slug && this.previewData.slug.from !== this.previewData.slug.to) {
-				payload.slug = this.previewData.slug.to
 			}
 
 			this.$emit('update', payload)

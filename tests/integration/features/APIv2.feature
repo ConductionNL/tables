@@ -236,25 +236,6 @@ Feature: APIv2
     And known Context "c2" contains "table" "t2" with permissions "read,create,update"
     And known Context "c2" contains "view" "v2" with permissions "read"
 
-  @api2 @contexts @slugs
-  Scenario: The scheme preview shows the application slug the import would take
-    Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2
-    And user "participant1-v2" creates the Context "c1" with name "Enchanting Guitar" with icon "tennis" and description "Lorem ipsum dolor etc pp" and nodes:
-      | alias | type  | permissions |
-      | t1    | table | read        |
-    And user "participant1-v2" creates the Context "c2" with name "Placid Ring" with icon "headphones" and description "Lacus suspendisse faucibus etc pp" and nodes:
-      | alias | type  | permissions |
-      | t1    | table | read        |
-    When user "participant1-v2" previews a scheme for Context "c1" with the slug "sales-crm"
-    Then the previewed slug of Context "c1" changes to "sales-crm"
-    When user "participant1-v2" previews a scheme for Context "c1" with the slug of Context "c2"
-    Then the previewed slug of Context "c1" stays
-    When user "participant1-v2" previews a scheme for Context "c1" with the slug "Not A Slug"
-    Then the previewed slug of Context "c1" stays
-    When user "participant1-v2" shares the Context "c1" to "user" "participant2-v2"
-    And user "participant1-v2" previews a scheme for Context "c1" with the slug "sales-crm"
-    Then the previewed slug of Context "c1" stays
-
   @api2 @contexts
   Scenario: Fetch a specific, but inaccessible Context
     Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2
@@ -380,6 +361,28 @@ Feature: APIv2
     Then known Context "c1" has "name" set to "Enchanting Guitar"
     And known Context "c1" has "icon" set to "tennis"
     And known Context "c1" has "description" set to "Lorem ipsum dolor etc pp"
+
+  @api2 @contexts @contexts-update @slugs
+  Scenario: A node keeps its slug, an added node can choose one
+    Given table "Table 1 via api v2" with emoji "👋" exists for user "participant1-v2" as "t1" via v2
+    And table "Table 2 via api v2" with emoji "📸" exists for user "participant1-v2" as "t2" via v2
+    And user "participant1-v2" creates the Context "c1" with name "Enchanting Guitar" with icon "tennis" and description "Lorem ipsum dolor etc pp" and nodes:
+      | alias | type  | permissions |
+      | t1    | table | read        |
+    When user "participant1-v2" updates the nodes of the Context "c1" to
+      | alias | type  | permissions | slug    |
+      | t1    | table | read        | clients |
+    Then the reported status is "400"
+    When user "participant1-v2" updates the nodes of the Context "c1" to
+      | alias | type  | permissions | slug   |
+      | t1    | table | read        |        |
+      | t2    | table | read        | orders |
+    Then the reported status is "200"
+    When user "participant1-v2" updates the nodes of the Context "c1" to
+      | alias | type  | permissions | slug    |
+      | t1    | table | read        |         |
+      | t2    | table | read        | sales   |
+    Then the reported status is "400"
 
   @api2 @contexts @contexts-update
   Scenario: Add a table to an owned context
